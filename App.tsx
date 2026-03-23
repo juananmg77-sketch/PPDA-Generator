@@ -721,9 +721,7 @@ const App: React.FC = () => {
                   <Home size={18} />
               </button>
               <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setState(s => ({...s, step: 1}))}>
-                <div className="bg-brand-600 p-1.5 rounded-lg text-white">
-                  <Leaf size={18} />
-                </div>
+                <img src="/icon-48.png" alt="HsGreen" className="w-8 h-8 rounded-lg object-contain" />
                 <div className="hidden sm:block">
                     <div className="flex items-center gap-2">
                         <h1 className="text-sm font-black tracking-tight leading-none text-slate-900">EcoHotel PPDA</h1>

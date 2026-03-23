@@ -714,8 +714,8 @@ const App: React.FC = () => {
   // RENDER: WIZARD VIEW
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-brand-100">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 h-14 no-print">
-        <div className="max-w-6xl mx-auto px-4 h-full flex items-center justify-between">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
               <button onClick={() => setView('dashboard')} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 transition-colors pr-4 border-r border-slate-200">
                   <Home size={18} />

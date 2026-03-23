@@ -14,6 +14,7 @@ interface UserProfile {
 interface Plan {
   plan_id: string;
   hotel_name: string;
+  consultor: string | null;
 }
 
 interface Props {
@@ -56,7 +57,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
     setLoading(true);
     const [{ data: usersData }, { data: plansData }, { data: accessData }] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-      supabase.from('plans').select('plan_id, hotel_name').order('hotel_name'),
+      supabase.from('plans').select('plan_id, hotel_name, consultor').order('hotel_name'),
       supabase.from('plan_access').select('user_id, plan_id'),
     ]);
     setUsers((usersData as UserProfile[]) || []);
@@ -250,32 +251,47 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
           </div>
         ) : (
           /* EQUIPO */
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
-                <tr>
-                  <th className="px-6 py-3 text-left">Nombre</th>
-                  <th className="px-6 py-3 text-left">Email</th>
-                  <th className="px-6 py-3 text-left">Rol</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {teamUsers.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-medium text-slate-900">{user.full_name || '—'}</td>
-                    <td className="px-6 py-4 text-slate-500">{user.email}</td>
-                    <td className="px-6 py-4">
-                      <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value as any)}
-                        className={`text-xs font-bold px-2 py-1 rounded-full border cursor-pointer ${ROLE_CONFIG[user.role]?.color}`}>
-                        <option value="admin">Administrador</option>
-                        <option value="consultor">Consultor</option>
-                        <option value="viewer">Cliente</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {teamUsers.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 bg-white rounded-xl border border-slate-200">
+                <Briefcase size={32} className="mx-auto mb-3 opacity-30" />
+                <p className="font-semibold">No hay miembros de equipo registrados.</p>
+              </div>
+            ) : teamUsers.map(user => {
+              const userPlans = plans.filter(p => p.consultor === user.email);
+              const RoleIcon = ROLE_CONFIG[user.role]?.icon || Users;
+              return (
+                <div key={user.id} className="bg-white rounded-xl border border-slate-200 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <p className="font-bold text-slate-900">{user.full_name || user.email}</p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${ROLE_CONFIG[user.role]?.color}`}>
+                          {ROLE_CONFIG[user.role]?.label}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-3">{user.email}</p>
+                      {/* Planes asignados */}
+                      <div className="flex flex-wrap gap-2">
+                        {userPlans.length === 0 ? (
+                          <span className="text-xs text-slate-400 italic">Sin planes asignados</span>
+                        ) : userPlans.map(p => (
+                          <span key={p.plan_id} className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-medium">
+                            {p.hotel_name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <select value={user.role} onChange={e => handleRoleChange(user.id, e.target.value as any)}
+                      className={`text-xs font-bold px-2 py-1 rounded-full border cursor-pointer ${ROLE_CONFIG[user.role]?.color}`}>
+                      <option value="admin">Administrador</option>
+                      <option value="consultor">Consultor</option>
+                      <option value="viewer">Cliente</option>
+                    </select>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

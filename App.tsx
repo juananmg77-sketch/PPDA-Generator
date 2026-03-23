@@ -121,6 +121,9 @@ const App: React.FC = () => {
   const [assignedClients, setAssignedClients] = useState<string[]>([]);
   const [planAssignedMap, setPlanAssignedMap] = useState<Record<string, boolean>>({});
 
+  // Consultores disponibles para el selector
+  const [consultorOptions, setConsultorOptions] = useState<{ email: string; full_name: string }[]>([]);
+
   // Modal nueva versión
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [versionDescription, setVersionDescription] = useState('');
@@ -598,6 +601,14 @@ const App: React.FC = () => {
         setCurrentUser(email);
         const { data } = await supabase.from('profiles').select('role').eq('email', email).single();
         setCurrentUserRole(data?.role || 'consultor');
+        // Cargar lista de consultores para el selector
+        const { data: consultors } = await supabase
+          .from('profiles')
+          .select('email, full_name')
+          .in('role', ['admin', 'consultor'])
+          .eq('active', true)
+          .order('full_name');
+        setConsultorOptions((consultors || []) as { email: string; full_name: string }[]);
       }} />;
   }
 
@@ -901,17 +912,18 @@ const App: React.FC = () => {
             </header>
 
             {state.scope === 'individual' ? (
-                <GeneralForm 
-                    data={state.hotelData} 
-                    onChange={(d) => setState(s => ({ ...s, hotelData: d }))} 
-                    baselineYear={state.baselineYear} 
-                    setBaselineYear={(y) => setState(s => ({ ...s, baselineYear: y }))} 
-                    periodoPlan={state.periodoPlan} 
-                    setPeriodoPlan={(p) => setState(s => ({ ...s, periodoPlan: p }))} 
-                    fechaVisita={state.fechaVisita} 
-                    setFechaVisita={(v) => setState(s => ({ ...s, fechaVisita: v }))} 
+                <GeneralForm
+                    data={state.hotelData}
+                    onChange={(d) => setState(s => ({ ...s, hotelData: d }))}
+                    baselineYear={state.baselineYear}
+                    setBaselineYear={(y) => setState(s => ({ ...s, baselineYear: y }))}
+                    periodoPlan={state.periodoPlan}
+                    setPeriodoPlan={(p) => setState(s => ({ ...s, periodoPlan: p }))}
+                    fechaVisita={state.fechaVisita}
+                    setFechaVisita={(v) => setState(s => ({ ...s, fechaVisita: v }))}
                     consultor={state.consultor}
                     setConsultor={(c) => setState(s => ({ ...s, consultor: c }))}
+                    consultorOptions={consultorOptions}
                 />
             ) : (
                 <>
@@ -919,15 +931,16 @@ const App: React.FC = () => {
                         data={state.society} 
                         onChange={(d) => setState(s => ({ ...s, society: d }))} 
                     />
-                    <PlanContextForm 
-                        baselineYear={state.baselineYear} 
-                        setBaselineYear={(y) => setState(s => ({ ...s, baselineYear: y }))} 
-                        periodoPlan={state.periodoPlan} 
-                        setPeriodoPlan={(p) => setState(s => ({ ...s, periodoPlan: p }))} 
-                        fechaVisita={state.fechaVisita} 
-                        setFechaVisita={(v) => setState(s => ({ ...s, fechaVisita: v }))} 
+                    <PlanContextForm
+                        baselineYear={state.baselineYear}
+                        setBaselineYear={(y) => setState(s => ({ ...s, baselineYear: y }))}
+                        periodoPlan={state.periodoPlan}
+                        setPeriodoPlan={(p) => setState(s => ({ ...s, periodoPlan: p }))}
+                        fechaVisita={state.fechaVisita}
+                        setFechaVisita={(v) => setState(s => ({ ...s, fechaVisita: v }))}
                         consultor={state.consultor}
                         setConsultor={(c) => setState(s => ({ ...s, consultor: c }))}
+                        consultorOptions={consultorOptions}
                     />
                     <HotelListForm 
                         hotels={state.hotels} 

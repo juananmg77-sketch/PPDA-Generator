@@ -373,10 +373,11 @@ interface PlanContextFormProps {
   setFechaVisita: (date: string) => void;
   consultor: string;
   setConsultor: (consultor: string) => void;
+  consultorOptions?: { email: string; full_name: string }[];
 }
 
-export const PlanContextForm: React.FC<PlanContextFormProps> = ({ 
-  baselineYear, setBaselineYear, periodoPlan, setPeriodoPlan, fechaVisita, setFechaVisita, consultor, setConsultor
+export const PlanContextForm: React.FC<PlanContextFormProps> = ({
+  baselineYear, setBaselineYear, periodoPlan, setPeriodoPlan, fechaVisita, setFechaVisita, consultor, setConsultor, consultorOptions
 }) => {
   return (
     <div className={sectionClass}>
@@ -399,7 +400,16 @@ export const PlanContextForm: React.FC<PlanContextFormProps> = ({
              </div>
              <div>
                 <label className={labelClass}>Consultor Responsable</label>
-                <input type="text" value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass} />
+                {consultorOptions && consultorOptions.length > 0 ? (
+                  <select value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass}>
+                    <option value="">— Seleccionar consultor —</option>
+                    {consultorOptions.map(c => (
+                      <option key={c.email} value={c.email}>{c.full_name || c.email}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input type="text" value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass} />
+                )}
              </div>
         </div>
     </div>
@@ -418,10 +428,11 @@ interface GeneralFormProps {
   setFechaVisita: (date: string) => void;
   consultor: string;
   setConsultor: (consultor: string) => void;
+  consultorOptions?: { email: string; full_name: string }[];
 }
 
-export const GeneralForm: React.FC<GeneralFormProps> = ({ 
-  data, onChange, baselineYear, setBaselineYear, periodoPlan, setPeriodoPlan, fechaVisita, setFechaVisita, consultor, setConsultor
+export const GeneralForm: React.FC<GeneralFormProps> = ({
+  data, onChange, baselineYear, setBaselineYear, periodoPlan, setPeriodoPlan, fechaVisita, setFechaVisita, consultor, setConsultor, consultorOptions
 }) => {
   const protocolInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -517,7 +528,16 @@ export const GeneralForm: React.FC<GeneralFormProps> = ({
           </div>
           <div>
              <label className={labelClass}>Consultor Responsable</label>
-             <input type="text" value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass} />
+             {consultorOptions && consultorOptions.length > 0 ? (
+               <select value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass}>
+                 <option value="">— Seleccionar consultor —</option>
+                 {consultorOptions.map(c => (
+                   <option key={c.email} value={c.email}>{c.full_name || c.email}</option>
+                 ))}
+               </select>
+             ) : (
+               <input type="text" value={consultor} onChange={(e) => setConsultor(e.target.value)} className={inputClass} />
+             )}
           </div>
         </div>
       </div>

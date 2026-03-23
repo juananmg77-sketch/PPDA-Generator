@@ -119,6 +119,7 @@ const App: React.FC = () => {
   const [assignPlanId, setAssignPlanId] = useState<string>('');
   const [clientUsers, setClientUsers] = useState<{ id: string; email: string; full_name: string }[]>([]);
   const [assignedClients, setAssignedClients] = useState<string[]>([]);
+  const [planAssignedMap, setPlanAssignedMap] = useState<Record<string, boolean>>({});
 
   // Modal nueva versión
   const [showVersionModal, setShowVersionModal] = useState(false);
@@ -271,6 +272,14 @@ const App: React.FC = () => {
         planId: p.plan_id,
       }));
 
+      // Load which plans have clients assigned
+      const { data: accessRows } = await supabase.from('plan_access').select('plan_id');
+      const assignedMap: Record<string, boolean> = {};
+      for (const row of (accessRows || []) as any[]) {
+        assignedMap[row.plan_id] = true;
+      }
+      setPlanAssignedMap(assignedMap);
+
       if (validPlans.length > 0) {
         setCloudPlans(validPlans);
         setShowCloudModal(true);
@@ -338,6 +347,7 @@ const App: React.FC = () => {
         }))
       );
     }
+    setPlanAssignedMap(prev => ({ ...prev, [assignPlanId]: assignedClients.length > 0 }));
     setShowAssignModal(false);
     alert('✅ Acceso de clientes actualizado.');
   };
@@ -697,7 +707,11 @@ const App: React.FC = () => {
                                                 {plan.data && (
                                                   <button
                                                     onClick={(e) => { e.stopPropagation(); openAssignModal(plan.planId); }}
-                                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100 z-10"
+                                                    className={`p-2 rounded-lg transition-colors border z-10 ${
+                                                      planAssignedMap[plan.planId]
+                                                        ? 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'
+                                                        : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 border-transparent hover:border-blue-100'
+                                                    }`}
                                                     title="Asignar a cliente"
                                                   >
                                                     <Users size={18} />

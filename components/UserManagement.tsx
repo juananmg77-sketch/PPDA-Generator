@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { ArrowLeft, Users, Shield, Briefcase, Plus, Pencil, Trash2, Check, X } from 'lucide-react';
+import { ArrowLeft, Users, Shield, Briefcase, Plus, Pencil, Trash2, Check, X, Search } from 'lucide-react';
 
 interface UserProfile {
   id: string;
@@ -46,6 +46,9 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
 
   // Active tab
   const [activeTab, setActiveTab] = useState<'clientes' | 'equipo'>('clientes');
+
+  // Search / filter
+  const [search, setSearch] = useState('');
 
   useEffect(() => { fetchData(); }, []);
 
@@ -125,8 +128,13 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
     setSelectedUser(null);
   };
 
-  const clients  = users.filter(u => u.role === 'viewer');
-  const teamUsers = users.filter(u => u.role !== 'viewer');
+  const q = search.toLowerCase().trim();
+  const clients   = users.filter(u => u.role === 'viewer' && (
+    !q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  ));
+  const teamUsers = users.filter(u => u.role !== 'viewer' && (
+    !q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  ));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -164,6 +172,23 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
           </form>
           {inviteMsg && (
             <p className={`mt-3 text-sm ${inviteMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>{inviteMsg.text}</p>
+          )}
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-5">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre o email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
           )}
         </div>
 

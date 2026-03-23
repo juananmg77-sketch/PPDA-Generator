@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//private/tmp/**)",
+      "Bash(python3 -c \"import pdfplumber; pdf = pdfplumber.open\\(''/Users/juananmunoz/Downloads/Plan_Desperdicio_Sholeo_Lodges_Maspalomas-2.pdf''\\); print\\(f''Pages: {len\\(pdf.pages\\)}''\\); page = pdf.pages[0]; print\\(''Page size:'', page.width, ''x'', page.height\\); print\\(''--- Page 1 text ---''\\); print\\(page.extract_text\\(\\)[:2000]\\)\")",
+      "Bash(pip3 install:*)",
+      "Bash(python3 -c \"import pdfplumber; pdf = pdfplumber.open\\(''/Users/juananmunoz/Downloads/Plan_Desperdicio_Sholeo_Lodges_Maspalomas-2.pdf''\\); print\\(f''Pages: {len\\(pdf.pages\\)}''\\); page1 = pdf.pages[0]; print\\(''Page size:'', page1.width, ''x'', page1.height\\); print\\(page1.extract_text\\(\\)[:1500]\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(brew install:*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

@@ -910,6 +910,7 @@ const App: React.FC = () => {
                 state={state}
                 setState={setState}
                 onCloudSave={handleCloudSave}
+                onSaveNewVersion={handleSaveNewVersion}
                 isSyncing={isSyncing}
             />
         )}

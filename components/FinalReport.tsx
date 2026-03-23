@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { AppState } from '../types';
-import { Printer, FileText, Download, CloudUpload, RefreshCw } from 'lucide-react';
+import { Printer, FileText, CloudUpload, RefreshCw, GitBranch } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -13,6 +13,7 @@ interface FinalReportProps {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
   onCloudSave?: () => Promise<void>;
+  onSaveNewVersion?: () => void;
   isSyncing?: boolean;
 }
 
@@ -96,7 +97,7 @@ const sanitizeForPdf = (text: string): string => {
         .replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
 };
 
-export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onCloudSave, isSyncing }) => {
+export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onCloudSave, onSaveNewVersion, isSyncing }) => {
   const printRef = useRef<HTMLDivElement>(null);
 
   const getWeighingPoints = () => {
@@ -125,48 +126,6 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
     window.print();
   };
 
-  const handleDownloadPDF = () => {
-    if (typeof window.html2pdf !== 'undefined') {
-        const element = document.getElementById('printable-report');
-        if (!element) return;
-
-        window.scrollTo(0, 0);
-
-        const opt = {
-          margin:      [15, 10, 15, 10], // [top, right, bottom, left] en mm
-          filename:    `Plan_Desperdicio_${state.hotelData.nombreComercial.replace(/\s+/g, '_') || 'Hotel'}.pdf`,
-          image:       { type: 'jpeg', quality: 0.95 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            allowTaint: true,
-            scrollX: 0,
-            scrollY: 0,
-            // windowHeight explícito es CRÍTICO en html2pdf 0.10.x:
-            // sin esto, solo captura lo visible en el viewport y repite esa franja en todas las páginas
-            windowWidth: element.scrollWidth,
-            windowHeight: element.scrollHeight,
-          },
-          jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak:   {
-            // avoid-all: captura el canvas completo y respeta page-break-inside:avoid del CSS global
-            // before: fuerza nueva página antes de cualquier sección con .print-page-break
-            //         (secciones del cuerpo + todos los anexos)
-            // avoid: protege filas de tablas para que no se corten a mitad
-            mode:   'avoid-all',
-            before: ['.print-page-break'],
-            avoid:  ['.avoid-page-break', 'tr', 'thead', 'img'],
-          }
-        };
-
-        window.html2pdf().set(opt).from(element).save().catch((err: any) => {
-            console.error("Error generating PDF:", err);
-            alert("Hubo un error al generar el PDF. Por favor, intente nuevamente.");
-        });
-    } else {
-        alert("La librería de generación de PDF no se ha cargado correctamente.");
-    }
-  };
 
   const today = new Date().toLocaleDateString();
 
@@ -177,26 +136,33 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
            <FileText className="text-brand-600" /> Informe Final PPDA
         </h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
             {onCloudSave && (
-                <button 
-                    onClick={onCloudSave} 
-                    disabled={isSyncing} 
+                <button
+                    onClick={onCloudSave}
+                    disabled={isSyncing}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all shadow-sm ${
-                        isSyncing 
-                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
-                        : 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 shadow-emerald-500/20'
+                        isSyncing
+                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                        : 'bg-brand-600 text-white border-brand-700 hover:bg-brand-700'
                     }`}
                 >
-                    {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <CloudUpload size={14} />} 
-                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar Nube'}</span>
+                    {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <CloudUpload size={14} />}
+                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar borrador'}</span>
                 </button>
             )}
-            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-slate-50 transition-colors">
-                <Printer size={16} /> Imprimir
-            </button>
-            <button onClick={handleDownloadPDF} className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-brand-700 transition-colors shadow-sm">
-                <Download size={16} /> Descargar PDF
+            {onSaveNewVersion && (
+                <button
+                    onClick={onSaveNewVersion}
+                    disabled={isSyncing}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-600 font-bold text-[10px] uppercase tracking-wider hover:border-brand-500 hover:text-brand-600 transition-all"
+                >
+                    <GitBranch size={14} />
+                    <span className="hidden sm:inline">Nueva versión</span>
+                </button>
+            )}
+            <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-colors shadow-sm">
+                <Printer size={16} /> Imprimir / PDF
             </button>
         </div>
       </div>

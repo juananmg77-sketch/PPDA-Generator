@@ -22,6 +22,7 @@ interface CloudPlan {
   sheetIdName?: string; // Para borrado: guarda el nombre exacto que tiene la hoja en Columna A
   version?: string;
   planId: string; // Nuevo identificador único
+  consultor?: string | null;
 }
 
 // Logo Component
@@ -273,6 +274,7 @@ const App: React.FC = () => {
         sheetIdName: p.plan_id,
         version: p.version,
         planId: p.plan_id,
+        consultor: p.consultor,
       }));
 
       // Load which plans have clients assigned
@@ -712,9 +714,9 @@ const App: React.FC = () => {
                                                             </span>
                                                         )}
                                                     </p>
-                                                    {plan.data?.consultor && (
+                                                    {plan.consultor && (
                                                       <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                                                        <Briefcase size={11} /> {plan.data.consultor}
+                                                        <Briefcase size={11} /> {plan.consultor}
                                                       </p>
                                                     )}
                                                 </div>

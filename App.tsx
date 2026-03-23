@@ -152,6 +152,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Guardar sin cambiar versión
   const handleCloudSave = async () => {
     const isCorporate = state.scope === 'corporate';
     const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
@@ -163,7 +164,40 @@ const App: React.FC = () => {
 
     setIsSyncing(true);
     try {
-      const currentVersionNumber = parseInt(state.version.replace(/[^0-9]/g, '')) || 0;
+      const currentPlanId = state.planId || crypto.randomUUID();
+      const currentVersion = state.version || 'V1';
+
+      const dataToSave: AppState = {
+        ...state,
+        version: currentVersion,
+        originalHotelName: identifier.trim(),
+        planId: currentPlanId,
+        lastModified: new Date().toISOString(),
+      };
+
+      await planService.upsert(dataToSave);
+      setState(s => ({ ...s, planId: currentPlanId, originalHotelName: identifier.trim() }));
+      alert(`✅ Plan guardado (${currentVersion}).`);
+    } catch (error: any) {
+      alert(`❌ Error al guardar: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Guardar como nueva versión (incrementa versión y genera historial)
+  const handleSaveNewVersion = async () => {
+    const isCorporate = state.scope === 'corporate';
+    const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
+
+    if (!identifier) {
+      alert(`⚠️ Por favor, introduce el ${isCorporate ? 'Nombre de la Sociedad' : 'Nombre Comercial del hotel'} en el paso 1.`);
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const currentVersionNumber = parseInt((state.version || 'V1').replace(/[^0-9]/g, '')) || 1;
       const newVersion = `V${currentVersionNumber + 1}`;
       const currentPlanId = state.planId || crypto.randomUUID();
 
@@ -176,9 +210,8 @@ const App: React.FC = () => {
       };
 
       await planService.upsert(dataToSave);
-
       setState(s => ({ ...s, version: newVersion, planId: currentPlanId, originalHotelName: identifier.trim() }));
-      alert(`✅ Plan guardado como ${newVersion}.`);
+      alert(`✅ Nueva versión creada: ${newVersion}.`);
     } catch (error: any) {
       alert(`❌ Error al guardar: ${error.message}`);
     } finally {
@@ -711,18 +744,33 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-2">
              {state.step !== 7 && (
-                <button 
-                   onClick={handleCloudSave} 
-                   disabled={isSyncing} 
+               <>
+                <button
+                   onClick={handleCloudSave}
+                   disabled={isSyncing}
                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-black text-[9px] uppercase tracking-wider transition-all shadow-sm ${
-                       isSyncing 
-                       ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed' 
+                       isSyncing
+                       ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                        : 'bg-brand-600 text-white border-brand-700 hover:bg-brand-700 shadow-brand-500/20 shadow-md'
                    }`}
                 >
-                    {isSyncing ? <RefreshCw size={12} className="animate-spin" /> : <CloudUpload size={12} />} 
-                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar Nube'}</span>
+                    {isSyncing ? <RefreshCw size={12} className="animate-spin" /> : <CloudUpload size={12} />}
+                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar'}</span>
                 </button>
+                <button
+                   onClick={handleSaveNewVersion}
+                   disabled={isSyncing}
+                   title={`Guardar como nueva versión (actual: ${state.version || 'V1'})`}
+                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-black text-[9px] uppercase tracking-wider transition-all ${
+                       isSyncing
+                       ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                       : 'bg-white text-slate-600 border-slate-300 hover:border-brand-500 hover:text-brand-600'
+                   }`}
+                >
+                    <GitBranch size={12} />
+                    <span className="hidden sm:inline">Nueva versión</span>
+                </button>
+               </>
              )}
 
              <button onClick={toggleFullScreen} className="text-slate-400 hover:text-brand-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title={isFullscreen ? "Salir de Pantalla Completa" : "Pantalla Completa"}>

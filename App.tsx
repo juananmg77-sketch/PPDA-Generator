@@ -663,9 +663,6 @@ const App: React.FC = () => {
                      </button>
                 </div>
 
-                <p className="mt-12 text-slate-400 text-xs font-bold uppercase tracking-widest text-center max-w-md leading-relaxed">
-                    Sistema centralizado de gestión PPDA.<br/>Los datos se sincronizan exclusivamente con Google Sheets.
-                </p>
             </div>
         </div>
     );

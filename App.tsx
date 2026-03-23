@@ -10,7 +10,8 @@ import { MeasurementForm } from './components/MeasurementForm';
 import { TrackingView } from './components/TrackingView';
 import { FinalReport } from './components/FinalReport';
 import { LoginView } from './components/Login';
-import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users } from 'lucide-react';
+import { UserManagement } from './components/UserManagement';
 
 interface CloudPlan {
   hotel: string;
@@ -102,7 +103,8 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [view, setView] = useState<'dashboard' | 'wizard'>('dashboard');
+  const [currentUserRole, setCurrentUserRole] = useState<string>('consultor');
+  const [view, setView] = useState<'dashboard' | 'wizard' | 'users'>('dashboard');
   
   // Cloud Sync States
   const [isSyncing, setIsSyncing] = useState(false);
@@ -497,7 +499,16 @@ const App: React.FC = () => {
 
   // LOGIN PROTECTION
   if (!currentUser) {
-      return <LoginView onLoginSuccess={(email) => setCurrentUser(email)} />;
+      return <LoginView onLoginSuccess={async (email) => {
+        setCurrentUser(email);
+        const { data } = await supabase.from('profiles').select('role').eq('email', email).single();
+        setCurrentUserRole(data?.role || 'consultor');
+      }} />;
+  }
+
+  // RENDER: USER MANAGEMENT VIEW (admin only)
+  if (view === 'users') {
+    return <UserManagement onBack={() => setView('dashboard')} />;
   }
 
   // RENDER: DASHBOARD VIEW
@@ -608,6 +619,11 @@ const App: React.FC = () => {
                     <span className="block text-[10px] font-black uppercase text-slate-400 tracking-wider">Usuario</span>
                     <span className="block text-sm font-bold text-slate-700">{currentUser}</span>
                  </div>
+                 {currentUserRole === 'admin' && (
+                   <button onClick={() => setView('users')} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors" title="Gestión de usuarios">
+                     <Users size={20} />
+                 </button>
+                 )}
                  <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                      <LogOut size={20} />
                  </button>

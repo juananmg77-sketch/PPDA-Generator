@@ -8,7 +8,14 @@
       "Bash(python3 -c \":*)",
       "Bash(brew install:*)",
       "Bash(npm install:*)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npm --version)",
+      "Bash(sudo npm:*)",
+      "Bash(curl -L https://github.com/supabase/cli/releases/latest/download/supabase_darwin_arm64.tar.gz -o /tmp/supabase.tar.gz)",
+      "Bash(tar -xzf /tmp/supabase.tar.gz -C /tmp)",
+      "Bash(/tmp/supabase --version)",
+      "Bash(/tmp/supabase login:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_d191301184207d34bf803de93ba47bd469f2ae09 /tmp/supabase functions deploy invite-user --project-ref uqxwrclzmcotkehnglhe)"
     ]
   }
 }

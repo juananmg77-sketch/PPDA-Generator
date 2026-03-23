@@ -734,19 +734,22 @@ const App: React.FC = () => {
               </div>
           </div>
 
-          <nav className="flex items-center gap-4 hidden md:flex">
+          <nav className="hidden md:flex items-end gap-1 self-stretch">
               {stepNames.map((name, i) => {
                   const stepNum = i + 1;
                   if (state.scope === 'corporate' && stepNum === 2) return null;
-                  
+                  const isActive = state.step === stepNum;
                   return (
-                      <button 
-                        key={i} 
+                      <button
+                        key={i}
                         onClick={() => setState(s => ({...s, step: stepNum}))}
-                        className="flex items-center gap-2 group"
+                        className={`px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-all rounded-t-lg border-t border-x ${
+                          isActive
+                            ? 'bg-white border-slate-200 text-brand-600 border-b-white -mb-px z-10'
+                            : 'bg-slate-50 border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                        }`}
                       >
-                          <div className={`w-1.5 h-1.5 rounded-full transition-all ${state.step === stepNum ? 'bg-brand-600 scale-125' : 'bg-slate-300'}`} />
-                          <span className={`text-[10px] font-black uppercase tracking-wider ${state.step === stepNum ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-600'}`}>{name}</span>
+                        {name}
                       </button>
                   );
               })}
@@ -961,17 +964,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 z-40 no-print">
-        <div className="bg-white border border-slate-300 p-2 rounded-2xl shadow-xl flex justify-between items-center ring-4 ring-slate-200/50">
-          <button onClick={prevStep} disabled={state.step === 1} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${state.step === 1 ? 'text-slate-300 cursor-not-allowed opacity-0' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}><ChevronLeft size={14} /> Atrás</button>
-
-          <button onClick={nextStep} disabled={state.step === 8} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all ${state.step === 8 ? 'hidden' : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 active:scale-95'}`}>
-            {state.step === 4 ? "Ir a Medición" : state.step === 5 ? "Ir a Seguimiento" : state.step === 7 ? "Ver Historial" : "Siguiente"} <ChevronRight size={14} />
-          </button>
-
-          {state.step === 8 && <button onClick={() => window.location.reload()} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 transition-all">Nueva Auditoría <Save size={14} /></button>}
-        </div>
-      </footer>
     </div>
   );
 };

@@ -13,6 +13,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { LoginView } from './components/Login';
 import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
+import { ClientDashboard } from './components/ClientDashboard';
 
 interface CloudPlan {
   hotel: string;
@@ -112,6 +113,12 @@ const App: React.FC = () => {
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [cloudPlans, setCloudPlans] = useState<CloudPlan[]>([]);
   const [cloudFilter, setCloudFilter] = useState('');
+
+  // Asignación de cliente a plan
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignPlanId, setAssignPlanId] = useState<string>('');
+  const [clientUsers, setClientUsers] = useState<{ id: string; email: string; full_name: string }[]>([]);
+  const [assignedClients, setAssignedClients] = useState<string[]>([]);
 
   // Modal nueva versión
   const [showVersionModal, setShowVersionModal] = useState(false);
@@ -298,6 +305,41 @@ const App: React.FC = () => {
     } finally {
       setIsMigrating(false);
     }
+  };
+
+  const openAssignModal = async (planId: string) => {
+    setAssignPlanId(planId);
+    // Cargar clientes registrados
+    const { data: clients } = await supabase
+      .from('profiles')
+      .select('id, email, full_name')
+      .eq('role', 'viewer')
+      .eq('active', true);
+    setClientUsers(clients || []);
+    // Cargar asignaciones actuales
+    const { data: current } = await supabase
+      .from('plan_access')
+      .select('user_id')
+      .eq('plan_id', planId);
+    const currentIds = (current || []).map((r: any) => r.user_id);
+    setAssignedClients(currentIds);
+    setShowAssignModal(true);
+  };
+
+  const saveAssignment = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('plan_access').delete().eq('plan_id', assignPlanId);
+    if (assignedClients.length > 0) {
+      await supabase.from('plan_access').insert(
+        assignedClients.map(userId => ({
+          plan_id: assignPlanId,
+          user_id: userId,
+          granted_by: user?.id,
+        }))
+      );
+    }
+    setShowAssignModal(false);
+    alert('✅ Acceso de clientes actualizado.');
   };
 
   const importCloudPlan = (plan: CloudPlan) => {
@@ -549,6 +591,22 @@ const App: React.FC = () => {
       }} />;
   }
 
+  // RENDER: CLIENTE (viewer) — solo ve sus planes asignados
+  if (currentUserRole === 'viewer') {
+    if (view === 'wizard') {
+      // El cliente puede abrir un plan en el wizard (solo lectura/seguimiento)
+      // fall through to wizard render below
+    } else {
+      return (
+        <ClientDashboard
+          currentUser={currentUser}
+          onOpenPlan={(data) => { setState(s => ({ ...s, ...data, step: 1 })); setView('wizard'); }}
+          onLogout={handleLogout}
+        />
+      );
+    }
+  }
+
   // RENDER: USER MANAGEMENT VIEW (admin only)
   if (view === 'users') {
     return <UserManagement onBack={() => setView('dashboard')} />;
@@ -635,8 +693,17 @@ const App: React.FC = () => {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <button 
+                                            <div className="flex items-center gap-2">
+                                                {plan.data && (
+                                                  <button
+                                                    onClick={(e) => { e.stopPropagation(); openAssignModal(plan.planId); }}
+                                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100 z-10"
+                                                    title="Asignar a cliente"
+                                                  >
+                                                    <Users size={18} />
+                                                  </button>
+                                                )}
+                                                <button
                                                     onClick={(e) => handleCloudDelete(plan.planId, e)}
                                                     className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100 z-10"
                                                     title="Eliminar de la Nube"
@@ -922,6 +989,44 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Modal asignación de cliente */}
+      {showAssignModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-bold text-slate-800">Asignar clientes al plan</h3>
+              <p className="text-sm text-slate-500 mt-1">Selecciona los clientes que pueden ver y editar este plan.</p>
+            </div>
+            <div className="p-6 max-h-72 overflow-y-auto space-y-2">
+              {clientUsers.length === 0 ? (
+                <p className="text-sm text-slate-400">No hay clientes registrados. Invita usuarios con rol "Cliente" desde el panel de usuarios.</p>
+              ) : (
+                clientUsers.map(client => (
+                  <label key={client.id} className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 rounded-lg p-2">
+                    <input
+                      type="checkbox"
+                      checked={assignedClients.includes(client.id)}
+                      onChange={() => setAssignedClients(prev =>
+                        prev.includes(client.id) ? prev.filter(id => id !== client.id) : [...prev, client.id]
+                      )}
+                      className="w-4 h-4 accent-green-600"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{client.full_name || client.email}</p>
+                      <p className="text-xs text-slate-400">{client.email}</p>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="p-6 border-t flex justify-end gap-3">
+              <button onClick={() => setShowAssignModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancelar</button>
+              <button onClick={saveAssignment} className="px-5 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700">Guardar acceso</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal nueva versión */}
       {showVersionModal && (

@@ -9,6 +9,7 @@ import { ObjectiveSelection } from './components/ObjectiveSelection';
 import { MeasurementForm } from './components/MeasurementForm'; 
 import { TrackingView } from './components/TrackingView';
 import { FinalReport } from './components/FinalReport';
+import { VersionHistory } from './components/VersionHistory';
 import { LoginView } from './components/Login';
 import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
@@ -112,6 +113,10 @@ const App: React.FC = () => {
   const [cloudPlans, setCloudPlans] = useState<CloudPlan[]>([]);
   const [cloudFilter, setCloudFilter] = useState('');
 
+  // Modal nueva versión
+  const [showVersionModal, setShowVersionModal] = useState(false);
+  const [versionDescription, setVersionDescription] = useState('');
+
   const [state, setState] = useState<AppState>(INITIAL_STATE_FACTORY);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -152,32 +157,27 @@ const App: React.FC = () => {
     }
   };
 
-  // Guardar sin cambiar versión
+  // Guardar borrador (sin cambiar versión)
   const handleCloudSave = async () => {
     const isCorporate = state.scope === 'corporate';
     const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
-
     if (!identifier) {
       alert(`⚠️ Por favor, introduce el ${isCorporate ? 'Nombre de la Sociedad' : 'Nombre Comercial del hotel'} en el paso 1.`);
       return;
     }
-
     setIsSyncing(true);
     try {
       const currentPlanId = state.planId || crypto.randomUUID();
-      const currentVersion = state.version || 'V1';
-
       const dataToSave: AppState = {
         ...state,
-        version: currentVersion,
+        version: state.version || 'V1',
         originalHotelName: identifier.trim(),
         planId: currentPlanId,
         lastModified: new Date().toISOString(),
       };
-
-      await planService.upsert(dataToSave);
+      await planService.saveDraft(dataToSave);
       setState(s => ({ ...s, planId: currentPlanId, originalHotelName: identifier.trim() }));
-      alert(`✅ Plan guardado (${currentVersion}).`);
+      alert(`✅ Borrador guardado (${state.version || 'V1'}).`);
     } catch (error: any) {
       alert(`❌ Error al guardar: ${error.message}`);
     } finally {
@@ -185,37 +185,47 @@ const App: React.FC = () => {
     }
   };
 
-  // Guardar como nueva versión (incrementa versión y genera historial)
-  const handleSaveNewVersion = async () => {
+  // Abrir modal para nueva versión
+  const handleSaveNewVersion = () => {
     const isCorporate = state.scope === 'corporate';
     const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
-
     if (!identifier) {
       alert(`⚠️ Por favor, introduce el ${isCorporate ? 'Nombre de la Sociedad' : 'Nombre Comercial del hotel'} en el paso 1.`);
       return;
     }
+    setVersionDescription('');
+    setShowVersionModal(true);
+  };
 
+  // Confirmar nueva versión desde el modal
+  const handleConfirmNewVersion = async () => {
+    if (!versionDescription.trim()) {
+      alert('⚠️ Describe los cambios de esta versión.');
+      return;
+    }
+    const isCorporate = state.scope === 'corporate';
+    const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
     setIsSyncing(true);
+    setShowVersionModal(false);
     try {
       const currentVersionNumber = parseInt((state.version || 'V1').replace(/[^0-9]/g, '')) || 1;
       const newVersion = `V${currentVersionNumber + 1}`;
       const currentPlanId = state.planId || crypto.randomUUID();
-
       const dataToSave: AppState = {
         ...state,
         version: newVersion,
-        originalHotelName: identifier.trim(),
+        originalHotelName: identifier!.trim(),
         planId: currentPlanId,
         lastModified: new Date().toISOString(),
       };
-
-      await planService.upsert(dataToSave);
-      setState(s => ({ ...s, version: newVersion, planId: currentPlanId, originalHotelName: identifier.trim() }));
+      await planService.saveNewVersion(dataToSave, versionDescription.trim());
+      setState(s => ({ ...s, version: newVersion, planId: currentPlanId, originalHotelName: identifier!.trim() }));
       alert(`✅ Nueva versión creada: ${newVersion}.`);
     } catch (error: any) {
       alert(`❌ Error al guardar: ${error.message}`);
     } finally {
       setIsSyncing(false);
+      setVersionDescription('');
     }
   };
 
@@ -518,7 +528,7 @@ const App: React.FC = () => {
   const nextStep = () => setState(s => {
       const next = s.step + 1;
       if (s.scope === 'corporate' && next === 2) return { ...s, step: 3 };
-      return { ...s, step: Math.min(next, 7) };
+      return { ...s, step: Math.min(next, 8) };
   });
 
   const prevStep = () => setState(s => {
@@ -528,7 +538,7 @@ const App: React.FC = () => {
   });
   const goToTracking = () => setState(s => ({ ...s, step: 6 }));
 
-  const stepNames = ["ID", "Zonas", "Diagnóstico", "Estrategia", "Medición", "Seguimiento", "Reporte"];
+  const stepNames = ["ID", "Zonas", "Diagnóstico", "Estrategia", "Medición", "Seguimiento", "Reporte", "Historial"];
 
   // LOGIN PROTECTION
   if (!currentUser) {
@@ -743,24 +753,25 @@ const App: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-2">
-             {state.step !== 7 && (
+             {state.step !== 7 && state.step !== 8 && (
                <>
                 <button
                    onClick={handleCloudSave}
                    disabled={isSyncing}
+                   title="Guardar borrador (no cambia la versión)"
                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-black text-[9px] uppercase tracking-wider transition-all shadow-sm ${
                        isSyncing
                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
                        : 'bg-brand-600 text-white border-brand-700 hover:bg-brand-700 shadow-brand-500/20 shadow-md'
                    }`}
                 >
-                    {isSyncing ? <RefreshCw size={12} className="animate-spin" /> : <CloudUpload size={12} />}
-                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar'}</span>
+                    {isSyncing ? <RefreshCw size={12} className="animate-spin" /> : <Save size={12} />}
+                    <span className="hidden sm:inline">{isSyncing ? 'Guardando...' : 'Guardar borrador'}</span>
                 </button>
                 <button
                    onClick={handleSaveNewVersion}
                    disabled={isSyncing}
-                   title={`Guardar como nueva versión (actual: ${state.version || 'V1'})`}
+                   title={`Crear nueva versión (actual: ${state.version || 'V1'})`}
                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-black text-[9px] uppercase tracking-wider transition-all ${
                        isSyncing
                        ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
@@ -895,24 +906,69 @@ const App: React.FC = () => {
         )}
 
         {state.step === 7 && (
-            <FinalReport 
-                state={state} 
-                setState={setState} 
+            <FinalReport
+                state={state}
+                setState={setState}
                 onCloudSave={handleCloudSave}
                 isSyncing={isSyncing}
             />
         )}
+
+        {state.step === 8 && (
+          <div className="space-y-6">
+            <VersionHistory planId={state.planId} />
+          </div>
+        )}
       </main>
+
+      {/* Modal nueva versión */}
+      {showVersionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-bold text-slate-800">Nueva versión</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Se creará la versión <strong>{`V${(parseInt((state.version || 'V1').replace(/[^0-9]/g, '')) || 1) + 1}`}</strong>. Describe los cambios realizados.
+              </p>
+            </div>
+            <div className="p-6">
+              <textarea
+                autoFocus
+                value={versionDescription}
+                onChange={e => setVersionDescription(e.target.value)}
+                placeholder="Ej: Actualización de objetivos de reducción de pan. Revisión del diagnóstico de cocina..."
+                rows={4}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+              />
+            </div>
+            <div className="p-6 pt-0 flex justify-end gap-3">
+              <button
+                onClick={() => setShowVersionModal(false)}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmNewVersion}
+                disabled={!versionDescription.trim()}
+                className="px-5 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-40"
+              >
+                Crear versión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 z-40 no-print">
         <div className="bg-white border border-slate-300 p-2 rounded-2xl shadow-xl flex justify-between items-center ring-4 ring-slate-200/50">
           <button onClick={prevStep} disabled={state.step === 1} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${state.step === 1 ? 'text-slate-300 cursor-not-allowed opacity-0' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}><ChevronLeft size={14} /> Atrás</button>
-          
-          <button onClick={nextStep} disabled={state.step === 7} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all ${state.step === 7 ? 'hidden' : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 active:scale-95'}`}>
-            {state.step === 4 ? "Ir a Medición" : state.step === 5 ? "Ir a Seguimiento" : "Siguiente"} <ChevronRight size={14} />
+
+          <button onClick={nextStep} disabled={state.step === 8} className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all ${state.step === 8 ? 'hidden' : 'bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 active:scale-95'}`}>
+            {state.step === 4 ? "Ir a Medición" : state.step === 5 ? "Ir a Seguimiento" : state.step === 7 ? "Ver Historial" : "Siguiente"} <ChevronRight size={14} />
           </button>
-          
-          {state.step === 7 && <button onClick={() => window.location.reload()} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 transition-all">Nueva Auditoría <Save size={14} /></button>}
+
+          {state.step === 8 && <button onClick={() => window.location.reload()} className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest text-white bg-brand-600 hover:bg-brand-700 shadow-lg shadow-brand-600/20 transition-all">Nueva Auditoría <Save size={14} /></button>}
         </div>
       </footer>
     </div>

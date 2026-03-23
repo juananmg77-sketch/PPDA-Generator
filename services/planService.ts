@@ -102,6 +102,40 @@ export const planService = {
     return (data as SupabasePlan[]) || [];
   },
 
+  // Guardar borrador (sin cambiar versión, estado Borrador)
+  async saveDraft(state: AppState): Promise<void> {
+    const row = buildPlanRow(state);
+    row.estado = 'Borrador';
+    const { error } = await supabase
+      .from('plans')
+      .upsert(row, { onConflict: 'plan_id' });
+    if (error) throw error;
+  },
+
+  // Guardar nueva versión (incrementa versión, guarda historial con descripción)
+  async saveNewVersion(state: AppState, changeDescription: string): Promise<void> {
+    const row = buildPlanRow(state);
+    row.estado = 'Activo';
+
+    // Primero guardamos el plan con la nueva versión
+    const { error } = await supabase
+      .from('plans')
+      .upsert(row, { onConflict: 'plan_id' });
+    if (error) throw error;
+
+    // Luego insertamos la entrada en el historial con la descripción de cambios
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('plan_history').insert({
+      plan_id: row.plan_id,
+      version: row.version,
+      version_num: row.version_num,
+      saved_by: user?.id || null,
+      data: state,
+      change_description: changeDescription,
+    });
+  },
+
+  // upsert genérico (compatibilidad con migración)
   async upsert(state: AppState): Promise<void> {
     const row = buildPlanRow(state);
     const { error } = await supabase

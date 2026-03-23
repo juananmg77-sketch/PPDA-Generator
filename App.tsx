@@ -11,7 +11,7 @@ import { TrackingView } from './components/TrackingView';
 import { FinalReport } from './components/FinalReport';
 import { VersionHistory } from './components/VersionHistory';
 import { LoginView } from './components/Login';
-import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users, Briefcase } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
 import { ClientDashboard } from './components/ClientDashboard';
 
@@ -712,6 +712,11 @@ const App: React.FC = () => {
                                                             </span>
                                                         )}
                                                     </p>
+                                                    {plan.data?.consultor && (
+                                                      <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                                        <Briefcase size={11} /> {plan.data.consultor}
+                                                      </p>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">

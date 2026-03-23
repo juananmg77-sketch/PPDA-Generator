@@ -632,22 +632,6 @@ const App: React.FC = () => {
             <div className="max-w-4xl w-full flex flex-col items-center">
                 <div className="mb-16 scale-125">
                     <HsGreenLogoDashboard />
-                    <div className="text-center mt-4 bg-brand-50 py-1 px-3 rounded-full inline-flex items-center gap-2 border border-brand-100">
-                       <Database size={10} className="text-brand-400"/>
-                       <span className="text-[10px] text-brand-500 font-mono tracking-tight">
-                         Supabase · uqxwrclzmcotkehnglhe
-                       </span>
-                    </div>
-                    <div className="mt-2">
-                      <button
-                        onClick={handleMigrateFromSheets}
-                        disabled={isMigrating}
-                        className="text-[9px] font-bold text-slate-400 hover:text-brand-600 uppercase tracking-wider flex items-center gap-1 mx-auto transition-colors disabled:opacity-50"
-                        title="Importar planes existentes de Google Sheets a Supabase (hacer una sola vez)"
-                      >
-                        <GitBranch size={10} /> {isMigrating ? 'Migrando...' : 'Migrar desde Google Sheets'}
-                      </button>
-                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">

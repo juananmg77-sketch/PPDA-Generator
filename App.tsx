@@ -814,45 +814,29 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-brand-100">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
-        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-              <button onClick={() => setView('dashboard')} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 transition-colors pr-4 border-r border-slate-200">
+        {/* Fila 1: Logo + Nombre hotel + versión + botones de acción */}
+        <div className="max-w-6xl mx-auto px-6 pt-3 pb-2 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+              <button onClick={() => setView('dashboard')} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 transition-colors pr-3 border-r border-slate-200 flex-shrink-0">
                   <Home size={18} />
               </button>
-              <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setState(s => ({...s, step: 1}))}>
-                <img src="/icon-48.png" alt="HsGreen" className="w-8 h-8 rounded-lg object-contain" />
-                <div className="hidden sm:block">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-sm font-black tracking-tight leading-none text-slate-900">EcoHotel PPDA</h1>
-                        <span className="text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-black border border-slate-200 flex items-center gap-0.5"><GitBranch size={8}/> {state.version}</span>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img src="/icon-48.png" alt="HsGreen" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h1 className="text-sm font-black tracking-tight leading-none text-slate-900 truncate">
+                          {state.hotelData.nombreComercial || 'Nuevo Plan'}
+                        </h1>
+                        <span className="text-[9px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-black border border-brand-100 flex items-center gap-0.5 flex-shrink-0">
+                          <GitBranch size={8}/> {state.version || 'Borrador'}
+                        </span>
                     </div>
-                    <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold truncate max-w-[150px]">{state.hotelData.nombreComercial || 'Nuevo Plan'}</p>
+                    <p className="text-[9px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">PPDA · EcoHotel</p>
                 </div>
               </div>
           </div>
 
-          <nav className="hidden md:flex items-end gap-1 self-stretch">
-              {stepNames.map((name, i) => {
-                  const stepNum = i + 1;
-                  if (state.scope === 'corporate' && stepNum === 2) return null;
-                  const isActive = state.step === stepNum;
-                  return (
-                      <button
-                        key={i}
-                        onClick={() => setState(s => ({...s, step: stepNum}))}
-                        className={`px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-all rounded-t-lg border-t border-x ${
-                          isActive
-                            ? 'bg-white border-slate-200 text-brand-600 border-b-white -mb-px z-10'
-                            : 'bg-slate-50 border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {name}
-                      </button>
-                  );
-              })}
-          </nav>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
              {state.step !== 7 && state.step !== 8 && (
                <>
                 <button
@@ -889,11 +873,35 @@ const App: React.FC = () => {
              </button>
 
              {state.step < 6 && (
-                 <button onClick={goToTracking} className="flex items-center gap-1.5 text-brand-700 bg-brand-50 px-3 py-1.5 rounded-lg border border-brand-100 font-black text-[10px] uppercase tracking-wider hover:bg-brand-100 transition-all">
+                 <button onClick={goToTracking} className="hidden sm:flex items-center gap-1.5 text-brand-700 bg-brand-50 px-3 py-1.5 rounded-lg border border-brand-100 font-black text-[10px] uppercase tracking-wider hover:bg-brand-100 transition-all">
                     <LayoutDashboard size={12} /> Seguimiento
                  </button>
              )}
           </div>
+        </div>
+
+        {/* Fila 2: Pestañas de navegación */}
+        <div className="max-w-6xl mx-auto px-6">
+          <nav className="flex items-end gap-1">
+              {stepNames.map((name, i) => {
+                  const stepNum = i + 1;
+                  if (state.scope === 'corporate' && stepNum === 2) return null;
+                  const isActive = state.step === stepNum;
+                  return (
+                      <button
+                        key={i}
+                        onClick={() => setState(s => ({...s, step: stepNum}))}
+                        className={`px-3 py-2 text-[10px] font-black uppercase tracking-wider transition-all rounded-t-lg border-t border-x ${
+                          isActive
+                            ? 'bg-white border-slate-200 text-brand-600 border-b-white -mb-px z-10'
+                            : 'bg-slate-50 border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        {name}
+                      </button>
+                  );
+              })}
+          </nav>
         </div>
       </header>
 

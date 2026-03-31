@@ -718,10 +718,11 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
             <div className="border border-slate-200 p-4 bg-white text-xs">
                 <p className="mb-2 font-bold text-slate-800">Se adjunta la siguiente documentación como parte integral de este Plan:</p>
                 <ul className="list-disc pl-4 space-y-1 text-slate-600">
-                    <li><span className="font-bold text-slate-800">Anexo I:</span> Protocolo de donación y convenios vigentes.</li>
+                    <li><span className="font-bold text-slate-800">Anexo I:</span> Protocolo de donación y convenios vigentes (documento adjunto).</li>
                     <li><span className="font-bold text-slate-800">Anexo II:</span> Plan de Formación y Sensibilización detallado.</li>
                     <li><span className="font-bold text-slate-800">Anexo III:</span> Procedimiento de Gestión de Desperdicio Alimentario en Buffet.</li>
                     <li><span className="font-bold text-slate-800">Anexo IV:</span> Tabla de Decisión de Reutilización de Excedentes de Buffet Hotelero.</li>
+                    <li><span className="font-bold text-slate-800">Anexo V:</span> Protocolo de Donación de Alimentos y Convenios Vigentes (PRO-APPCC-DON-001).</li>
                 </ul>
             </div>
         </section>
@@ -754,7 +755,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
             </div>
         </section>
 
-        {/* ANEXO I: Protocolo de Donación */}
+        {/* ANEXO I: Protocolo de Donación — PDF adjunto (si existe) */}
         {state.hotelData.hasDonationProtocol && (
             <>
                 <div className="html2pdf__page-break"></div>
@@ -763,7 +764,6 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                         <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Anexo I</h2>
                         <h3 className="text-lg font-bold text-slate-500 uppercase tracking-widest">Protocolo de Donación y Convenios</h3>
                     </div>
-                    
                     {state.hotelData.donationProtocolFile ? (
                         <div className="w-full">
                             <PdfViewer fileData={state.hotelData.donationProtocolFile} />
@@ -776,6 +776,269 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                 </section>
             </>
         )}
+
+        {/* ANEXO V: Protocolo de Donación de Alimentos — contenido completo */}
+        <div className="html2pdf__page-break"></div>
+        <section className="print-page-break">
+            <div className="border-b-2 border-slate-900 pb-4 mb-4 avoid-page-break">
+                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Anexo V</h2>
+                <h3 className="text-lg font-bold text-slate-500 uppercase tracking-widest">Protocolo de Donación de Alimentos y Convenios Vigentes</h3>
+            </div>
+
+            <div className="text-xs text-slate-700 space-y-6">
+
+                {/* Cabecera del Documento */}
+                <div className="border border-slate-300 rounded-lg overflow-hidden avoid-page-break">
+                    <table className="w-full text-left border-collapse">
+                        <tbody className="divide-y divide-slate-200">
+                            <tr className="bg-slate-50"><th className="p-3 font-bold text-slate-900 w-1/3 border-r border-slate-200">Código documento</th><td className="p-3 font-mono text-slate-700">PRO-APPCC-DON-001</td></tr>
+                            <tr><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Título</th><td className="p-3 text-slate-700">Protocolo de Gestión de Donaciones de Alimentos en Establecimientos Hoteleros</td></tr>
+                            <tr className="bg-slate-50"><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Versión</th><td className="p-3 text-slate-700">1.0</td></tr>
+                            <tr><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Fecha de emisión</th><td className="p-3 text-slate-700">Marzo 2025</td></tr>
+                            <tr className="bg-slate-50"><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Elaborado por</th><td className="p-3 text-slate-700">HS GREEN – División de Medioambiente y Sostenibilidad</td></tr>
+                            <tr><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Aprobado por</th>
+                                <td className="p-3 text-slate-700">
+                                    {sanitizeForPdf(state.team.find(t => t.id === 'dir')?.nombre || 'Director del Establecimiento')} — Director del Establecimiento
+                                </td>
+                            </tr>
+                            <tr className="bg-slate-50"><th className="p-3 font-bold text-slate-900 border-r border-slate-200">Marco normativo</th><td className="p-3 text-slate-700">Ley 1/2025, de 2 de enero (Arts. 5, 6.4.b, 7 y 9); Reglamento (CE) 852/2004; Reglamento (UE) 1169/2011; Directrices CE 2020/C 199/01 sobre donación de alimentos; Guía Orientativa para la Donación de Excedentes Alimentarios en Euskadi (ELIKA / Gobierno Vasco)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* 1. OBJETO */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">1. Objeto</h4>
+                    <p className="mb-2 text-justify">El presente protocolo establece la sistemática para la donación de excedentes alimentarios generados en el establecimiento hotelero, en cumplimiento de la obligación recogida en el artículo 6.4.b) de la Ley 1/2025, que exige a todos los agentes de la cadena alimentaria promover acuerdos o convenios para donar sus excedentes de alimentos a entidades de iniciativa social, organizaciones sin ánimo de lucro o bancos de alimentos.</p>
+                    <p className="text-justify">Este protocolo se integra en el Plan de Prevención de Pérdidas y Desperdicio Alimentario (PPDA) del establecimiento y respeta la jerarquía de prioridades del artículo 5 de la Ley 1/2025, situando la donación como segunda prioridad tras la prevención.</p>
+                </div>
+
+                {/* 2. ALCANCE */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">2. Alcance</h4>
+                    <p className="mb-2 text-justify">Es de aplicación a todos los excedentes alimentarios generados en las áreas de producción y servicio del establecimiento que, tras las actuaciones de prevención (prioridad 1) y reutilización interna mediante tratamiento térmico documentado (Anexo III del PPDA), no hayan sido reintegrados al circuito productivo y mantengan condiciones de aptitud para consumo humano.</p>
+                    <p className="mb-1 font-bold text-slate-800">Quedan expresamente excluidos de la donación:</p>
+                    <ul className="list-none pl-2 space-y-1 text-slate-600">
+                        <li>— Alimentos que hayan superado su fecha de caducidad.</li>
+                        <li>— Alimentos cuyo etiquetado sea incorrecto o incompleto conforme al Reglamento (UE) 1169/2011.</li>
+                        <li>— Alimentos expuestos en autoservicio sin protección que no sean aptos para consumo humano (Bloques C3, C4 y C5 del Anexo IV del PPDA).</li>
+                        <li>— Alimentos que presenten alteración organoléptica, contaminación o rotura de cadena de frío documentada.</li>
+                    </ul>
+                </div>
+
+                {/* 3. RESPONSABILIDADES */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">3. Responsabilidades</h4>
+                    <div className="space-y-2">
+                        {[
+                            { rol: 'Responsable del PPDA', desc: 'Coordinación general del protocolo de donación, supervisión de registros, comunicación con la entidad receptora y reporte de indicadores de donación a Dirección.' },
+                            { rol: 'Jefe de Cocina', desc: 'Evaluación diaria de la aptitud de los excedentes para donación al cierre de cada servicio. Validación de condiciones de seguridad alimentaria.' },
+                            { rol: 'Responsable de Donación (si designado)', desc: 'Gestión operativa de la segregación, envasado, etiquetado, conservación temporal y entrega de los alimentos a la entidad receptora.' },
+                            { rol: 'Dirección', desc: 'Aprobación y firma del convenio de donación. Asignación de recursos necesarios.' },
+                        ].map((r, i) => (
+                            <div key={i} className="flex gap-3 border border-slate-200 rounded p-2 bg-slate-50">
+                                <span className="font-black text-slate-800 min-w-[180px] shrink-0">{r.rol}</span>
+                                <span className="text-slate-600">{r.desc}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 4. CONTENIDO MÍNIMO DEL CONVENIO */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">4. Contenido Mínimo del Convenio de Donación (Art. 7 Ley 1/2025)</h4>
+                    <p className="mb-3 text-justify">El convenio o acuerdo suscrito con la entidad receptora deberá contemplar, como mínimo, los siguientes elementos conforme al artículo 7 de la Ley 1/2025:</p>
+
+                    <p className="font-bold text-slate-800 mb-1">4.1. Condiciones de recogida, transporte y almacenamiento:</p>
+                    <ul className="list-none pl-2 space-y-1 text-slate-600 mb-3">
+                        <li>— Frecuencia de recogida pactada.</li>
+                        <li>— Horario y punto de recogida en el establecimiento.</li>
+                        <li>— Requisitos de temperatura durante el transporte: alimentos refrigerados ≤4°C, congelados ≤-18°C, temperatura ambiente para productos no perecederos.</li>
+                        <li>— Tipo de vehículo: isotermo o frigorífico según naturaleza del producto.</li>
+                        <li>— Condiciones de almacenamiento en destino a cargo de la entidad receptora.</li>
+                    </ul>
+
+                    <p className="font-bold text-slate-800 mb-1">4.2. Compromisos de las partes:</p>
+                    <p className="font-semibold text-slate-700 mb-1 pl-2">Compromisos del establecimiento donante:</p>
+                    <ul className="list-none pl-4 space-y-1 text-slate-600 mb-2">
+                        <li>— Garantizar que los alimentos donados cumplen la normativa de seguridad alimentaria vigente (Reg. 852/2004, Reg. 1169/2011).</li>
+                        <li>— Realizar la selección de alimentos a donar (la selección corresponde al agente donante, Art. 7.3°).</li>
+                        <li>— Envasar e identificar correctamente cada partida donada.</li>
+                        <li>— Mantener registro de trazabilidad de cada donación.</li>
+                        <li>— No condicionar la donación a contraprestación económica alguna.</li>
+                    </ul>
+                    <p className="font-semibold text-slate-700 mb-1 pl-2">Compromisos de la entidad receptora:</p>
+                    <ul className="list-none pl-4 space-y-1 text-slate-600 mb-3">
+                        <li>— Garantizar la trazabilidad mediante sistema de registro de entradas y salidas (Art. 9.a Ley 1/2025).</li>
+                        <li>— Mantener correctas prácticas de higiene, instalaciones y equipos adecuados, incluyendo cadena de frío (Art. 9.b).</li>
+                        <li>— Destinar los alimentos exclusivamente a personas en situación de vulnerabilidad; queda prohibida su comercialización (Art. 9.d).</li>
+                        <li>— Realizar la distribución sin discriminación (Art. 9.c).</li>
+                        <li>— Posibilidad de rechazar la donación, debiendo quedar debidamente justificado (Art. 7.4°).</li>
+                    </ul>
+
+                    <p className="font-bold text-slate-800 mb-1">4.3. Condiciones de devolución:</p>
+                    <p className="text-slate-600 pl-2">En caso de rechazo, el donante decidirá las condiciones de devolución (recogida y transporte) conforme al convenio formalizado (Art. 7.4°).</p>
+                </div>
+
+                {/* 5. CRITERIOS DE APTITUD */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">5. Criterios de Aptitud para la Donación</h4>
+                    <p className="mb-3 text-justify">Al cierre de cada servicio, el Jefe de Cocina o Responsable de Donación evaluará la aptitud de los alimentos conforme a las Directrices CE 2020/C 199/01 y la Guía HORECA del Gobierno Vasco:</p>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                            <thead className="bg-slate-900 text-white uppercase text-[9px] font-black tracking-wider">
+                                <tr>
+                                    <th className="p-2 border-r border-slate-700 w-[35%]">Tipo de alimento</th>
+                                    <th className="p-2 border-r border-slate-700 w-[15%] text-center">Aptitud</th>
+                                    <th className="p-2">Condiciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                <tr className="bg-emerald-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Envasados dentro de fecha de caducidad</td><td className="p-2 border-r border-slate-200 text-center font-black text-emerald-700">APTO</td><td className="p-2 text-slate-600">Sin condiciones adicionales.</td></tr>
+                                <tr><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Superada fecha consumo preferente (no caducidad)</td><td className="p-2 border-r border-slate-200 text-center font-black text-amber-600">CONDICIONAL</td><td className="p-2 text-slate-600">Verificar integridad de envase, condiciones de almacenamiento y evaluación organoléptica satisfactoria.</td></tr>
+                                <tr className="bg-red-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Superada fecha de caducidad</td><td className="p-2 border-r border-slate-200 text-center font-black text-red-700">NO APTO</td><td className="p-2 text-slate-600">Descarte obligatorio.</td></tr>
+                                <tr className="bg-emerald-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Elaborados no expuestos — Bloque A (Anexo IV)</td><td className="p-2 border-r border-slate-200 text-center font-black text-emerald-700">APTO</td><td className="p-2 text-slate-600">≤4°C, envasado hermético, entrega en ≤24h. Etiquetado completo.</td></tr>
+                                <tr><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Expuestos con protección integral — Bloque B</td><td className="p-2 border-r border-slate-200 text-center font-black text-amber-600">CONDICIONAL</td><td className="p-2 text-slate-600">Solo si envase íntegro, temperatura controlada y exposición ≤2 horas.</td></tr>
+                                <tr className="bg-red-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Expuestos sin protección — Bloque C (C3, C4, C5)</td><td className="p-2 border-r border-slate-200 text-center font-black text-red-700">NO APTO</td><td className="p-2 text-slate-600">Ningún caso. Bloque C1 y C2 solo si transformados térmicamente.</td></tr>
+                                <tr className="bg-emerald-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Pan, bollería envasada individualmente sin abrir</td><td className="p-2 border-r border-slate-200 text-center font-black text-emerald-700">APTO</td><td className="p-2 text-slate-600">—</td></tr>
+                                <tr><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Pan expuesto sin envase</td><td className="p-2 border-r border-slate-200 text-center font-black text-red-700">NO APTO</td><td className="p-2 text-slate-600">Solo apto si transformado (pan rallado, etc.).</td></tr>
+                                <tr className="bg-emerald-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Frutas enteras con piel incomestible intacta</td><td className="p-2 border-r border-slate-200 text-center font-black text-emerald-700">APTO</td><td className="p-2 text-slate-600">Plátano, naranja, piña, etc.</td></tr>
+                                <tr className="bg-red-50"><td className="p-2 border-r border-slate-200 font-bold text-slate-800">Frutas cortadas, ensaladas, verduras expuestas</td><td className="p-2 border-r border-slate-200 text-center font-black text-red-700">NO APTO</td><td className="p-2 text-slate-600">—</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* 6. PROCEDIMIENTO OPERATIVO */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">6. Procedimiento Operativo de Donación</h4>
+                    <div className="space-y-3">
+                        {[
+                            { paso: 'PASO 1 — Identificación y segregación', desc: 'Al cierre de servicio, el Jefe de Cocina clasifica los excedentes según el Anexo IV. Los aptos para donación se segregan de los destinados a reutilización interna o descarte.' },
+                            { paso: 'PASO 2 — Envasado e identificación', desc: 'Los alimentos aptos se envasan herméticamente y se etiquetan con: denominación, peso neto (kg), fecha y hora de elaboración/envasado, temperatura de conservación, alérgenos (Reg. UE 1169/2011), fecha límite de consumo e identificación del lote/servicio.' },
+                            { paso: 'PASO 3 — Conservación temporal', desc: 'Almacenamiento en zona señalizada "DONACIÓN — PENDIENTE DE RECOGIDA" a ≤4°C (perecederos) o ≤-18°C (congelados).' },
+                            { paso: 'PASO 4 — Entrega y documentación', desc: 'Verificación del recolector autorizado y del vehículo de transporte. Firma del REG-DON-02 por ambas partes (fecha, hora, descripción, cantidad en kg, temperatura de entrega, firmas).' },
+                            { paso: 'PASO 5 — Gestión de donación rechazada', desc: 'Documentar motivo en REG-DON-02. Aplicar jerarquía Art. 5: alimentación animal → subproductos → compostaje/biogás → residuo orgánico.' },
+                        ].map((p, i) => (
+                            <div key={i} className="flex gap-3 border-l-4 border-brand-500 bg-slate-50 p-3 rounded-r">
+                                <span className="font-black text-slate-800 min-w-[220px] shrink-0 text-[11px]">{p.paso}</span>
+                                <span className="text-slate-600">{p.desc}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 7. REGISTROS */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">7. Registros</h4>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                            <thead className="bg-slate-100 text-slate-600 uppercase text-[9px] font-black tracking-wider" style={{ display: 'table-header-group' }}>
+                                <tr>
+                                    <th className="p-2 border border-slate-200 w-[28%]">Registro</th>
+                                    <th className="p-2 border border-slate-200">Contenido mínimo</th>
+                                    <th className="p-2 border border-slate-200 w-[22%]">Responsable / Frecuencia</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                <tr><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-01 — Registro de Donaciones Realizadas</td><td className="p-2 border border-slate-200">Fecha, descripción del alimento, cantidad (kg), tipo de alimento, hora de entrega, entidad receptora, nombre del receptor, observaciones.</td><td className="p-2 border border-slate-200">Responsable PPDA / Cada donación</td></tr>
+                                <tr className="bg-slate-50"><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-02 — Documento de Entrega de Donación</td><td className="p-2 border border-slate-200">Fecha, hora, listado de productos con peso, temperatura de entrega, alérgenos, fecha límite de consumo, firma del entregante, firma del receptor, motivo de rechazo (si aplica).</td><td className="p-2 border border-slate-200">Responsable de Donación / Cada entrega</td></tr>
+                                <tr><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-03 — Registro de Convenios Vigentes</td><td className="p-2 border border-slate-200">Entidad receptora, fecha de firma, vigencia, frecuencia de recogida pactada, persona de contacto, teléfono, condiciones especiales.</td><td className="p-2 border border-slate-200">Dirección / Actualización anual</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p className="mt-2 text-slate-500 italic">Todos los registros se conservarán durante un mínimo de 5 años, en soporte físico o digital, y estarán disponibles para inspección de las autoridades competentes.</p>
+                </div>
+
+                {/* 8. INDICADORES */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">8. Indicadores de Seguimiento</h4>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                            <thead className="bg-slate-100 text-slate-600 uppercase text-[9px] font-black tracking-wider">
+                                <tr><th className="p-2 border border-slate-200 w-[20%]">KPI</th><th className="p-2 border border-slate-200">Descripción</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {[
+                                    { kpi: 'KPI-DON-01', desc: 'Kg totales donados / mes.' },
+                                    { kpi: 'KPI-DON-02', desc: '% de excedentes aptos efectivamente donados (objetivo: 100%).' },
+                                    { kpi: 'KPI-DON-03', desc: 'Número de entregas realizadas / mes.' },
+                                    { kpi: 'KPI-DON-04', desc: 'Número de rechazos por parte de la entidad receptora / trimestre.' },
+                                    { kpi: 'KPI-DON-05', desc: 'Kg de donación rechazada y destino final aplicado (jerarquía Art. 5).' },
+                                ].map((k, i) => (
+                                    <tr key={i} className={i % 2 === 0 ? 'bg-slate-50' : ''}><td className="p-2 border border-slate-200 font-mono font-bold text-[10px]">{k.kpi}</td><td className="p-2 border border-slate-200">{k.desc}</td></tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    <p className="mt-2 text-slate-500 italic">Los indicadores se reportarán en el informe mensual del PPDA y se revisarán en el Comité de Sostenibilidad trimestral.</p>
+                </div>
+
+                {/* 9. ENTIDADES RECEPTORAS */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">9. Entidades Receptoras de Referencia</h4>
+                    <ul className="list-none pl-2 space-y-1 text-slate-600">
+                        <li>— <span className="font-bold text-slate-800">FESBAL</span> (Federación Española de Bancos de Alimentos) y Banco de Alimentos local de la provincia.</li>
+                        <li>— <span className="font-bold text-slate-800">Cruz Roja Española</span> (programa de distribución de alimentos).</li>
+                        <li>— <span className="font-bold text-slate-800">Plataformas de redistribución tecnológica:</span> Too Good To Go, Encantado de Comerte, u homólogas habilitadas en la CCAA.</li>
+                        <li>— <span className="font-bold text-slate-800">ONGs locales autorizadas:</span> Cáritas, comedores sociales municipales, etc.</li>
+                        <li>— <span className="font-bold text-slate-800">Nutrición sin Fronteras / Proyecto "Comparte Comida"</span> (servicio de recogida y distribución a entidades sociales, específico para hostelería).</li>
+                    </ul>
+                    <div className="mt-3 bg-amber-50 border-l-4 border-amber-400 p-3 rounded-r text-slate-600 italic">
+                        <span className="font-black text-slate-800 not-italic">Nota:</span> Banco de Alimentos y Cruz Roja aceptan fundamentalmente alimentos envasados del fabricante; la aceptación de platos elaborados queda sujeta a las condiciones de cada banco local. Las plataformas tipo Too Good To Go operan bajo un modelo de venta a precio reducido que no constituye donación en sentido estricto del Art. 6.4.b), aunque contribuye a la reducción de desperdicio conforme al espíritu de la Ley.
+                    </div>
+                </div>
+
+                {/* 10. BENEFICIOS FISCALES */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">10. Beneficios Fiscales</h4>
+                    <p className="text-justify text-slate-600">Conforme a la Ley 49/2002 de régimen fiscal de entidades sin fines lucrativos y de incentivos fiscales al mecenazgo, las donaciones de alimentos a entidades acogidas a dicho régimen pueden generar deducciones en el Impuesto sobre Sociedades. El establecimiento solicitará a la entidad receptora el correspondiente certificado de donación que acredite: identidad del donante y del donatario, fecha y destino de la donación, y valoración económica de los bienes donados.</p>
+                </div>
+
+                {/* 11. MEDIDAS CORRECTIVAS */}
+                <div className="avoid-page-break">
+                    <h4 className="font-black text-sm text-slate-900 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">11. Medidas Correctivas</h4>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                            <thead className="bg-slate-100 text-slate-600 uppercase text-[9px] font-black tracking-wider" style={{ display: 'table-header-group' }}>
+                                <tr>
+                                    <th className="p-2 border border-slate-200 w-[25%]">Desviación</th>
+                                    <th className="p-2 border border-slate-200">Medida inmediata</th>
+                                    <th className="p-2 border border-slate-200">Medida preventiva</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {[
+                                    { desv: 'No se realizan donaciones durante ≥30 días con excedentes aptos', inm: 'Revisión del protocolo, contacto urgente con entidad receptora para reactivar recogidas.', prev: 'Evaluar necesidad de segundo convenio con entidad alternativa.' },
+                                    { desv: 'Entrega sin registro documental (REG-DON-02)', inm: 'Reconstruir registro con datos disponibles, refuerzo formativo al personal.', prev: 'Simplificar formulario, integrar en sistema digital.' },
+                                    { desv: 'Rechazo reiterado por entidad receptora (>3/trimestre)', inm: 'Análisis de causas (calidad, cantidad, horario, tipo de producto).', prev: 'Ajuste del convenio o búsqueda de entidad alternativa.' },
+                                    { desv: 'Donación de alimentos no aptos (fuera de fecha, sin etiquetado, rotura cadena frío)', inm: 'Retirada inmediata, comunicación a entidad receptora, evaluación de riesgo.', prev: 'Revisión de criterios de aptitud, formación adicional.' },
+                                ].map((m, i) => (
+                                    <tr key={i} className={i % 2 === 0 ? 'bg-slate-50' : ''}>
+                                        <td className="p-2 border border-slate-200 font-bold text-slate-700">{m.desv}</td>
+                                        <td className="p-2 border border-slate-200 text-slate-600">{m.inm}</td>
+                                        <td className="p-2 border border-slate-200 text-slate-600">{m.prev}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* NOTAS TÉCNICAS */}
+                <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg avoid-page-break">
+                    <p className="font-black text-slate-800 text-xs uppercase tracking-wider mb-2">Notas Técnicas — V1.0</p>
+                    <ol className="list-decimal pl-4 space-y-1 text-slate-600">
+                        <li>La obligación de promover convenios de donación aplica a establecimientos con superficie {'>'} 1.300 m² o que superen dicho umbral en conjunto bajo un mismo CIF (Art. 6.4.c Ley 1/2025). Se recomienda como buena práctica para todos los establecimientos.</li>
+                        <li>Las microempresas (menos de 10 empleados y facturación ≤2M€) quedan excluidas de las obligaciones del artículo 6 (Art. 6.6 Ley 1/2025).</li>
+                        <li>Ninguna estipulación contractual puede impedir expresamente la donación de alimentos, siendo nula de pleno derecho cualquier cláusula en tal sentido (Art. 6.3 Ley 1/2025).</li>
+                        <li>La no realización de donaciones de excedentes aptos conforme al convenio constituye infracción leve según el régimen sancionador de la Ley 1/2025.</li>
+                        <li>El presente protocolo debe revisarse anualmente coincidiendo con la revisión del PPDA, o de forma extraordinaria ante cambios normativos, cambio de entidad receptora o incidencias significativas.</li>
+                    </ol>
+                </div>
+
+            </div>
+        </section>
 
         {/* ANEXO II: Plan de Formación Detallado */}
         <div className="html2pdf__page-break"></div>

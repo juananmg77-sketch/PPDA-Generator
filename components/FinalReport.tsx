@@ -183,8 +183,59 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                 tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; }
                 thead { display: table-header-group; }
                 p { orphans: 3; widows: 3; }
+
+                /* Encabezado y pie de página propios — se repiten en cada página */
+                #print-page-header {
+                    display: block !important;
+                    position: fixed;
+                    top: 0; left: 0; right: 0;
+                    height: 10mm;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0 15mm;
+                    border-bottom: 1px solid #cbd5e1;
+                    font-size: 8pt;
+                    color: #64748b;
+                    background: white;
+                    z-index: 9999;
+                }
+                #print-page-footer {
+                    display: block !important;
+                    position: fixed;
+                    bottom: 0; left: 0; right: 0;
+                    height: 10mm;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0 15mm;
+                    border-top: 1px solid #cbd5e1;
+                    font-size: 8pt;
+                    color: #64748b;
+                    background: white;
+                    z-index: 9999;
+                }
+                /* Espacio para que el contenido no quede debajo del header/footer */
+                #printable-report {
+                    padding-top: 14mm !important;
+                    padding-bottom: 14mm !important;
+                }
             }
+            /* Ocultar en pantalla */
+            #print-page-header, #print-page-footer { display: none; }
         `}} />
+
+        {/* Encabezado de página — visible solo al imprimir */}
+        <div id="print-page-header">
+            <span style={{ fontWeight: 700, color: '#1e293b' }}>PPDA · {sanitizeForPdf(state.scope === 'corporate' ? state.society.razonSocial : state.hotelData.nombreComercial)}</span>
+            <span>{state.version} · {sanitizeForPdf(state.fechaVisita || state.periodoPlan)}</span>
+        </div>
+
+        {/* Pie de página — visible solo al imprimir */}
+        <div id="print-page-footer">
+            <span>© HS Consulting Group</span>
+            <span>Según Ley 1/2025 de prevención de las pérdidas y el desperdicio alimentario</span>
+        </div>
         
         {/* Header */}
         <header className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8 avoid-page-break">

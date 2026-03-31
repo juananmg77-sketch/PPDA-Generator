@@ -858,7 +858,10 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                             </tr>
                             <tr>
                                 <th className="p-3 font-bold text-slate-900 border-r border-slate-200">Aprobado por</th>
-                                <td className="p-3 text-slate-700">Director Técnico – HS Consulting Group</td>
+                                <td className="p-3 text-slate-700">
+                                    {sanitizeForPdf(state.team.find(t => t.id === 'dir')?.nombre || 'Director del Establecimiento')}
+                                    {' '}— Director del Establecimiento
+                                </td>
                             </tr>
                             <tr className="bg-slate-50">
                                 <th className="p-3 font-bold text-slate-900 border-r border-slate-200">Marco normativo</th>
@@ -961,8 +964,8 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                                     <td className="p-2 border border-slate-300">Cocinero responsable / Cada lote regenerado</td>
                                 </tr>
                                 <tr>
-                                    <td className="p-2 border border-slate-300 font-mono text-[10px]">REG-DA-03 — Cuantificación de Desperdicio</td>
-                                    <td className="p-2 border border-slate-300">Kg totales por categoría (Mermas, Elaboración, Buffet, Cliente), servicio, fecha</td>
+                                    <td className="p-2 border border-slate-300 font-mono text-[10px]">REG-DA-03 — KPI Cuantificación de Desperdicio</td>
+                                    <td className="p-2 border border-slate-300">Kg Totales y Relativos por puntos de generación y fecha</td>
                                     <td className="p-2 border border-slate-300">Responsable PPDA / Diario o por servicio</td>
                                 </tr>
                             </tbody>

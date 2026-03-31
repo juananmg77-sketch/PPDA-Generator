@@ -639,7 +639,7 @@ const App: React.FC = () => {
   // RENDER: DASHBOARD VIEW
   if (view === 'dashboard') {
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 font-sans p-6 sm:p-12 relative flex items-center justify-center">
+        <div className="h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans p-6 sm:p-12 relative flex items-center justify-center">
             
             {/* Modal de Nube */}
             {showCloudModal && (
@@ -684,7 +684,11 @@ const App: React.FC = () => {
                                         .filter(plan => {
                                             const filterLower = cloudFilter.toLowerCase();
                                             const nameMatch = !cloudFilter || plan.hotel.toLowerCase().includes(filterLower);
-                                            const chainMatch = !cloudFilter || (plan.data?.society?.razonSocial?.toLowerCase().includes(filterLower) || false);
+                                            const chainMatch = !cloudFilter || (
+                                                plan.data?.society?.razonSocial?.toLowerCase().includes(filterLower) ||
+                                                plan.data?.hotelData?.razonSocial?.toLowerCase().includes(filterLower) ||
+                                                false
+                                            );
                                             const consultorMatch = !cloudConsultorFilter || plan.consultor === cloudConsultorFilter;
                                             return (nameMatch || chainMatch) && consultorMatch;
                                         })
@@ -718,11 +722,14 @@ const App: React.FC = () => {
                                                         ) : (
                                                             <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-black border border-slate-200">{plan.version || 'V1'}</span>
                                                         )}
-                                                        {plan.data?.society?.razonSocial && (
-                                                            <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-black border border-brand-200">
-                                                                🏢 {plan.data.society.razonSocial}
-                                                            </span>
-                                                        )}
+                                                        {(() => {
+                                                            const soc = plan.data?.society?.razonSocial || plan.data?.hotelData?.razonSocial;
+                                                            return soc ? (
+                                                                <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-black border border-brand-200">
+                                                                    🏢 {soc}
+                                                                </span>
+                                                            ) : null;
+                                                        })()}
                                                     </div>
                                                     <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-0.5">
                                                         <Clock size={12} /> Modificado: {new Date(plan.date).toLocaleDateString()} {new Date(plan.date).toLocaleTimeString()}

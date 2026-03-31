@@ -170,17 +170,20 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
       {/* Report Content */}
       <div id="printable-report" ref={printRef} className="bg-white p-12 pb-24 shadow-2xl print:shadow-none print:p-0 text-slate-900">
         <style dangerouslySetInnerHTML={{__html: `
-            @media print {
-                .print-page-break { page-break-before: always !important; break-before: page !important; }
-                .avoid-page-break { page-break-inside: avoid !important; break-inside: avoid !important; }
-                tr { page-break-inside: avoid !important; break-inside: avoid !important; }
-                thead { display: table-header-group; }
-                h1, h2, h3, h4, h5, h6 { page-break-inside: avoid !important; break-inside: avoid !important; }
-            }
             #printable-report { overflow: visible !important; }
             .print-page-break { page-break-before: always !important; break-before: page !important; }
             .avoid-page-break { page-break-inside: avoid !important; break-inside: avoid !important; }
-            h1, h2, h3, h4, h5, h6 { page-break-inside: avoid !important; break-inside: avoid !important; }
+            @media print {
+                .print-page-break { page-break-before: always !important; break-before: page !important; }
+                .avoid-page-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+                h1, h2, h3, h4, h5, h6 {
+                    page-break-after: avoid !important; break-after: avoid !important;
+                    page-break-inside: avoid !important; break-inside: avoid !important;
+                }
+                tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; }
+                thead { display: table-header-group; }
+                p { orphans: 3; widows: 3; }
+            }
         `}} />
         
         {/* Header */}
@@ -453,7 +456,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         </section>
 
         {/* 3. Equipo Responsable */}
-        <section className="mb-8">
+        <section className="mb-8 print-page-break">
             <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">3. Equipo Responsable</h3>
             <table className="w-full text-xs text-left border-collapse border border-slate-200 mb-6">
                 <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] font-black tracking-wider" style={{ display: 'table-header-group' }}>
@@ -488,7 +491,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         </section>
 
         {/* 4. Diagnóstico de Situación */}
-        <section className="mb-8">
+        <section className="mb-8 print-page-break">
             <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">4. Diagnóstico de Situación</h3>
              <div className="bg-white border border-slate-200">
                  <table className="w-full text-xs text-left">
@@ -659,7 +662,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         </section>
 
         {/* 7. Documentación Anexa */}
-        <section className="mb-8 avoid-page-break">
+        <section className="mb-8 print-page-break avoid-page-break">
             <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">7. Documentación Anexa</h3>
             <div className="border border-slate-200 p-4 bg-white text-xs">
                 <p className="mb-2 font-bold text-slate-800">Se adjunta la siguiente documentación como parte integral de este Plan:</p>

@@ -101,6 +101,11 @@
       }
 
       /* GESTIÓN GENERAL DE IMPRESIÓN */
+      @page {
+        size: A4 portrait;
+        margin: 18mm 15mm 18mm 15mm;
+      }
+
       @media print {
         /* Ocultar TODO por defecto */
         body * {
@@ -130,13 +135,13 @@
           top: 0;
           width: 100%;
           margin: 0;
-          padding: 0;
+          padding: 20px 0 0 0;
         }
 
         .no-print {
           display: none !important;
         }
-        
+
         /* OPTIMIZACIÓN DE TEXTO */
         #printable-report * {
             letter-spacing: 0.2px !important;
@@ -144,11 +149,47 @@
             text-rendering: geometricPrecision !important;
             -webkit-font-smoothing: antialiased !important;
         }
-        
+
         /* ASEGURAR COLORES DE FONDO */
         * {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
+        }
+
+        /* CAPÍTULOS Y ANEXOS: siempre en página nueva */
+        .print-page-break {
+          page-break-before: always !important;
+          break-before: page !important;
+        }
+
+        /* BLOQUES INDIVISIBLES */
+        .avoid-page-break {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        /* CABECERAS: nunca solas al final de página (van con el contenido siguiente) */
+        h1, h2, h3, h4, h5, h6 {
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        /* CONTROL DE HUÉRFANOS Y VIUDAS */
+        p {
+          orphans: 3;
+          widows: 3;
+        }
+
+        /* FILAS DE TABLA nunca partidas */
+        tr, td, th {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+
+        thead {
+          display: table-header-group;
         }
       }
 

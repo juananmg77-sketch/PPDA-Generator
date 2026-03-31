@@ -114,6 +114,7 @@ const App: React.FC = () => {
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [cloudPlans, setCloudPlans] = useState<CloudPlan[]>([]);
   const [cloudFilter, setCloudFilter] = useState('');
+  const [cloudConsultorFilter, setCloudConsultorFilter] = useState('');
 
   // Asignación de cliente a plan
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -652,14 +653,24 @@ const App: React.FC = () => {
                                 <X size={24} />
                             </button>
                         </div>
-                        <div className="p-4 border-b border-slate-100 bg-white">
-                            <input 
-                                type="text" 
-                                placeholder="Filtrar por nombre o cadena hotelera..." 
+                        <div className="p-4 border-b border-slate-100 bg-white space-y-2">
+                            <input
+                                type="text"
+                                placeholder="Filtrar por nombre o sociedad..."
                                 value={cloudFilter}
                                 onChange={(e) => setCloudFilter(e.target.value)}
                                 className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
                             />
+                            <select
+                                value={cloudConsultorFilter}
+                                onChange={(e) => setCloudConsultorFilter(e.target.value)}
+                                className="w-full p-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all bg-white text-slate-700"
+                            >
+                                <option value="">— Todos los consultores —</option>
+                                {Array.from(new Set(cloudPlans.map(p => p.consultor).filter(Boolean))).sort().map(c => (
+                                    <option key={c as string} value={c as string}>{c as string}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
                             {cloudPlans.length === 0 ? (
@@ -669,13 +680,15 @@ const App: React.FC = () => {
                                 </div>
                             ) : (
                                 (() => {
-                                    const filteredPlans = cloudPlans.filter(plan => {
-                                        if (!cloudFilter) return true;
-                                        const filterLower = cloudFilter.toLowerCase();
-                                        const nameMatch = plan.hotel.toLowerCase().includes(filterLower);
-                                        const chainMatch = plan.data?.society?.razonSocial?.toLowerCase().includes(filterLower) || false;
-                                        return nameMatch || chainMatch;
-                                    });
+                                    const filteredPlans = cloudPlans
+                                        .filter(plan => {
+                                            const filterLower = cloudFilter.toLowerCase();
+                                            const nameMatch = !cloudFilter || plan.hotel.toLowerCase().includes(filterLower);
+                                            const chainMatch = !cloudFilter || (plan.data?.society?.razonSocial?.toLowerCase().includes(filterLower) || false);
+                                            const consultorMatch = !cloudConsultorFilter || plan.consultor === cloudConsultorFilter;
+                                            return (nameMatch || chainMatch) && consultorMatch;
+                                        })
+                                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
                                     if (filteredPlans.length === 0) {
                                         return (
@@ -686,8 +699,8 @@ const App: React.FC = () => {
                                     }
 
                                     return filteredPlans.map((plan, idx) => (
-                                        <div 
-                                            key={idx} 
+                                        <div
+                                            key={idx}
                                             onClick={() => importCloudPlan(plan)}
                                             className={`flex items-center justify-between p-5 bg-white border border-slate-200 rounded-xl hover:shadow-lg transition-all cursor-pointer group ${!plan.data ? 'border-red-200 bg-red-50 hover:border-red-300' : 'hover:border-brand-400'}`}
                                         >
@@ -696,7 +709,7 @@ const App: React.FC = () => {
                                                     {!plan.data ? '!' : plan.hotel.charAt(0)}
                                                 </div>
                                                 <div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         <h4 className={`font-bold text-lg transition-colors ${!plan.data ? 'text-red-700' : 'text-slate-800 group-hover:text-brand-700'}`}>
                                                             {plan.hotel}
                                                         </h4>
@@ -705,14 +718,14 @@ const App: React.FC = () => {
                                                         ) : (
                                                             <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-black border border-slate-200">{plan.version || 'V1'}</span>
                                                         )}
+                                                        {plan.data?.society?.razonSocial && (
+                                                            <span className="text-[10px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-black border border-brand-200">
+                                                                🏢 {plan.data.society.razonSocial}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-0.5">
                                                         <Clock size={12} /> Modificado: {new Date(plan.date).toLocaleDateString()} {new Date(plan.date).toLocaleTimeString()}
-                                                        {plan.data?.society?.razonSocial && (
-                                                            <span className="ml-2 px-2 py-0.5 bg-slate-100 rounded-full text-[9px] text-slate-500">
-                                                                {plan.data.society.razonSocial}
-                                                            </span>
-                                                        )}
                                                     </p>
                                                     {plan.consultor && (
                                                       <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">

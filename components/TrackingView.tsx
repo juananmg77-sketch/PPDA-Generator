@@ -1,7 +1,7 @@
 
-import React from 'react';
-import { Objective, AnnualTracking } from '../types';
-import { AlertCircle, Lock, Unlock, Calendar, Clock, Timer, CheckCircle2, Target, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { Objective, AnnualTracking, SpecificAction } from '../types';
+import { AlertCircle, Lock, Unlock, Calendar, Clock, Timer, CheckCircle2, Target, User, Pencil, X, Save } from 'lucide-react';
 
 interface TrackingViewProps {
   objectives: Objective[];
@@ -12,6 +12,29 @@ interface TrackingViewProps {
 
 export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjectives, currentYear, setCurrentYear }) => {
   const selectedObjectives = objectives.filter(o => o.selected);
+
+  // --- EDIT PANEL STATE ---
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editingObj = editingId ? objectives.find(o => o.id === editingId) ?? null : null;
+
+  const openEdit = (id: string) => setEditingId(id);
+  const closeEdit = () => setEditingId(null);
+
+  const updateObjField = (field: keyof Objective, value: string) => {
+    if (!editingId) return;
+    setObjectives(objectives.map(o => o.id === editingId ? { ...o, [field]: value } : o));
+  };
+
+  const updateActionField = (actionId: string, field: keyof SpecificAction, value: string) => {
+    if (!editingId) return;
+    setObjectives(objectives.map(o => {
+      if (o.id !== editingId) return o;
+      return { ...o, actions: o.actions.map(a => a.id === actionId ? { ...a, [field]: value } : a) };
+    }));
+  };
+
+  const inputClass = "mt-0.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-900 text-[11px] shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 focus:outline-none font-bold";
+  const labelClass = "text-[8px] uppercase tracking-wider font-black text-slate-500";
   
   const activeObjectivesInYear = selectedObjectives.filter(obj => {
       // 1. El año actual no debe superar el año de vencimiento del objetivo
@@ -134,6 +157,92 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
 
   return (
     <div className="space-y-4">
+
+      {/* PANEL DE EDICIÓN DESLIZANTE */}
+      {editingObj && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={closeEdit}>
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col h-full overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50 sticky top-0 z-10">
+              <div>
+                <span className="text-[9px] font-black text-brand-700 uppercase tracking-widest">{editingObj.codigo}</span>
+                <h3 className="text-sm font-black text-slate-900 leading-tight mt-0.5">{editingObj.descripcion}</h3>
+              </div>
+              <button onClick={closeEdit} className="p-2 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Campos del objetivo */}
+            <div className="p-5 space-y-4 border-b border-slate-100">
+              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Objetivo</h4>
+              <label className="block">
+                <span className={labelClass}>Descripción</span>
+                <textarea rows={2} value={editingObj.descripcion} onChange={e => updateObjField('descripcion', e.target.value)} className={inputClass + ' resize-none'} />
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block">
+                  <span className={labelClass}>Meta</span>
+                  <input type="text" value={editingObj.meta} onChange={e => updateObjField('meta', e.target.value)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>Plazo</span>
+                  <input type="date" value={editingObj.plazo} onChange={e => updateObjField('plazo', e.target.value)} className={inputClass} />
+                </label>
+                <label className="block">
+                  <span className={labelClass}>Responsable</span>
+                  <input type="text" value={editingObj.responsable} onChange={e => updateObjField('responsable', e.target.value)} className={inputClass} />
+                </label>
+              </div>
+              <label className="block">
+                <span className={labelClass}>Indicador</span>
+                <input type="text" value={editingObj.indicador} onChange={e => updateObjField('indicador', e.target.value)} className={inputClass} />
+              </label>
+            </div>
+
+            {/* Acciones */}
+            <div className="p-5 space-y-3 flex-1">
+              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Acciones del Plan</h4>
+              {editingObj.actions.length === 0 && (
+                <p className="text-[10px] text-slate-400 italic text-center py-4">Sin acciones definidas. Ve a Estrategia SMART para añadirlas.</p>
+              )}
+              {editingObj.actions.map(action => (
+                <div key={action.id} className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
+                  <span className="text-[9px] font-black text-brand-700 uppercase">{action.codigo}</span>
+                  <label className="block">
+                    <span className={labelClass}>Descripción</span>
+                    <textarea rows={2} value={action.descripcion} onChange={e => updateActionField(action.id, 'descripcion', e.target.value)} className={inputClass + ' resize-none'} />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                      <span className={labelClass}>Responsable</span>
+                      <input type="text" value={action.responsable} onChange={e => updateActionField(action.id, 'responsable', e.target.value)} className={inputClass} />
+                    </label>
+                    <label className="block">
+                      <span className={labelClass}>Plazo</span>
+                      <input type="date" value={action.plazo} onChange={e => updateActionField(action.id, 'plazo', e.target.value)} className={inputClass} />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 px-5 py-4 border-t border-slate-200 bg-white">
+              <button
+                onClick={closeEdit}
+                className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white py-2.5 rounded-xl font-black text-sm hover:bg-brand-700 transition-colors shadow-sm"
+              >
+                <Save size={15} /> Guardar y cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
         <div className="flex justify-between items-center border-b border-slate-200 pb-2">
             <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                 <Calendar size={20} className="text-brand-600" /> Seguimiento Operativo
@@ -203,7 +312,7 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-4 self-end sm:self-auto">
+                                <div className="flex items-center gap-2 self-end sm:self-auto">
                                     <div className="flex flex-col items-end mr-2">
                                         <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider mb-1">Progreso</span>
                                         <div className="flex items-center gap-2">
@@ -213,7 +322,14 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
                                             <span className="text-[10px] font-black text-brand-700">{progress}%</span>
                                         </div>
                                     </div>
-                                    <button 
+                                    <button
+                                        onClick={() => openEdit(obj.id)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap bg-white text-slate-600 border-slate-300 hover:bg-brand-50 hover:text-brand-700 hover:border-brand-300"
+                                        title="Editar objetivo"
+                                    >
+                                        <Pencil size={12} /> Editar
+                                    </button>
+                                    <button
                                         onClick={() => toggleYearStatus(obj.id)}
                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all whitespace-nowrap ${
                                             isYearClosed ? 'bg-white text-slate-900 border-slate-400' : 'bg-white text-brand-600 border-brand-200 hover:bg-brand-50'

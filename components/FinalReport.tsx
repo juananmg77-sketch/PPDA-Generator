@@ -712,9 +712,132 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
             )}
         </section>
 
-        {/* 7. Documentación Anexa */}
+        {/* 7. Seguimiento Operativo de Acciones */}
+        {(() => {
+            const QUARTERS = ['t1', 't2', 't3', 't4'] as const;
+            const QUARTER_LABELS: Record<string, string> = { t1: 'T1', t2: 'T2', t3: 'T3', t4: 'T4' };
+            const STATUS_LABELS: Record<string, string> = { open: 'En curso', t1: 'Completado T1', t2: 'Completado T2', t3: 'Completado T3', t4: 'Completado T4' };
+            const STATUS_COLORS: Record<string, string> = { open: 'bg-amber-50 text-amber-700 border-amber-200', t1: 'bg-brand-50 text-brand-700 border-brand-200', t2: 'bg-brand-50 text-brand-700 border-brand-200', t3: 'bg-brand-50 text-brand-700 border-brand-200', t4: 'bg-brand-50 text-brand-700 border-brand-200' };
+
+            // Recopilar todos los años que tienen datos de seguimiento
+            const yearsWithData = Array.from(new Set(
+                state.objectives
+                    .filter(o => o.selected)
+                    .flatMap(o => Object.keys(o.trackingHistory).map(Number))
+            )).sort();
+
+            // Filtrar objetivos y acciones que tienen algún dato de seguimiento cumplimentado
+            const hasActionData = (actionTracking: any) => {
+                if (!actionTracking) return false;
+                return QUARTERS.some(q => actionTracking[q]?.cumple || (actionTracking[q]?.evidencia || '').trim() !== '')
+                    || (actionTracking.notes || '').trim() !== ''
+                    || (actionTracking.status && actionTracking.status !== 'open');
+            };
+
+            const trackingObjectives = state.objectives
+                .filter(o => o.selected && o.actions.length > 0 && Object.keys(o.trackingHistory).length > 0);
+
+            if (trackingObjectives.length === 0 || yearsWithData.length === 0) return null;
+
+            return (
+                <section className="mb-8 print-page-break">
+                    <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">7. Seguimiento Operativo de Acciones</h3>
+
+                    {yearsWithData.map(year => {
+                        const objsForYear = trackingObjectives.filter(o => o.trackingHistory[year]);
+
+                        return objsForYear.map(obj => {
+                            const tracking = obj.trackingHistory[year];
+                            const actionsWithData = obj.actions.filter(a => hasActionData(tracking.actions[a.id]));
+                            if (actionsWithData.length === 0) return null;
+
+                            // Progreso dinámico
+                            const closed = obj.actions.filter(a => tracking.actions[a.id]?.status && tracking.actions[a.id].status !== 'open').length;
+                            const progress = tracking.isClosed ? 100 : Math.round((closed / obj.actions.length) * 100);
+
+                            return (
+                                <div key={`${obj.id}-${year}`} className="mb-6 avoid-page-break">
+                                    {/* Cabecera objetivo */}
+                                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 px-4 py-2 rounded-t-lg">
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-[9px] font-black text-brand-700 bg-white border border-brand-100 px-2 py-0.5 rounded uppercase">{obj.codigo}</span>
+                                            <span className="text-xs font-black text-slate-800">{sanitizeForPdf(obj.descripcion)}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 flex-shrink-0">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase">Año {year}</span>
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded border ${tracking.isClosed ? 'bg-brand-50 text-brand-700 border-brand-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                                {tracking.isClosed ? '✓ Cerrado' : `${progress}% completado`}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Tabla de acciones */}
+                                    <div className="border border-t-0 border-slate-200 overflow-hidden rounded-b-lg">
+                                        <table className="w-full text-xs text-left border-collapse">
+                                            <thead className="bg-slate-100 text-slate-500 uppercase text-[9px] font-black tracking-wider" style={{ display: 'table-header-group' }}>
+                                                <tr>
+                                                    <th className="p-2 border-b border-slate-200 w-[30%]">Acción</th>
+                                                    <th className="p-2 border-b border-slate-200 w-[12%] text-center">Estado</th>
+                                                    {QUARTERS.map(q => (
+                                                        <th key={q} className="p-2 border-b border-slate-200 text-center">{QUARTER_LABELS[q]}</th>
+                                                    ))}
+                                                    <th className="p-2 border-b border-slate-200">Comentarios</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {actionsWithData.map(action => {
+                                                    const at = tracking.actions[action.id] || {};
+                                                    const statusKey = at.status || 'open';
+                                                    return (
+                                                        <tr key={action.id} className="bg-white">
+                                                            <td className="p-2 align-top">
+                                                                <span className="text-[9px] font-black text-slate-400 block">{action.codigo}</span>
+                                                                <span className="font-bold text-slate-800">{sanitizeForPdf(action.descripcion)}</span>
+                                                                {action.responsable && <span className="text-[9px] text-slate-400 block mt-0.5">Resp: {sanitizeForPdf(action.responsable)}</span>}
+                                                            </td>
+                                                            <td className="p-2 text-center align-top">
+                                                                <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border whitespace-nowrap ${STATUS_COLORS[statusKey] || STATUS_COLORS['open']}`}>
+                                                                    {STATUS_LABELS[statusKey] || 'En curso'}
+                                                                </span>
+                                                            </td>
+                                                            {QUARTERS.map(q => {
+                                                                const qd = at[q] || { cumple: false, evidencia: '' };
+                                                                return (
+                                                                    <td key={q} className="p-2 text-center align-top">
+                                                                        <span className={`text-base font-black block ${qd.cumple ? 'text-brand-600' : 'text-slate-200'}`}>{qd.cumple ? '✓' : '—'}</span>
+                                                                        {qd.evidencia && <span className="text-[8px] text-slate-500 block mt-0.5 text-left leading-tight">{sanitizeForPdf(qd.evidencia)}</span>}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                            <td className="p-2 align-top text-[10px] text-slate-600 leading-relaxed">
+                                                                {at.notes ? sanitizeForPdf(at.notes) : <span className="text-slate-300">—</span>}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {/* Notas globales del año */}
+                                    {tracking.globalNotes && (
+                                        <div className="mt-2 bg-slate-50 border border-slate-200 rounded px-3 py-2 text-[10px] text-slate-600">
+                                            <span className="font-black text-slate-700 uppercase text-[9px] mr-2">Notas generales:</span>
+                                            {sanitizeForPdf(tracking.globalNotes)}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        });
+                    })}
+                </section>
+            );
+        })()}
+
+        {/* 8. Documentación Anexa */}
         <section className="mb-8 print-page-break avoid-page-break">
-            <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">7. Documentación Anexa</h3>
+            <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">8. Documentación Anexa</h3>
+
             <div className="border border-slate-200 p-4 bg-white text-xs">
                 <p className="mb-2 font-bold text-slate-800">Se adjunta la siguiente documentación como parte integral de este Plan:</p>
                 <ul className="list-disc pl-4 space-y-1 text-slate-600">
@@ -727,9 +850,9 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
             </div>
         </section>
 
-        {/* 8. Firmas */}
+        {/* 9. Firmas */}
         <section className="mt-16 avoid-page-break print-page-break" style={{ paddingBottom: '40mm' }}>
-            <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-8 inline-block rounded-sm">8. Firmas y Compromiso</h3>
+            <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-8 inline-block rounded-sm">9. Firmas y Compromiso</h3>
             <div className="grid grid-cols-2 gap-20">
                 <div className="text-center flex flex-col items-center">
                     {state.directorSignature ? (

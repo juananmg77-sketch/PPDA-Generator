@@ -14,9 +14,18 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
   const selectedObjectives = objectives.filter(o => o.selected);
   
   const activeObjectivesInYear = selectedObjectives.filter(obj => {
-      if (!obj.plazo) return true; 
-      const deadlineYear = new Date(obj.plazo).getFullYear();
-      return currentYear <= deadlineYear;
+      // 1. El año actual no debe superar el año de vencimiento del objetivo
+      if (obj.plazo) {
+          const deadlineYear = new Date(obj.plazo).getFullYear();
+          if (currentYear > deadlineYear) return false;
+      }
+
+      // 2. Si el año anterior está cerrado (isClosed), el objetivo ya se completó
+      //    y no debe aparecer en años posteriores (salvo que se reabra)
+      const prevYearTracking = obj.trackingHistory[currentYear - 1];
+      if (prevYearTracking?.isClosed) return false;
+
+      return true;
   });
 
   const years = [2026, 2027, 2028, 2029, 2030];
@@ -259,6 +268,11 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
                                                         <div className="flex items-center gap-1 text-[8px] text-slate-400 font-black uppercase tracking-wider">
                                                             <User size={8} /> {action.responsable}
                                                         </div>
+                                                        {action.plazo && (
+                                                            <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-wider mt-0.5 text-amber-600">
+                                                                <Timer size={8} /> Límite: {new Date(action.plazo).toLocaleDateString('es-ES')}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="px-4 py-3 text-center align-top">
                                                         <select

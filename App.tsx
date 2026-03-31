@@ -574,7 +574,12 @@ const App: React.FC = () => {
     setState(prev => {
       const updatedObjectives = prev.objectives.map(obj => {
         if (recommendedObjectiveIds.has(obj.id)) {
-          return { ...obj, isAutoProposed: true, selected: true }; 
+          // Si ya era auto-propuesto, respetar la selección que el usuario eligió manualmente.
+          // Solo forzar selected:true la primera vez que se convierte en auto-propuesto.
+          if (obj.isAutoProposed) {
+            return { ...obj, isAutoProposed: true };
+          }
+          return { ...obj, isAutoProposed: true, selected: true };
         }
         return { ...obj, isAutoProposed: false };
       });

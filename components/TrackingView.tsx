@@ -158,81 +158,95 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
   return (
     <div className="space-y-4">
 
-      {/* PANEL DE EDICIÓN DESLIZANTE */}
+      {/* MODAL DE EDICIÓN CENTRADO */}
       {editingObj && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={closeEdit}>
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeEdit}>
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-lg bg-white shadow-2xl flex flex-col h-full overflow-y-auto"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
+            style={{ maxHeight: '90vh' }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 bg-slate-50 sticky top-0 z-10">
-              <div>
-                <span className="text-[9px] font-black text-brand-700 uppercase tracking-widest">{editingObj.codigo}</span>
+            {/* Header fijo */}
+            <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 rounded-t-2xl flex-shrink-0">
+              <div className="flex-1 min-w-0 pr-4">
+                <span className="text-[9px] font-black text-brand-700 uppercase tracking-widest block">{editingObj.codigo}</span>
                 <h3 className="text-sm font-black text-slate-900 leading-tight mt-0.5">{editingObj.descripcion}</h3>
               </div>
-              <button onClick={closeEdit} className="p-2 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors">
+              <button onClick={closeEdit} className="p-2 rounded-lg hover:bg-slate-200 text-slate-500 transition-colors flex-shrink-0">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Campos del objetivo */}
-            <div className="p-5 space-y-4 border-b border-slate-100">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Objetivo</h4>
-              <label className="block">
-                <span className={labelClass}>Descripción</span>
-                <textarea rows={2} value={editingObj.descripcion} onChange={e => updateObjField('descripcion', e.target.value)} className={inputClass + ' resize-none'} />
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                <label className="block">
-                  <span className={labelClass}>Meta</span>
-                  <input type="text" value={editingObj.meta} onChange={e => updateObjField('meta', e.target.value)} className={inputClass} />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>Plazo</span>
-                  <input type="date" value={editingObj.plazo} onChange={e => updateObjField('plazo', e.target.value)} className={inputClass} />
-                </label>
-                <label className="block">
-                  <span className={labelClass}>Responsable</span>
-                  <input type="text" value={editingObj.responsable} onChange={e => updateObjField('responsable', e.target.value)} className={inputClass} />
-                </label>
-              </div>
-              <label className="block">
-                <span className={labelClass}>Indicador</span>
-                <input type="text" value={editingObj.indicador} onChange={e => updateObjField('indicador', e.target.value)} className={inputClass} />
-              </label>
-            </div>
+            {/* Contenido con scroll */}
+            <div className="overflow-y-auto flex-1 p-6 space-y-6">
 
-            {/* Acciones */}
-            <div className="p-5 space-y-3 flex-1">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">Acciones del Plan</h4>
-              {editingObj.actions.length === 0 && (
-                <p className="text-[10px] text-slate-400 italic text-center py-4">Sin acciones definidas. Ve a Estrategia SMART para añadirlas.</p>
-              )}
-              {editingObj.actions.map(action => (
-                <div key={action.id} className="bg-slate-50 rounded-xl border border-slate-200 p-3 space-y-2">
-                  <span className="text-[9px] font-black text-brand-700 uppercase">{action.codigo}</span>
+              {/* Campos del objetivo */}
+              <div className="space-y-4">
+                <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                  <span className="flex-1 border-t border-slate-200"></span> Objetivo <span className="flex-1 border-t border-slate-200"></span>
+                </h4>
+                <label className="block">
+                  <span className={labelClass}>Descripción</span>
+                  <textarea rows={2} value={editingObj.descripcion} onChange={e => updateObjField('descripcion', e.target.value)} className={inputClass + ' resize-none'} />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className={labelClass}>Descripción</span>
-                    <textarea rows={2} value={action.descripcion} onChange={e => updateActionField(action.id, 'descripcion', e.target.value)} className={inputClass + ' resize-none'} />
+                    <span className={labelClass}>Meta / Objetivo cuantitativo</span>
+                    <input type="text" value={editingObj.meta} onChange={e => updateObjField('meta', e.target.value)} className={inputClass} placeholder="ej: Reducir 20%" />
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="block">
-                      <span className={labelClass}>Responsable</span>
-                      <input type="text" value={action.responsable} onChange={e => updateActionField(action.id, 'responsable', e.target.value)} className={inputClass} />
-                    </label>
-                    <label className="block">
-                      <span className={labelClass}>Plazo</span>
-                      <input type="date" value={action.plazo} onChange={e => updateActionField(action.id, 'plazo', e.target.value)} className={inputClass} />
-                    </label>
-                  </div>
+                  <label className="block">
+                    <span className={labelClass}>Indicador de medición</span>
+                    <input type="text" value={editingObj.indicador} onChange={e => updateObjField('indicador', e.target.value)} className={inputClass} />
+                  </label>
                 </div>
-              ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className={labelClass}>Fecha límite del objetivo</span>
+                    <input type="date" value={editingObj.plazo} onChange={e => updateObjField('plazo', e.target.value)} className={inputClass} />
+                  </label>
+                  <label className="block">
+                    <span className={labelClass}>Responsable</span>
+                    <input type="text" value={editingObj.responsable} onChange={e => updateObjField('responsable', e.target.value)} className={inputClass} />
+                  </label>
+                </div>
+              </div>
+
+              {/* Acciones */}
+              <div className="space-y-3">
+                <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                  <span className="flex-1 border-t border-slate-200"></span> Acciones del plan <span className="flex-1 border-t border-slate-200"></span>
+                </h4>
+                {editingObj.actions.length === 0 ? (
+                  <p className="text-[10px] text-slate-400 italic text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    Sin acciones definidas. Ve a <strong>Estrategia SMART</strong> para añadirlas.
+                  </p>
+                ) : (
+                  editingObj.actions.map(action => (
+                    <div key={action.id} className="bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
+                      <span className="text-[9px] font-black text-brand-700 uppercase tracking-wider">{action.codigo}</span>
+                      <label className="block">
+                        <span className={labelClass}>Descripción de la acción</span>
+                        <textarea rows={2} value={action.descripcion} onChange={e => updateActionField(action.id, 'descripcion', e.target.value)} className={inputClass + ' resize-none'} />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className={labelClass}>Responsable</span>
+                          <input type="text" value={action.responsable} onChange={e => updateActionField(action.id, 'responsable', e.target.value)} className={inputClass} />
+                        </label>
+                        <label className="block">
+                          <span className={labelClass}>Fecha límite</span>
+                          <input type="date" value={action.plazo} onChange={e => updateActionField(action.id, 'plazo', e.target.value)} className={inputClass} />
+                        </label>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
-            {/* Footer */}
-            <div className="sticky bottom-0 px-5 py-4 border-t border-slate-200 bg-white">
+            {/* Footer fijo */}
+            <div className="px-6 py-4 border-t border-slate-200 bg-white rounded-b-2xl flex-shrink-0">
               <button
                 onClick={closeEdit}
                 className="w-full flex items-center justify-center gap-2 bg-brand-600 text-white py-2.5 rounded-xl font-black text-sm hover:bg-brand-700 transition-colors shadow-sm"

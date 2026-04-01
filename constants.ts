@@ -131,143 +131,143 @@ export const COMMON_PPDA_FUNCTIONS = [
 
 export const OBJECTIVE_ACTIONS: Record<string, string[]> = {
   '1': [
-    "Implementar sistema de producción escalonada durante el servicio (Ley 7/2022)",
-    "Reducir tamaño de bandejas/recipientes en línea de buffet",
-    "Instalar señalización visual sobre cantidades recomendadas por persona",
-    "Registro diario de mermas por categoría de producto",
-    "Formación personal en control de reposición just-in-time"
+    "Producción escalonada: preparar 60% al inicio, reponer en tandas de 30-40% cada 20 min según afluencia",
+    "Sustituir bandejas GN 1/1 por GN 1/2 o 1/3 en la última hora de servicio",
+    "Instalar cartelería en cada estación: «Puede repetir — sírvase lo justo»",
+    "Registro diario de excedentes por categoría (panadería, fruta, proteínas, lácteos) con báscula calibrada",
+    "Formación práctica al personal de desayunos en reposición just-in-time con evaluación"
   ],
   '2': [
-    "Sistema de reserva previa para estimar comensales (±10%)",
-    "Producción basada en histórico de consumo por día/temporada",
-    "Rotación de menús para optimizar aprovechamiento de ingredientes",
-    "Control de temperatura diferenciado por zonas del buffet",
-    "Planificación de segundos usos para excedentes aptos"
+    "Previsión de comensales cruzando PMS + reservas + histórico semanal",
+    "Ciclo de menús rotativo (mín. 14 días) con aprovechamiento cruzado de ingredientes entre días",
+    "Protocolo escrito de segundos usos para excedentes aptos (sopas, croquetas, ensaladas) con registro de kg",
+    "Control de temperatura diferenciado por zonas del buffet (caliente >65°C, frío <8°C) con termómetros visibles",
+    "Fotografía estandarizada pre/post cierre de buffet para correlacionar con datos de pesaje"
   ],
   '3': [
-    "Ajuste de cantidades según ratio ocupación/comensales reales",
-    "Sistema de reposición controlada (no completar bandejas hasta vacío)",
-    "Señalética sobre repetición permitida (\"puede volver las veces que desee\")",
-    "Monitorización fotográfica pre/post servicio para análisis",
-    "Protocolo de conservación refrigerada para excedentes aptos día siguiente"
+    "Ajustar producción al ratio comensales reales de las últimas 4 semanas con factor corrector día/temporada",
+    "No reposición completa los últimos 45 min; ofrecer al cliente que solicite su preferencia directamente",
+    "Señalética positiva: «Puede repetir las veces que desee» para reducir servirse en exceso",
+    "Estaciones de show-cooking para producir bajo demanda en tiempo real",
+    "Conservación refrigerada inmediata (abatimiento <3°C en <90 min) de excedentes no expuestos aptos"
   ],
   '4': [
-    "Ofrecer opción de medio plato o plato reducido en carta",
-    "Información visible sobre ingredientes/composición del plato",
-    "Sistema de feedback sobre raciones (muy grande/adecuada/pequeña)",
-    "Posibilidad de modificar guarniciones a petición del cliente",
-    "Envases para llevar excedentes cumpliendo Reglamento (UE) 852/2004"
+    "Ofrecer media ración o ración reducida en carta con precio ajustado y gramaje indicado",
+    "Incluir en carta gramaje orientativo, ingredientes principales y alérgenos (Reg. UE 1169/2011)",
+    "Sistema de feedback de raciones: tarjeta o QR con pregunta «¿La ración fue adecuada?»",
+    "Formación semestral a sala en recomendación de raciones y ofrecimiento de compartir platos",
+    "Disponer de envases aptos (reutilizables/reciclables) y ofrecer activamente el take-away (Art. 8)"
   ],
   '5': [
-    "Planificación de menús cíclicos con aprovechamiento cruzado",
-    "Estandarización de recetas con gramajes exactos",
-    "Formación en técnicas de aprovechamiento integral (fondos, caldos, etc.)",
-    "Control de mermas por operario/turno según APPCC",
-    "Revisión quincenal de históricos para ajustar producciones"
+    "Estandarizar 100% recetas con ficha técnica: gramajes, rendimiento esperado y merma prevista",
+    "Técnicas de aprovechamiento integral: fondos, caldos, chips de piel, brunoise de tallos — recetario interno",
+    "Registro de mermas por partida/turno vinculado al APPCC (producto, causa, peso)",
+    "Revisión quincenal de históricos de mermas para ajustar volúmenes de pedido y producción",
+    "Batch cooking y cook & chill para productos de alta rotación, reduciendo preparación excesiva"
   ],
   '6': [
-    "Implantación estricta FIFO con etiquetado fecha entrada",
-    "Revisión semanal de próximas caducidades (alerta ≤7 días)",
-    "Planificación de menús priorizando productos cercanos a vencimiento",
-    "Control de temperaturas según categorías (RD 3484/2000)",
-    "Auditoría mensual de rotación de stock con KPI de caducidades"
+    "Sistema FIFO/FEFO con etiquetado obligatorio de fecha entrada y caducidad en recepción",
+    "Revisión semanal de caducidades con alerta a 7 días (etiqueta roja) y comunicación a cocina",
+    "Adaptar menús priorizando productos con caducidad inminente, documentando la decisión",
+    "Registro de temperaturas de cámaras 2 veces/día (refrigeración 0-4°C, congelación ≤-18°C)",
+    "Informe mensual de rotación de stock: % caducidades sobre compras y análisis de referencias problemáticas"
   ],
   '7': [
-    "Identificar banco de alimentos local certificado (FESBAL u homólogo)",
-    "Protocolo documentado según Ley 7/2022 Art. 6 (trazabilidad donaciones)",
-    "Formación personal en segregación y conservación para donación",
-    "Registro de donaciones con kg/tipo de alimento/fecha (obligatorio)",
-    "Certificado de donación para desgravación fiscal Art. 27.3 Ley 7/2022"
+    "Contactar banco de alimentos territorial (FESBAL) o entidad social autorizada más próxima",
+    "Formalizar convenio con contenido mínimo Art. 7: recogida, transporte, almacenamiento, compromisos",
+    "Protocolo interno de segregación, conservación (≤4°C) y etiquetado con alérgenos para donación",
+    "Registro de donaciones: fecha, tipo alimento, kg, lote, entidad receptora, firma de entrega",
+    "Solicitar certificado de donación a la entidad receptora para desgravación fiscal y evidencia"
   ],
   '8': [
-    "Procedimiento de evaluación de aptitud según criterios AESAN",
-    "Sistema de conservación adecuado hasta recogida (≤4°C perecederos)",
-    "Coordinación logística con frecuencia definida (mínimo 2 recogidas/semana)",
-    "Etiquetado identificativo según RD 1801/2008 (alérgenos incluidos)",
-    "Documento de entrega con descripción, cantidad y fecha de consumo preferente"
+    "Procedimiento de evaluación de aptitud: criterios organolépticos, Tª, contaminación cruzada, vida útil",
+    "Zona refrigerada específica (0-4°C) señalizada «DONACIÓN» para conservar hasta recogida",
+    "Frecuencia mínima de 2 recogidas/semana con horarios y persona de contacto definidos",
+    "Etiquetado de cada partida donada: producto, ingredientes, alérgenos, fecha elaboración, conservación",
+    "Documento de entrega por donación: descripción, kg, fecha, lote, firma donante y receptor"
   ],
   '9': [
-    "Alta en plataforma y configuración de perfil del establecimiento",
-    "Definición de franjas horarias de recogida adaptadas a operativa",
-    "Formación personal en preparación de \"magic boxes\"",
-    "Protocolo de seguridad alimentaria para productos comercializados (temperatura, etiquetado)",
-    "Medición mensual de kg salvados y equivalente CO₂"
+    "Alta del establecimiento en plataforma de redistribución (TGTG, Phenix u otra local)",
+    "Definir franjas horarias de recogida compatibles con operativa (post-almuerzo, post-cena)",
+    "Protocolo de preparación de packs: selección, verificación Tª, envasado seguro, etiquetado alérgenos",
+    "Formar a mín. 2 personas en el procedimiento operativo de la plataforma",
+    "Registro mensual de kg redistribuidos y equivalente CO₂ evitado"
   ],
   '10': [
-    "Programa formativo según Ley 7/2022 Art. 8 (mínimo 2h anuales)",
-    "Contenidos: jerarquía desperdicio, medición, técnicas de reducción",
-    "Evaluación de conocimientos adquiridos (registro obligatorio)",
-    "Actualización anual con nuevas técnicas y normativa",
-    "Designación de responsable interno PPDA"
+    "Programa formativo anual (mín. 2h): jerarquía de prioridades, medición, aprovechamiento integral",
+    "Impartir formación inicial a todo el personal de cocina antes del 3 de abril de 2026",
+    "Evaluación de conocimientos con test escrito/práctico y registro firmado por trabajador",
+    "Sesión de actualización anual con resultados PPDA del año anterior y cambios normativos",
+    "Designación formal del responsable PPDA (Champion) con nombramiento escrito y funciones definidas"
   ],
   '11': [
-    "Formación específica en comunicación con cliente sobre raciones",
-    "Técnicas de servicio para minimizar devoluciones",
-    "Protocolo de actuación ante excedentes en platos",
-    "Conocimiento de política de donación y reducción del establecimiento",
-    "Evaluación y certificado interno de competencia"
+    "Módulo formativo específico sala (mín. 1,5h): comunicación raciones, take-away, devoluciones",
+    "Role-playing práctico: simulación de situaciones con cliente (ración grande, alergia, media ración)",
+    "Protocolo escrito de actuación ante excedentes en platos: ofrecer envase, preguntar satisfacción",
+    "Formar al personal en la política de donación y reducción del establecimiento",
+    "Certificado interno de competencia con registro nominal, fecha y contenidos"
   ],
   '12': [
-    "Instalación de contenedores de medición diferenciados (desayuno/almuerzo/cena/cocina/almacén)",
-    "Registro diario con báscula calibrada (kg por fracción)",
-    "Categorización según origen: preparación/servicio/devoluciones clientes",
-    "Software de registro conforme Art. 4 Ley 7/2022 (medición obligatoria)",
-    "Informe mensual con análisis de tendencias y puntos críticos"
+    "Contenedores diferenciados y señalizados por zona: desayuno, almuerzo, cena, cocina, almacén, personal, cliente",
+    "Báscula en cada punto de medición con registro rutinario (kg, hora, responsable y ratios de ocupación)",
+    "Categorización de cada pesaje por origen: mermas, sobreproducción, buffet, devolución cliente, caducidad",
+    "Sistema de registro digital (app/Excel/Effiwaste o HSAPP) con trazabilidad e informes automáticos",
+    "Informe mensual: tendencias, comparativa servicios, ratio g/comensal, puntos críticos y acciones correctoras"
   ],
   '13': [
-    "Contrato con gestor autorizado para fracción orgánica (código LER 20 01 08)",
-    "Segregación en origen con contenedor específico señalizado",
-    "Justificante de entrega a gestor con kg y destino (compostaje/biogás)",
-    "Cálculo de tasa de valorización: (kg valorizados/kg totales)×100",
-    "Objetivo: ≥70% según Directiva (UE) 2018/851"
+    "Contrato con gestor autorizado para fracción orgánica (LER 20 01 08) con destino compostaje/biogás",
+    "Contenedor específico señalizado para orgánico en cocina y zona de residuos",
+    "Justificantes de entrega al gestor: fecha, kg, destino final, nº autorización",
+    "Cálculo mensual tasa de valorización: (kg valorizados / kg orgánicos totales) × 100, objetivo ≥70%",
+    "Evaluación trimestral de viabilidad de compostaje in situ para fracción verde"
   ],
   '14': [
-    "Adquisición de envases aptos para contacto alimentario (Reglamento UE 10/2011)",
-    "Señalización visible en carta y establecimiento",
-    "Protocolo de envasado garantizando seguridad alimentaria (temperatura, cierre)",
-    "Información sobre conservación y consumo en domicilio",
-    "Registro de servicios con \"take away\" para medición de impacto"
+    "Adquirir envases aptos contacto alimentario (Reg. UE 10/2011), reutilizables o reciclables, sin plástico un solo uso",
+    "Mención visible en carta y señalética en comedor: «Puede llevarse lo no consumido — solicítelo»",
+    "Protocolo de envasado seguro: cadena frío/calor, cierre hermético, etiqueta con fecha y conservación",
+    "Formar a sala para ofrecer activamente el envase al retirar platos con sobras",
+    "Registro mensual de envases entregados para cuantificar impacto"
   ],
   '15': [
-    "Sistema de autoservicio con gramajes visibles y controlados",
-    "Posibilidad de repetir en lugar de servir ración completa inicial",
-    "Encuesta de satisfacción sobre cantidades servidas",
-    "Segregación específica de residuos comedor personal para medición",
-    "Campaña de sensibilización interna sobre impacto desperdicio"
+    "Autoservicio con gramajes visibles: cucharones estandarizados e indicación de gramos por ración",
+    "Permitir repetir en lugar de ración completa inicial con señalética «Sírvase lo justo — puede repetir»",
+    "Encuesta trimestral anónima al personal sobre cantidades, variedad y calidad del menú",
+    "Contenedor de medición específico para residuos de comedor de personal con pesaje diario",
+    "Campaña interna de sensibilización con cartelería y datos mensuales de desperdicio"
   ],
   '16': [
-    "Análisis histórico de consumo real vs. comprado (últimos 12 meses)",
-    "Implementación de sistema de compra basada en previsión de ocupación",
-    "Negociación con proveedores de entregas fraccionadas (reducir stock)",
-    "Especificaciones de compra con formatos adaptados a necesidades reales",
-    "Revisión trimestral de proveedores según calidad/formato/vida útil productos"
+    "Análisis de 12 meses de consumo real vs comprado, identificando las 10 referencias con mayor desviación",
+    "Compra basada en previsión de ocupación semanal (PMS) con revisión de pedidos cada lunes",
+    "Negociar entregas fraccionadas con proveedores (mín. 2-3/semana en frescos) para reducir stock",
+    "Especificaciones de compra con formatos adaptados: calibres, pesos unitarios, envasado que minimice merma",
+    "Revisión trimestral de proveedores: calidad, formatos, vida útil residual y tasa de rechazos"
   ],
   '17': [
-    "Menús con aprovechamiento transversal de ingredientes base",
-    "Incorporación de platos que utilicen partes \"nobles\" no convencionales",
-    "Ajuste de oferta según temporada y disponibilidad local (km0)",
-    "Eliminación de referencias con bajo índice de rotación (ventas <5%)",
-    "Carta dinámica con sugerencias según excedentes de calidad"
+    "Menús con aprovechamiento transversal: un mismo ingrediente base en 3+ elaboraciones del ciclo",
+    "Platos de «cocina de aprovechamiento» con partes no convencionales (tallos, pieles, recortes)",
+    "Priorizar producto de temporada y km 0 en mín. 30% de las referencias de carta",
+    "Eliminar referencias con rotación <5% de ventas en los últimos 3 meses",
+    "Carta dinámica con «sugerencias del día» basadas en excedentes de calidad y producto próximo a caducidad"
   ],
   '18': [
-    "KPI principal: kg desperdicio/comensal/día (objetivo <150g según MAPA)",
-    "Ratio desperdicio/kg alimento comprado (objetivo <10%)",
-    "% excedentes aptos donados (objetivo 100%)",
-    "Tasa valorización residuos orgánicos (objetivo ≥70%)",
-    "Dashboard mensual con evolución y comparativa vs. objetivos"
+    "KPI principal: g desperdicio/comensal/día con objetivo progresivo hacia <150 g (referencia MAPA)",
+    "Ratio mensual desperdicio/compras: (kg desperdicio / kg comprado) × 100, objetivo <10%",
+    "Porcentaje de excedentes aptos donados vs generados, objetivo 100%",
+    "Tasa de valorización orgánica mensual, objetivo ≥70% (Directiva 2018/851)",
+    "Dashboard mensual consolidado con evolución KPIs, comparativa vs objetivos y semáforo de cumplimiento"
   ],
   '19': [
-    "Evaluación de tecnologías de envasado al vacío/atmósfera protectora",
-    "Abatidor rápido de temperatura para optimizar conservación",
-    "Estudio de vida útil real de elaboraciones propias (challenge test)",
-    "Protocolo de congelación de excedentes aptos para uso posterior",
-    "Formación en técnicas de conservación avanzadas (sous-vide, deshidratación)"
+    "Evaluar implantación de envasado al vacío/MAP para elaboraciones con alta generación de excedentes",
+    "Verificar uso sistemático del abatidor (centro producto <3°C en <90 min) para excedentes aptos",
+    "Estudio de vida útil (shelf life/challenge test) de las 5 elaboraciones propias de mayor volumen",
+    "Protocolo de congelación de excedentes: criterios aptitud, método, etiquetado, plazo y registro de salida",
+    "Formación específica (mín. 2h) en conservación avanzada: sous-vide, deshidratación, fermentación"
   ],
   '20': [
-    "Aprovechamiento de recortes vegetales para elaboración caldos/fondos",
-    "Pieles cítricos para elaboraciones (infusiones, aromatizantes)",
-    "Huesos y espinas para fumet/consomés",
-    "Pan duro para ralladura, picatostes, puddings",
-    "Registro de kg subproductos valorizados internamente"
+    "Recetario interno de aprovechamiento: caldos con huesos/recortes, fumet con espinas, chips de piel, infusiones cítricos",
+    "Pan duro destinado a elaboraciones documentadas: pan rallado, picatostes, pudding, torrijas, migas",
+    "Producción semanal programada de fondos y fumets con huesos y espinas, con ficha APPCC",
+    "Valorización de pieles de cítricos: aromatización, mermeladas, ralladura, confituras",
+    "Registro semanal de kg subproductos valorizados vs kg totales de mermas (indicador de circularidad)"
   ]
 };

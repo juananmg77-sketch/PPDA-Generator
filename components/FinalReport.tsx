@@ -1137,11 +1137,6 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                                     <td className="p-2 border border-slate-300">Producto reutilizado, temperatura regeneración (°C), hora, operario, destino final</td>
                                     <td className="p-2 border border-slate-300">Cocinero responsable / Cada lote regenerado</td>
                                 </tr>
-                                <tr>
-                                    <td className="p-2 border border-slate-300 font-mono text-[10px]">REG-DA-03 — KPI Cuantificación de Desperdicio</td>
-                                    <td className="p-2 border border-slate-300">Kg Totales y Relativos por puntos de generación y fecha</td>
-                                    <td className="p-2 border border-slate-300">Responsable PPDA / Diario o por servicio</td>
-                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -1485,8 +1480,8 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                             { paso: 'PASO 1 — Identificación y segregación', desc: 'Al cierre de servicio, el Jefe de Cocina clasifica los excedentes según el Anexo IV. Los aptos para donación se segregan de los destinados a reutilización interna o descarte.' },
                             { paso: 'PASO 2 — Envasado e identificación', desc: 'Los alimentos aptos se envasan herméticamente y se etiquetan con: denominación, peso neto (kg), fecha y hora de elaboración/envasado, temperatura de conservación, alérgenos (Reg. UE 1169/2011), fecha límite de consumo e identificación del lote/servicio.' },
                             { paso: 'PASO 3 — Conservación temporal', desc: 'Almacenamiento en zona señalizada "DONACIÓN — PENDIENTE DE RECOGIDA" a ≤4°C (perecederos) o ≤-18°C (congelados).' },
-                            { paso: 'PASO 4 — Entrega y documentación', desc: 'Verificación del recolector autorizado y del vehículo de transporte. Firma del REG-DON-02 por ambas partes (fecha, hora, descripción, cantidad en kg, temperatura de entrega, firmas).' },
-                            { paso: 'PASO 5 — Gestión de donación rechazada', desc: 'Documentar motivo en REG-DON-02. Aplicar jerarquía Art. 5: alimentación animal → subproductos → compostaje/biogás → residuo orgánico.' },
+                            { paso: 'PASO 4 — Entrega y documentación', desc: 'Verificación del recolector autorizado y del vehículo de transporte. Registro en REG-DON-01 por ambas partes (fecha, hora, descripción, cantidad en kg, temperatura de entrega).' },
+                            { paso: 'PASO 5 — Gestión de donación rechazada', desc: 'Documentar motivo en REG-DON-01. Aplicar jerarquía Art. 5: alimentación animal → subproductos → compostaje/biogás → residuo orgánico.' },
                         ].map((p, i) => (
                             <div key={i} className="flex gap-3 border-l-4 border-brand-500 bg-slate-50 p-3 rounded-r">
                                 <span className="font-black text-slate-800 min-w-[220px] shrink-0 text-[11px]">{p.paso}</span>
@@ -1510,8 +1505,6 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 <tr><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-01 — Registro de Donaciones Realizadas</td><td className="p-2 border border-slate-200">Fecha, descripción del alimento, cantidad (kg), tipo de alimento, hora de entrega, entidad receptora, nombre del receptor, observaciones.</td><td className="p-2 border border-slate-200">Responsable PPDA / Cada donación</td></tr>
-                                <tr className="bg-slate-50"><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-02 — Documento de Entrega de Donación</td><td className="p-2 border border-slate-200">Fecha, hora, listado de productos con peso, temperatura de entrega, alérgenos, fecha límite de consumo, firma del entregante, firma del receptor, motivo de rechazo (si aplica).</td><td className="p-2 border border-slate-200">Responsable de Donación / Cada entrega</td></tr>
-                                <tr><td className="p-2 border border-slate-200 font-mono text-[10px]">REG-DON-03 — Registro de Convenios Vigentes</td><td className="p-2 border border-slate-200">Entidad receptora, fecha de firma, vigencia, frecuencia de recogida pactada, persona de contacto, teléfono, condiciones especiales.</td><td className="p-2 border border-slate-200">Dirección / Actualización anual</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1527,15 +1520,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                                 <tr><th className="p-2 border border-slate-200 w-[20%]">KPI</th><th className="p-2 border border-slate-200">Descripción</th></tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {[
-                                    { kpi: 'KPI-DON-01', desc: 'Kg totales donados / mes.' },
-                                    { kpi: 'KPI-DON-02', desc: '% de excedentes aptos efectivamente donados (objetivo: 100%).' },
-                                    { kpi: 'KPI-DON-03', desc: 'Número de entregas realizadas / mes.' },
-                                    { kpi: 'KPI-DON-04', desc: 'Número de rechazos por parte de la entidad receptora / trimestre.' },
-                                    { kpi: 'KPI-DON-05', desc: 'Kg de donación rechazada y destino final aplicado (jerarquía Art. 5).' },
-                                ].map((k, i) => (
-                                    <tr key={i} className={i % 2 === 0 ? 'bg-slate-50' : ''}><td className="p-2 border border-slate-200 font-mono font-bold text-[10px]">{k.kpi}</td><td className="p-2 border border-slate-200">{k.desc}</td></tr>
-                                ))}
+                                <tr className="bg-slate-50"><td className="p-2 border border-slate-200 font-mono font-bold text-[10px]">KPI-DON-01</td><td className="p-2 border border-slate-200">Kg totales donados / mes.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1578,7 +1563,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                             <tbody className="divide-y divide-slate-200">
                                 {[
                                     { desv: 'No se realizan donaciones durante ≥30 días con excedentes aptos', inm: 'Revisión del protocolo, contacto urgente con entidad receptora para reactivar recogidas.', prev: 'Evaluar necesidad de segundo convenio con entidad alternativa.' },
-                                    { desv: 'Entrega sin registro documental (REG-DON-02)', inm: 'Reconstruir registro con datos disponibles, refuerzo formativo al personal.', prev: 'Simplificar formulario, integrar en sistema digital.' },
+                                    { desv: 'Entrega sin registro documental (REG-DON-01)', inm: 'Reconstruir registro con datos disponibles, refuerzo formativo al personal.', prev: 'Simplificar formulario, integrar en sistema digital.' },
                                     { desv: 'Rechazo reiterado por entidad receptora (>3/trimestre)', inm: 'Análisis de causas (calidad, cantidad, horario, tipo de producto).', prev: 'Ajuste del convenio o búsqueda de entidad alternativa.' },
                                     { desv: 'Donación de alimentos no aptos (fuera de fecha, sin etiquetado, rotura cadena frío)', inm: 'Retirada inmediata, comunicación a entidad receptora, evaluación de riesgo.', prev: 'Revisión de criterios de aptitud, formación adicional.' },
                                 ].map((m, i) => (

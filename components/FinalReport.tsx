@@ -215,10 +215,12 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                     background: white;
                     z-index: 9999;
                 }
-                /* Espacio para que el contenido no quede debajo del header/footer */
+                /* Espacio para custom header/footer y márgenes laterales (compensan @page margin:0) */
                 #printable-report {
                     padding-top: 14mm !important;
                     padding-bottom: 14mm !important;
+                    padding-left: 15mm !important;
+                    padding-right: 15mm !important;
                 }
             }
             /* Ocultar en pantalla */
@@ -532,12 +534,39 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                 </tbody>
             </table>
 
-            {/* COMPROMISO DE LA DIRECCIÓN (NUEVO BLOQUE) */}
+            {/* COMPROMISO DE LA DIRECCIÓN */}
             <div className="bg-slate-50 border-l-4 border-brand-500 p-6 rounded-r-xl avoid-page-break">
                  <h4 className="font-black text-slate-900 text-sm mb-3 uppercase tracking-wide">Compromiso de la Dirección</h4>
                  <p className="text-xs text-slate-700 text-justify leading-relaxed">
                      La Dirección de <span className="font-bold">{sanitizeForPdf(state.hotelData.nombreComercial)}</span> y todo el equipo responsable manifiestan su firme compromiso con la implementación y seguimiento de este Plan de Prevención. Se garantiza la asignación de los recursos necesarios para alcanzar los objetivos y metas de reducción definidos, integrando la cultura de "Desperdicio Cero" en la operativa diaria y promoviendo la mejora continua del sistema.
                  </p>
+            </div>
+
+            {/* FIRMAS — justo debajo del compromiso */}
+            <div className="mt-8 avoid-page-break">
+                <div className="grid grid-cols-2 gap-20 mb-6">
+                    <div className="text-center flex flex-col items-center">
+                        {state.directorSignature ? (
+                             <img src={state.directorSignature} alt="Firma Dirección" className="h-20 object-contain mb-2 border-b border-slate-300 w-full max-w-[200px]" />
+                        ) : (
+                             <div className="h-20 border-b border-slate-300 mb-2 w-full"></div>
+                        )}
+                        <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-1">Por la Dirección</p>
+                        <p className="text-[10px] text-slate-500 uppercase">{sanitizeForPdf(state.team.find(t => t.id === 'dir')?.nombre || '')}</p>
+                    </div>
+                    <div className="text-center flex flex-col items-center">
+                        {state.consultantSignature ? (
+                            <img src={state.consultantSignature} alt="Firma Consultor" className="h-20 object-contain mb-2 border-b border-slate-300 w-full max-w-[200px]" />
+                        ) : (
+                            <div className="h-20 border-b border-slate-300 mb-2 w-full"></div>
+                        )}
+                        <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-1">Consultor HS Consulting</p>
+                        <p className="text-[10px] text-slate-500 uppercase">{sanitizeForPdf(state.consultor)}</p>
+                    </div>
+                </div>
+                <div className="text-[9px] text-slate-400 text-center uppercase tracking-widest border-t border-slate-100 pt-4">
+                    {today} • Conforme a Ley 1/2025
+                </div>
             </div>
         </section>
 
@@ -649,7 +678,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         </section>
 
         {/* 6. Sistema de Medición y Control */}
-        <section className="mb-8 print-page-break avoid-page-break">
+        <section className="mb-8 print-page-break">
             <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-4 inline-block rounded-sm">6. Sistema de Medición y Control</h3>
             <div className="flex flex-col md:flex-row gap-4 mb-6">
                 <div className="flex-1 border border-slate-200 p-4 bg-white">
@@ -847,34 +876,6 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                     <li><span className="font-bold text-slate-800">Anexo IV:</span> Tabla de Decisión de Reutilización de Excedentes de Buffet Hotelero.</li>
                     <li><span className="font-bold text-slate-800">Anexo V:</span> Protocolo de Donación de Alimentos y Convenios Vigentes (PRO-APPCC-DON-001).</li>
                 </ul>
-            </div>
-        </section>
-
-        {/* 9. Firmas */}
-        <section className="mt-16 avoid-page-break print-page-break" style={{ paddingBottom: '40mm' }}>
-            <h3 className="text-sm font-black text-white bg-slate-900 px-3 py-1 uppercase tracking-widest mb-8 inline-block rounded-sm">9. Firmas y Compromiso</h3>
-            <div className="grid grid-cols-2 gap-20">
-                <div className="text-center flex flex-col items-center">
-                    {state.directorSignature ? (
-                         <img src={state.directorSignature} alt="Firma Dirección" className="h-20 object-contain mb-2 border-b border-slate-300 w-full max-w-[200px]" />
-                    ) : (
-                         <div className="h-20 border-b border-slate-300 mb-2 w-full"></div>
-                    )}
-                    <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-1">Por la Dirección</p>
-                    <p className="text-[10px] text-slate-500 uppercase">{sanitizeForPdf(state.team.find(t => t.id === 'dir')?.nombre || '')}</p>
-                </div>
-                <div className="text-center flex flex-col items-center">
-                    {state.consultantSignature ? (
-                        <img src={state.consultantSignature} alt="Firma Consultor" className="h-20 object-contain mb-2 border-b border-slate-300 w-full max-w-[200px]" />
-                    ) : (
-                        <div className="h-20 border-b border-slate-300 mb-2 w-full"></div>
-                    )}
-                    <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-1">Consultor HS Consulting</p>
-                    <p className="text-[10px] text-slate-500 uppercase">{sanitizeForPdf(state.consultor)}</p>
-                </div>
-            </div>
-            <div className="mt-8 text-[9px] text-slate-400 text-center uppercase tracking-widest border-t border-slate-100 pt-4">
-                {today} • Conforme a Ley 1/2025
             </div>
         </section>
 

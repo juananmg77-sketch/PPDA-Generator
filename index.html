@@ -103,8 +103,9 @@
       /* GESTIÓN GENERAL DE IMPRESIÓN */
       @page {
         size: A4 portrait;
-        /* margin: 0 elimina las cabeceras/pies nativos del navegador (título, URL, fecha) */
-        margin: 0;
+        /* Márgenes reales por página — el navegador gestiona el espacio en cada hoja.
+           Recuerda desmarcar "Encabezados y pies" en el diálogo de impresión. */
+        margin: 15mm 14mm 15mm 14mm;
       }
 
       @media print {
@@ -129,14 +130,15 @@
           visibility: visible;
         }
 
-        /* Posicionar el reporte */
+        /* Posicionar el reporte dentro del área @page */
         #printable-report {
           position: absolute;
           left: 0;
           top: 0;
           width: 100%;
-          margin: 0;
-          padding: 20px 0 0 0;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
         }
 
         .no-print {
@@ -145,10 +147,10 @@
 
         /* OPTIMIZACIÓN DE TEXTO */
         #printable-report * {
-            letter-spacing: 0.2px !important;
-            font-variant-ligatures: none !important;
-            text-rendering: geometricPrecision !important;
-            -webkit-font-smoothing: antialiased !important;
+          letter-spacing: 0.2px !important;
+          font-variant-ligatures: none !important;
+          text-rendering: geometricPrecision !important;
+          -webkit-font-smoothing: antialiased !important;
         }
 
         /* ASEGURAR COLORES DE FONDO */
@@ -163,13 +165,13 @@
           break-before: page !important;
         }
 
-        /* BLOQUES INDIVISIBLES */
+        /* BLOQUES INDIVISIBLES (se mantienen juntos) */
         .avoid-page-break {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
 
-        /* CABECERAS: nunca solas al final de página (van con el contenido siguiente) */
+        /* CABECERAS: no solas al final de página */
         h1, h2, h3, h4, h5, h6 {
           page-break-after: avoid !important;
           break-after: avoid !important;
@@ -177,20 +179,51 @@
           break-inside: avoid !important;
         }
 
-        /* CONTROL DE HUÉRFANOS Y VIUDAS */
         p {
           orphans: 3;
           widows: 3;
         }
 
-        /* FILAS DE TABLA nunca partidas */
+        /* TABLAS: permitir que se repartan entre páginas, pero sin partir filas */
+        table {
+          page-break-inside: auto !important;
+          break-inside: auto !important;
+          border-collapse: collapse !important;
+        }
+
+        tbody {
+          page-break-inside: auto !important;
+          break-inside: auto !important;
+        }
+
         tr, td, th {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
+          page-break-after: auto !important;
         }
 
         thead {
-          display: table-header-group;
+          display: table-header-group !important;
+        }
+
+        tfoot {
+          display: table-footer-group !important;
+        }
+
+        /* CRÍTICO: overflow-hidden/overflow-x-auto bloquea los saltos de página.
+           Forzamos overflow visible en todos los wrappers durante la impresión. */
+        #printable-report .overflow-hidden,
+        #printable-report .overflow-x-auto,
+        #printable-report .overflow-y-auto,
+        #printable-report .overflow-auto {
+          overflow: visible !important;
+        }
+
+        /* Imágenes que no deben cortarse */
+        img, svg {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          max-width: 100% !important;
         }
       }
 

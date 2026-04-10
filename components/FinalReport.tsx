@@ -245,76 +245,55 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
 
       {/* Report Content */}
       <div id="printable-report" ref={printRef} className="bg-white p-12 pb-24 shadow-2xl print:shadow-none print:p-0 text-slate-900">
+        {/* Estilos específicos: se complementan con @media print de index.html */}
         <style dangerouslySetInnerHTML={{__html: `
             #printable-report { overflow: visible !important; }
             .print-page-break { page-break-before: always !important; break-before: page !important; }
             .avoid-page-break { page-break-inside: avoid !important; break-inside: avoid !important; }
-            @media print {
-                .print-page-break { page-break-before: always !important; break-before: page !important; }
-                .avoid-page-break { page-break-inside: avoid !important; break-inside: avoid !important; }
-                h1, h2, h3, h4, h5, h6 {
-                    page-break-after: avoid !important; break-after: avoid !important;
-                    page-break-inside: avoid !important; break-inside: avoid !important;
-                }
-                tr, td, th { page-break-inside: avoid !important; break-inside: avoid !important; }
-                thead { display: table-header-group; }
-                p { orphans: 3; widows: 3; }
 
-                /* Encabezado y pie de página propios — se repiten en cada página */
-                #print-page-header {
-                    display: block !important;
-                    position: fixed;
-                    top: 0; left: 0; right: 0;
-                    height: 10mm;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 0 15mm;
-                    border-bottom: 1px solid #cbd5e1;
-                    font-size: 8pt;
-                    color: #64748b;
-                    background: white;
-                    z-index: 9999;
-                }
-                #print-page-footer {
-                    display: block !important;
-                    position: fixed;
-                    bottom: 0; left: 0; right: 0;
-                    height: 10mm;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    padding: 0 15mm;
-                    border-top: 1px solid #cbd5e1;
-                    font-size: 8pt;
-                    color: #64748b;
-                    background: white;
-                    z-index: 9999;
-                }
-                /* Espacio para custom header/footer y márgenes laterales (compensan @page margin:0) */
+            @media print {
+                /* Overrides específicos del reporte */
                 #printable-report {
-                    padding-top: 14mm !important;
-                    padding-bottom: 14mm !important;
-                    padding-left: 15mm !important;
-                    padding-right: 15mm !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                    box-shadow: none !important;
+                }
+                /* Eliminar overflow que bloquea los saltos en las tablas anidadas */
+                #printable-report .overflow-hidden,
+                #printable-report .overflow-x-auto,
+                #printable-report .overflow-y-auto,
+                #printable-report .overflow-auto {
+                    overflow: visible !important;
+                }
+                /* Permitir que tablas largas se repartan entre páginas */
+                #printable-report table {
+                    page-break-inside: auto !important;
+                    break-inside: auto !important;
+                }
+                #printable-report tbody {
+                    page-break-inside: auto !important;
+                    break-inside: auto !important;
+                }
+                #printable-report tr, #printable-report td, #printable-report th {
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                }
+                #printable-report thead {
+                    display: table-header-group !important;
+                }
+                /* Cabeceras nunca solas al final */
+                #printable-report h1, #printable-report h2, #printable-report h3,
+                #printable-report h4, #printable-report h5, #printable-report h6 {
+                    page-break-after: avoid !important;
+                    break-after: avoid !important;
+                }
+                /* Margen de respiro en la parte superior tras un salto */
+                .print-page-break {
+                    padding-top: 4mm !important;
                 }
             }
-            /* Ocultar en pantalla */
-            #print-page-header, #print-page-footer { display: none; }
         `}} />
 
-        {/* Encabezado de página — visible solo al imprimir */}
-        <div id="print-page-header">
-            <span style={{ fontWeight: 700, color: '#1e293b' }}>PPDA · {sanitizeForPdf(state.scope === 'corporate' ? state.society.razonSocial : state.hotelData.nombreComercial)}</span>
-            <span>{state.version} · {sanitizeForPdf(state.fechaVisita || state.periodoPlan)}</span>
-        </div>
-
-        {/* Pie de página — visible solo al imprimir */}
-        <div id="print-page-footer">
-            <span>© HS Consulting Group</span>
-            <span>Según Ley 1/2025 de prevención de las pérdidas y el desperdicio alimentario</span>
-        </div>
-        
         {/* Header */}
         <header className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8 avoid-page-break">
             <div className="flex items-center gap-4 min-w-0">

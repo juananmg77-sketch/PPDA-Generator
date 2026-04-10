@@ -136,7 +136,33 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
 
     setIsGeneratingPdf(true);
 
-    // Ocultar botones y elementos no-print durante la generación
+    // Clonamos el elemento a un contenedor aislado con ancho A4 fijo.
+    // Esto evita que el `max-w-4xl mx-auto` del padre desplace el contenido.
+    const A4_WIDTH_PX = 794; // 210mm a 96dpi
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.style.width = `${A4_WIDTH_PX}px`;
+    clone.style.maxWidth = 'none';
+    clone.style.margin = '0';
+    clone.style.padding = '0';
+    clone.style.background = '#ffffff';
+    clone.style.boxShadow = 'none';
+    clone.style.position = 'relative';
+    clone.style.left = '0';
+    clone.style.top = '0';
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = '0';
+    wrapper.style.left = '-10000px';
+    wrapper.style.width = `${A4_WIDTH_PX}px`;
+    wrapper.style.background = '#ffffff';
+    wrapper.style.zIndex = '-1';
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    // Esperar a que el layout del clon se asiente
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     const hotelName = state.scope === 'corporate'
       ? state.society.razonSocial
       : state.hotelData.nombreComercial;
@@ -144,15 +170,16 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
     const filename = `PPDA ${safeName}${state.version ? ' ' + state.version : ''}.pdf`;
 
     const options = {
-      margin: [15, 12, 15, 12], // top, left, bottom, right (mm)
+      margin: [15, 15, 15, 15], // top, left, bottom, right (mm)
       filename,
       image: { type: 'jpeg' as const, quality: 0.98 },
       html2canvas: {
         scale: 2,
         useCORS: true,
-        letterRendering: true,
+        backgroundColor: '#ffffff',
         logging: false,
-        windowWidth: 1200,
+        width: A4_WIDTH_PX,
+        windowWidth: A4_WIDTH_PX,
       },
       jsPDF: {
         unit: 'mm' as const,
@@ -161,18 +188,20 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
         compress: true,
       },
       pagebreak: {
+        // Mode 'css' respeta page-break-* ya declarado en .print-page-break;
+        // 'legacy' respeta los <div class="html2pdf__page-break"> ya presentes.
         mode: ['css', 'legacy'],
-        before: '.print-page-break',
-        avoid: ['.avoid-page-break', 'tr', 'thead', 'img'],
+        avoid: ['.avoid-page-break', 'tr', 'thead'],
       },
     };
 
     try {
-      await window.html2pdf().set(options).from(element).save();
+      await window.html2pdf().set(options).from(clone).save();
     } catch (e) {
       console.error('PDF generation failed:', e);
       alert('Error generando el PDF. Revisa la consola para más detalles.');
     } finally {
+      if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
       setIsGeneratingPdf(false);
     }
   };

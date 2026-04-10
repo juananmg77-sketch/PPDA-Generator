@@ -6,6 +6,8 @@ declare global {
   interface Window {
     pdfjsLib: any;
     html2pdf: any;
+    html2canvas: any;
+    jspdf: any;
   }
 }
 
@@ -129,12 +131,23 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
 
   const handleDownloadPdf = async () => {
     const element = printRef.current;
-    if (!element || !window.html2pdf) {
-      alert('La librería PDF aún se está cargando. Inténtalo de nuevo en unos segundos.');
+    if (!element) return;
+
+    // El bundle html2pdf.js expone jsPDF y html2canvas como globals
+    const html2canvas = window.html2canvas;
+    const jsPDFCtor = window.jspdf?.jsPDF;
+
+    if (!html2canvas || !jsPDFCtor) {
+      alert('Librerías PDF no cargadas. Recarga la página e inténtalo de nuevo.');
       return;
     }
 
     setIsGeneratingPdf(true);
+
+    // Esperar a que las fuentes terminen de cargar
+    try {
+      await (document as any).fonts?.ready;
+    } catch {}
 
     const hotelName = state.scope === 'corporate'
       ? state.society.razonSocial
@@ -142,50 +155,192 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
     const safeName = (hotelName || 'PPDA').replace(/[^a-zA-Z0-9\- ]/g, '').trim();
     const filename = `PPDA ${safeName}${state.version ? ' ' + state.version : ''}.pdf`;
 
-    // Forzar ancho exacto y quitar padding/sombras durante la captura
-    // para eliminar el margen izquierdo fantasma que deja html2canvas.
-    const originalStyle = element.getAttribute('style') || '';
-    element.setAttribute(
-      'style',
-      `${originalStyle};width:794px !important;max-width:794px !important;padding:32px !important;margin:0 !important;box-shadow:none !important;background:#ffffff !important;`
-    );
+    // ====== PARÁMETROS DE PÁGINA ======
+    const PAGE_WIDTH_MM = 210;
+    const PAGE_HEIGHT_MM = 297;
+    const MARGIN_MM = 12;
+    const CONTENT_WIDTH_MM = PAGE_WIDTH_MM - 2 * MARGIN_MM;   // 186
+    const CONTENT_HEIGHT_MM = PAGE_HEIGHT_MM - 2 * MARGIN_MM; // 273
+    const RENDER_WIDTH_PX = 794; // A4 a 96dpi
+    const SCALE = 2; // factor de escala html2canvas
 
-    const options = {
-      margin: [12, 12, 12, 12], // mm
-      filename,
-      image: { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        scrollX: 0,
-        scrollY: -window.scrollY,
-        windowWidth: 794,
-        width: 794,
-      },
-      jsPDF: {
-        unit: 'mm' as const,
-        format: 'a4' as const,
-        orientation: 'portrait' as const,
-        compress: true,
-      },
-      pagebreak: {
-        // Un único mecanismo: selector `before` para .print-page-break.
-        // `avoid-all` respeta además los page-break-inside: avoid.
-        mode: ['avoid-all'],
-        before: '.print-page-break',
-        avoid: ['.avoid-page-break', 'tr', 'thead'],
-      },
-    };
+    // ====== 1. DIVIDIR EN CHUNKS (cada .print-page-break es nueva página) ======
+    const children = Array.from(element.children).filter(
+      c => c.tagName !== 'STYLE'
+    ) as HTMLElement[];
+
+    const chunks: HTMLElement[][] = [];
+    let currentChunk: HTMLElement[] = [];
+    for (const child of children) {
+      if (child.classList.contains('print-page-break') && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = [];
+      }
+      currentChunk.push(child);
+    }
+    if (currentChunk.length > 0) chunks.push(currentChunk);
+
+    // ====== 2. CREAR EL PDF ======
+    const pdf = new jsPDFCtor({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+      compress: true,
+    });
 
     try {
-      await window.html2pdf().set(options).from(element).save();
+      let isFirstPage = true;
+
+      for (const chunk of chunks) {
+        // ====== 3. CLONAR EL CHUNK A UN CONTENEDOR TEMPORAL ======
+        const temp = document.createElement('div');
+        temp.id = 'pdf-render-temp';
+        temp.style.cssText = [
+          'position:fixed',
+          'top:0',
+          'left:-10000px',
+          `width:${RENDER_WIDTH_PX}px`,
+          'background:#ffffff',
+          'padding:32px',
+          'margin:0',
+          'box-sizing:border-box',
+          'font-family:Inter, sans-serif',
+          'color:#0f172a',
+        ].join(';');
+
+        chunk.forEach(el => {
+          const clone = el.cloneNode(true) as HTMLElement;
+          // Neutralizar print-page-break en el clon (ya manejamos la paginación manualmente)
+          clone.classList.remove('print-page-break');
+          temp.appendChild(clone);
+        });
+
+        document.body.appendChild(temp);
+
+        // Pausa para que Tailwind JIT procese los clones y el layout se asiente
+        await new Promise(r => setTimeout(r, 150));
+
+        // ====== 4. RENDER A CANVAS ======
+        const canvas = await html2canvas(temp, {
+          scale: SCALE,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          windowWidth: RENDER_WIDTH_PX,
+          width: RENDER_WIDTH_PX,
+        });
+
+        // ====== 5. CALCULAR PUNTOS SEGUROS DE CORTE ======
+        // Posiciones Y (en canvas px) donde podemos cortar sin partir contenido.
+        // Incluye: final de cada fila de tabla, final de cada bloque .avoid-page-break,
+        // final de cada párrafo/heading/lista principal.
+        const tempRect = temp.getBoundingClientRect();
+        const tempHeight = temp.offsetHeight;
+        const canvasToTempScale = canvas.height / tempHeight;
+
+        const safeSelectors = [
+          'tr',               // filas de tabla
+          '.avoid-page-break',// bloques que no deben partirse (se corta AL FINAL del bloque)
+          'section > div',    // subbloques dentro de secciones
+          'section > p',
+          'section > h3',
+          'section > h4',
+          'section > ul',
+          'section > ol',
+          'div > p',
+          '> div > div',
+          'h3', 'h4', 'h5',
+          'li',
+        ].join(', ');
+
+        const safeEls = Array.from(temp.querySelectorAll(safeSelectors)) as HTMLElement[];
+        const safePointsPx = new Set<number>();
+        safePointsPx.add(0);
+        safePointsPx.add(canvas.height);
+
+        for (const el of safeEls) {
+          const r = el.getBoundingClientRect();
+          const bottomRelative = r.bottom - tempRect.top;
+          const bottomCanvasPx = bottomRelative * canvasToTempScale;
+          if (bottomCanvasPx > 0 && bottomCanvasPx <= canvas.height) {
+            // Añadir 4px de respiro (evita cortar justo en el borde inferior de un bloque)
+            safePointsPx.add(Math.floor(bottomCanvasPx) + 4);
+          }
+        }
+
+        const sortedSafePoints = Array.from(safePointsPx).sort((a, b) => a - b);
+
+        // ====== 6. CALCULAR EL ALTO DE PÁGINA EN CANVAS PX ======
+        const pxPerMm = canvas.width / CONTENT_WIDTH_MM;
+        const pageHeightPx = CONTENT_HEIGHT_MM * pxPerMm;
+
+        // ====== 7. TROCEAR Y AÑADIR PÁGINAS ======
+        let currentY = 0;
+        while (currentY < canvas.height - 1) {
+          const desiredEnd = currentY + pageHeightPx;
+          let sliceEnd: number;
+
+          if (desiredEnd >= canvas.height) {
+            // Cabe todo lo que queda en una página
+            sliceEnd = canvas.height;
+          } else {
+            // Buscar el mayor punto seguro dentro de (currentY, desiredEnd]
+            // Requerimos que el punto esté al menos a un 50% del alto de página
+            // para evitar páginas casi vacías
+            const minSliceHeight = pageHeightPx * 0.5;
+            let bestSafe = 0;
+            for (const sp of sortedSafePoints) {
+              if (sp <= desiredEnd && sp >= currentY + minSliceHeight) {
+                bestSafe = sp;
+              }
+            }
+            sliceEnd = bestSafe > 0 ? bestSafe : desiredEnd;
+          }
+
+          const sliceHeightPx = Math.ceil(sliceEnd - currentY);
+          if (sliceHeightPx <= 0) break;
+
+          // Crear canvas de slice con fondo blanco
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceHeightPx;
+          const ctx = sliceCanvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+            ctx.drawImage(canvas, 0, -currentY);
+          }
+
+          const imgData = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceHeightMm = sliceHeightPx / pxPerMm;
+
+          if (!isFirstPage) pdf.addPage();
+          isFirstPage = false;
+
+          pdf.addImage(
+            imgData,
+            'JPEG',
+            MARGIN_MM,
+            MARGIN_MM,
+            CONTENT_WIDTH_MM,
+            Math.min(sliceHeightMm, CONTENT_HEIGHT_MM)
+          );
+
+          currentY = sliceEnd;
+        }
+
+        // Limpiar el contenedor temporal antes del siguiente chunk
+        document.body.removeChild(temp);
+      }
+
+      pdf.save(filename);
     } catch (e) {
       console.error('PDF generation failed:', e);
-      alert('Error generando el PDF. Revisa la consola para más detalles.');
+      alert(`Error generando el PDF: ${(e as Error).message || 'error desconocido'}`);
+      // Limpiar cualquier temp que haya quedado
+      const leftover = document.getElementById('pdf-render-temp');
+      if (leftover?.parentNode) leftover.parentNode.removeChild(leftover);
     } finally {
-      element.setAttribute('style', originalStyle);
       setIsGeneratingPdf(false);
     }
   };

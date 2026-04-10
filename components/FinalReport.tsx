@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { AppState } from '../types';
-import { Printer, FileText, CloudUpload, RefreshCw, GitBranch } from 'lucide-react';
+import { Printer, FileText, CloudUpload, RefreshCw, GitBranch, Download } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -99,6 +99,7 @@ const sanitizeForPdf = (text: string): string => {
 
 export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onCloudSave, onSaveNewVersion, isSyncing }) => {
   const printRef = useRef<HTMLDivElement>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const getWeighingPoints = () => {
       if (state.scope === 'corporate') {
@@ -124,6 +125,56 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadPdf = async () => {
+    const element = printRef.current;
+    if (!element || !window.html2pdf) {
+      alert('La librería PDF aún se está cargando. Inténtalo de nuevo en unos segundos.');
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    // Ocultar botones y elementos no-print durante la generación
+    const hotelName = state.scope === 'corporate'
+      ? state.society.razonSocial
+      : state.hotelData.nombreComercial;
+    const safeName = (hotelName || 'PPDA').replace(/[^a-zA-Z0-9\- ]/g, '').trim();
+    const filename = `PPDA ${safeName}${state.version ? ' ' + state.version : ''}.pdf`;
+
+    const options = {
+      margin: [15, 12, 15, 12], // top, left, bottom, right (mm)
+      filename,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        letterRendering: true,
+        logging: false,
+        windowWidth: 1200,
+      },
+      jsPDF: {
+        unit: 'mm' as const,
+        format: 'a4' as const,
+        orientation: 'portrait' as const,
+        compress: true,
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+        before: '.print-page-break',
+        avoid: ['.avoid-page-break', 'tr', 'thead', 'img'],
+      },
+    };
+
+    try {
+      await window.html2pdf().set(options).from(element).save();
+    } catch (e) {
+      console.error('PDF generation failed:', e);
+      alert('Error generando el PDF. Revisa la consola para más detalles.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
 
@@ -161,8 +212,20 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
                     <span className="hidden sm:inline">Nueva versión</span>
                 </button>
             )}
+            <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-colors shadow-sm ${
+                    isGeneratingPdf
+                    ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                    : 'bg-brand-600 text-white hover:bg-brand-700'
+                }`}
+            >
+                {isGeneratingPdf ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                {isGeneratingPdf ? 'Generando PDF...' : 'Descargar PDF'}
+            </button>
             <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-colors shadow-sm">
-                <Printer size={16} /> Imprimir / PDF
+                <Printer size={16} /> Imprimir
             </button>
         </div>
       </div>

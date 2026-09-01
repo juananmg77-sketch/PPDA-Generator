@@ -1221,8 +1221,10 @@ const App: React.FC = () => {
       {/* Sidebar navegación */}
       <aside className="w-52 bg-white border-r border-slate-200 flex-shrink-0 flex flex-col no-print overflow-y-auto">
         <nav className="flex-1 py-3">
-          {STEP_CONFIG.map(({ num, label, Icon, section }) => {
-            if (state.scope === 'corporate' && num === 2) return null;
+          {(() => {
+            const visibleSteps = STEP_CONFIG.filter(({ num }) => !(state.scope === 'corporate' && num === 2));
+            return visibleSteps.map(({ num, label, Icon, section }, idx) => {
+            const displayNum = idx + 1;
             const isActive = state.step === num;
             return (
               <React.Fragment key={num}>
@@ -1246,12 +1248,13 @@ const App: React.FC = () => {
                   )}
                   <span className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 text-[10px] font-bold transition-colors ${
                     isActive ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
-                  }`}>{num}</span>
+                  }`}>{displayNum}</span>
                   <span className={`text-xs font-medium truncate ${isActive ? 'font-semibold' : ''}`}>{label}</span>
                 </button>
               </React.Fragment>
             );
-          })}
+          });
+          })()}
         </nav>
         {/* Footer sidebar: user info */}
         <div className="px-4 py-3 border-t border-slate-100">

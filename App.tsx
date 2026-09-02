@@ -150,6 +150,7 @@ const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('consultor');
+  const [currentUserHotel, setCurrentUserHotel] = useState<string>('');
   const [view, setView] = useState<'dashboard' | 'wizard' | 'users' | 'registros'>('dashboard');
 
   // Estado para la vista de registros
@@ -731,8 +732,20 @@ const App: React.FC = () => {
   if (!currentUser) {
       return <LoginView onLoginSuccess={async (email) => {
         setCurrentUser(email);
-        const { data } = await supabase.from('profiles').select('role').eq('email', email).single();
-        setCurrentUserRole(data?.role || 'consultor');
+        const { data } = await supabase.from('profiles').select('role, hotel_nombre').eq('email', email).single();
+        const role = data?.role || 'consultor';
+        setCurrentUserRole(role);
+        setCurrentUserHotel(data?.hotel_nombre || '');
+        // Si es operador, cargar plan INTELIER y redirigir a registros
+        if (role === 'operador' && data?.hotel_nombre) {
+          const { data: planRow } = await supabase.from('plans').select('data').eq('plan_id', 'INTELIER-HOTELES-SL').single();
+          if (planRow) {
+            setRegistrosPlanId('INTELIER-HOTELES-SL');
+            setRegistrosHotel(data.hotel_nombre);
+            setRegistrosPlanData(planRow.data);
+            setView('registros');
+          }
+        }
         // Cargar lista de consultores para el selector
         const { data: consultors } = await supabase
           .from('profiles')
@@ -742,6 +755,19 @@ const App: React.FC = () => {
           .order('full_name');
         setConsultorOptions((consultors || []) as { email: string; full_name: string }[]);
       }} />;
+  }
+
+  // RENDER: OPERADOR — solo registro de pesajes de su hotel
+  if (currentUserRole === 'operador') {
+    return (
+      <RegistrosView
+        planId="INTELIER-HOTELES-SL"
+        hotelNombre={currentUserHotel}
+        planData={registrosPlanData}
+        currentUser={currentUser!}
+        onBack={() => {}}
+      />
+    );
   }
 
   // RENDER: CLIENTE (viewer) — solo ve sus planes asignados

@@ -123,7 +123,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
     if (!createdCreds) return;
     const roleLabel = ROLE_CONFIG[createdCreds.role as keyof typeof ROLE_CONFIG]?.label || createdCreds.role;
     const text =
-      `🌱 Acceso a PPDA Generator — HS Consulting\n\n` +
+      `🌱 Acceso a HS Green — Planes de Desperdicio Alimentario\n\n` +
       `Hola ${createdCreds.fullName},\n\n` +
       `Se ha creado tu acceso como ${roleLabel}.\n\n` +
       `🔗 App: https://ppdagenerator.netlify.app\n` +

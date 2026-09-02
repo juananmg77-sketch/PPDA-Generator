@@ -149,7 +149,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
   const ratioEst = estNum > 0 && totalKg > 0 ? (totalKg / estNum).toFixed(3) : null;
   const ratioCom = comNum > 0 && totalKg > 0 ? (totalKg / comNum).toFixed(3) : null;
 
-  const canConfirm = isP1 ? comNum > 0 : totalKg > 0;
+  const canConfirm = isP1 ? comNum > 0 : (existing != null || totalKg > 0);
 
   const handleConfirm = () => {
     const desgloseNums = usesDesglose
@@ -160,11 +160,13 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
         )
       : undefined;
     // P1: siempre guarda comensales; kg = calculado o manual
-    const finalComensales = isP1 ? comNum : (rel === 'comensal' || rel === 'ambos') ? (comNum || null) : null;
+    const comFinal = comensales.trim() !== '' ? comNum : null;
+    const estFinal = estancias.trim() !== '' ? estNum : null;
+    const finalComensales = isP1 ? comNum : (rel === 'comensal' || rel === 'ambos') ? comFinal : null;
     onConfirm(
       totalKg,
-      (rel === 'estancia' || rel === 'ambos') ? (estNum || null) : null,
-      finalComensales || null,
+      (rel === 'estancia' || rel === 'ambos') ? estFinal : null,
+      finalComensales,
       desgloseNums as Record<string, number> | undefined,
     );
   };

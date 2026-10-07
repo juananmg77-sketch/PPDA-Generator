@@ -59,10 +59,11 @@ function isMermaArea(a: Area): boolean {
   return a.tipoServicio?.toLowerCase().includes('merma') || a.nombre?.toLowerCase() === 'merma';
 }
 
-function getZonas(registros: PesajeRow[], areas: Area[]): { id: string; nombre: string }[] {
+function getZonas(registros: PesajeRow[], areas: Area[], hotels: any[] = []): { id: string; nombre: string }[] {
+  const allAreas = [...areas, ...hotels.flatMap((h: any) => h.areas || [])];
   const ids = [...new Set(registros.map(r => r.area_id || r.areaId || '').filter(Boolean))];
   return ids.map(id => {
-    const area = areas.find(a => a.id === id);
+    const area = allAreas.find(a => a.id === id);
     return { id, nombre: area?.nombre || id };
   });
 }
@@ -138,7 +139,7 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
   }, [comparativaMonth]);
 
   const months = useMemo(() => getMonthsForPeriod(period), [period]);
-  const zonas  = useMemo(() => getZonas(registros, areas), [registros, areas]);
+  const zonas  = useMemo(() => getZonas(registros, areas, hotels), [registros, areas, hotels]);
 
   const comparativaLabel = useMemo(() => {
     const [y, m] = comparativaMonth.split('-').map(Number);
@@ -431,11 +432,18 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
           <p className="text-2xl font-black text-brand-600">{avgEstancia !== null ? avgEstancia.toFixed(3) : '—'}</p>
           <p className="text-[10px] text-slate-400 mt-0.5">promedio del mes</p>
         </div>
-        {/* kg/comensal */}
+        {/* kg/comensal — ratio total (evitable + merma) si hay merma, si no evitable, si no per-registro */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1"><Users size={9}/> kg/comensal</p>
-          <p className="text-2xl font-black text-brand-600">{avgComensal !== null ? avgComensal.toFixed(3) : '—'}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">promedio del mes</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1">
+            <Users size={9}/>
+            {ratioTotalCom !== null ? 'Ratio total/com.' : ratioEvitableCom !== null ? 'Ratio evitable/com.' : 'kg/comensal'}
+          </p>
+          <p className="text-2xl font-black" style={{ color: ratioTotalCom !== null ? '#7c3aed' : '#1a3d2b' }}>
+            {(ratioTotalCom ?? ratioEvitableCom ?? avgComensal)?.toFixed(3) ?? '—'}
+          </p>
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            {ratioTotalCom !== null ? 'evitable + merma técnica' : ratioEvitableCom !== null ? 'promedio diario' : 'promedio del mes'}
+          </p>
         </div>
         {/* CO₂ equivalente */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
@@ -492,6 +500,13 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Ratio total/com.</p>
                 <p className="text-xl font-black" style={{ color: '#1a3d2b' }}>{ratioTotalCom.toFixed(3)}<span className="text-xs font-normal text-slate-400 ml-1">kg/com</span></p>
                 <p className="text-[10px] text-slate-400 mt-0.5">incl. merma técnica</p>
+              </div>
+            )}
+            {avgComensal !== null && (
+              <div className="bg-slate-50 rounded-xl px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Media kg/zona/com.</p>
+                <p className="text-xl font-black text-slate-500">{avgComensal.toFixed(3)}<span className="text-xs font-normal text-slate-400 ml-1">kg/com</span></p>
+                <p className="text-[10px] text-slate-400 mt-0.5">promedio por registro de zona</p>
               </div>
             )}
           </div>

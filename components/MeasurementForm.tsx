@@ -72,7 +72,7 @@ const ZoneRow: React.FC<ZoneRowProps> = ({
         </div>
         {/* kg/estancia */}
         <div className="col-span-2 text-right">
-          {(relPor === 'estancia' || relPor === 'ambos') && avgKgEstancia !== null ? (
+          {avgKgEstancia !== null ? (
             <div>
               <span className="text-sm font-bold text-brand-600">{avgKgEstancia.toFixed(3)}</span>
               <span className="text-[9px] text-slate-400 block">kg/est.</span>
@@ -81,7 +81,7 @@ const ZoneRow: React.FC<ZoneRowProps> = ({
         </div>
         {/* kg/comensal */}
         <div className="col-span-2 text-right">
-          {(relPor === 'comensal' || relPor === 'ambos') && avgKgComensal !== null ? (
+          {avgKgComensal !== null ? (
             <div>
               <span className="text-sm font-bold text-brand-600">{avgKgComensal.toFixed(3)}</span>
               <span className="text-[9px] text-slate-400 block">kg/com.</span>

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Lock, ShieldAlert, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Lock, ShieldAlert, LogIn, Eye, EyeOff, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
+
+const PROD_URL = 'https://ppdagenerator.netlify.app';
 
 interface LoginProps {
   onLoginSuccess: (email: string) => void;
@@ -25,6 +27,8 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +56,29 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       } else {
         setError(msg || 'Error al iniciar sesión. Inténtalo de nuevo.');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setError('Introduce tu email corporativo.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        { redirectTo: PROD_URL }
+      );
+      if (resetError) throw resetError;
+      setResetSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Error al enviar el email. Inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -97,69 +124,154 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </div>
 
         <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-slate-800">Iniciar sesión</h2>
-            <p className="text-sm text-slate-500 mt-1">Introduce tus credenciales corporativas</p>
-          </div>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Email corporativo
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="nombre@empresa.com"
-                autoComplete="email"
-                className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-                style={{ '--tw-ring-color': '#1a3d2b' } as any}
-              />
+          {/* ── Modo recuperación: confirmación enviada ── */}
+          {forgotMode && resetSent ? (
+            <div className="text-center">
+              <div className="flex justify-center mb-4">
+                <CheckCircle2 size={48} style={{ color: '#1a3d2b' }} />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Revisa tu email</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Hemos enviado un enlace de recuperación a <strong>{email}</strong>. El enlace caduca en 24 horas.
+              </p>
+              <button
+                onClick={() => { setForgotMode(false); setResetSent(false); setError(null); }}
+                className="text-sm font-semibold flex items-center gap-1.5 mx-auto"
+                style={{ color: '#1a3d2b' }}
+              >
+                <ArrowLeft size={14} /> Volver al inicio de sesión
+              </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
-                Contraseña
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  className="w-full px-4 py-3 pr-12 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-                />
+          ) : forgotMode ? (
+            /* ── Modo recuperación: formulario ── */
+            <>
+              <div className="mb-8">
                 <button
-                  type="button"
-                  onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  onClick={() => { setForgotMode(false); setError(null); }}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 mb-4"
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  <ArrowLeft size={13} /> Volver
                 </button>
+                <h2 className="text-2xl font-bold text-slate-800">Recuperar contraseña</h2>
+                <p className="text-sm text-slate-500 mt-1">Te enviaremos un enlace a tu email corporativo</p>
               </div>
-            </div>
 
-            {error && (
-              <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 border border-red-100">
-                <ShieldAlert size={15} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+              <form onSubmit={handleForgotPassword} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Email corporativo
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="nombre@empresa.com"
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                  />
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 border border-red-100">
+                    <ShieldAlert size={15} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#1a3d2b' }}
+                >
+                  {loading
+                    ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                    : <Mail size={16} />}
+                  {loading ? 'Enviando...' : 'Enviar enlace de recuperación'}
+                </button>
+              </form>
+            </>
+
+          ) : (
+            /* ── Login normal ── */
+            <>
+              <div className="mb-8">
+                <h2 className="text-2xl font-bold text-slate-800">Iniciar sesión</h2>
+                <p className="text-sm text-slate-500 mt-1">Introduce tus credenciales corporativas</p>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
-              style={{ backgroundColor: loading ? '#94a3b8' : '#1a3d2b' }}
-            >
-              {loading
-                ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                : <LogIn size={16} />}
-              {loading ? 'Accediendo...' : 'Iniciar sesión'}
-            </button>
-          </form>
+              <form onSubmit={handleLogin} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Email corporativo
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="nombre@empresa.com"
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    style={{ '--tw-ring-color': '#1a3d2b' } as any}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Contraseña
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotMode(true); setError(null); }}
+                      className="text-xs font-medium hover:underline"
+                      style={{ color: '#1a3d2b' }}
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                      className="w-full px-4 py-3 pr-12 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm flex items-start gap-2.5 border border-red-100">
+                    <ShieldAlert size={15} className="shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#1a3d2b' }}
+                >
+                  {loading
+                    ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                    : <LogIn size={16} />}
+                  {loading ? 'Accediendo...' : 'Iniciar sesión'}
+                </button>
+              </form>
+            </>
+          )}
 
           <p className="text-xs text-slate-400 text-center mt-8">
             © {new Date().getFullYear()} HS Consulting · Environment & Sustainability

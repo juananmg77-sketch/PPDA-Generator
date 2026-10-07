@@ -15,6 +15,7 @@ export const GOOGLE_CLIENT_ID = "695386207540-enmngfj6edl6da96neo6meji6jtlptnh.a
 
 export const KPI_CATALOG: { id: string; nombre: string; frecuencia: string; responsable: string }[] = [
   { id: 'kpi_1',    nombre: 'Kg Desperdicio Totales',                          frecuencia: 'Diaria',     responsable: 'Jefe de Cocina' },
+  { id: 'kpi_4',    nombre: 'Kg Desperdicio / Comensal',                       frecuencia: 'Mensual',    responsable: 'F&B Manager' },
   { id: 'kpi_2',    nombre: 'Kg Desperdicio / Estancia',                       frecuencia: 'Mensual',    responsable: 'Calidad' },
   { id: 'kpi_5',    nombre: '% Recuperación de sobras',                        frecuencia: 'Mensual',    responsable: 'Jefe de Cocina' },
   { id: 'kpi_6',    nombre: 'Ratio devolución de platos',                      frecuencia: 'Semanal',    responsable: 'Restaurante' },

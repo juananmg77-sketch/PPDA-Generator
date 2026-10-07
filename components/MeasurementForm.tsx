@@ -158,6 +158,111 @@ const ZoneRow: React.FC<ZoneRowProps> = ({
   );
 };
 
+// ── AggZoneRow — zona agregada (cross-hotel) ────────────────────────────
+interface AggZoneRowProps {
+  nombre: string;
+  hoteles: string[];
+  thisMonthKg: number;
+  totalDays: number;
+  trend: number | null;
+  avgKgEstancia: number | null;
+  avgKgComensal: number | null;
+  costeTotal: number | null;
+  desgloseKgMes: Record<string, number>;
+}
+const AggZoneRow: React.FC<AggZoneRowProps> = ({
+  nombre, hoteles, thisMonthKg, totalDays, trend,
+  avgKgEstancia, avgKgComensal, costeTotal, desgloseKgMes,
+}) => {
+  const [showDesglose, setShowDesglose] = useState(false);
+  const hasDesglose = Object.keys(desgloseKgMes).length > 0;
+  const fmtKg = (kg: number) => kg > 0 ? `${kg.toFixed(1)} kg` : '—';
+  return (
+    <div className="border-b border-slate-50 last:border-0">
+      <div className="px-6 py-3 grid grid-cols-12 gap-2 items-center hover:bg-slate-50/50 transition-colors">
+        <div className="col-span-3 min-w-0">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${thisMonthKg > 0 ? 'bg-brand-500' : 'bg-slate-200'}`} />
+            <span className="text-xs font-semibold text-slate-700 truncate">{nombre}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 ml-4 flex-wrap">
+            <span className="text-[9px] text-slate-400">{hoteles.join(' · ')}</span>
+            <span className="text-[9px] text-slate-300">{totalDays} días</span>
+            {hasDesglose && (
+              <button type="button" onClick={() => setShowDesglose(v => !v)}
+                className="text-[9px] font-semibold text-brand-600 hover:text-brand-800 flex items-center gap-0.5">
+                {showDesglose ? 'ocultar' : 'ver desglose'}
+                <ChevronDown size={9} className={`transition-transform ${showDesglose ? 'rotate-180' : ''}`} />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="col-span-2 text-right">
+          <span className={`text-sm font-bold ${thisMonthKg > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{fmtKg(thisMonthKg)}</span>
+        </div>
+        <div className="col-span-2 text-right">
+          {avgKgEstancia !== null
+            ? <div><span className="text-sm font-bold text-brand-600">{avgKgEstancia.toFixed(3)}</span><span className="text-[9px] text-slate-400 block">kg/est.</span></div>
+            : <span className="text-[10px] text-slate-200">—</span>}
+        </div>
+        <div className="col-span-2 text-right">
+          {avgKgComensal !== null
+            ? <div><span className="text-sm font-bold text-brand-600">{avgKgComensal.toFixed(3)}</span><span className="text-[9px] text-slate-400 block">kg/com.</span></div>
+            : <span className="text-[10px] text-slate-200">—</span>}
+        </div>
+        <div className="col-span-2 text-right">
+          {costeTotal != null
+            ? <span className="text-sm font-bold text-slate-800">{costeTotal.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €</span>
+            : <span className="text-[10px] text-slate-200">—</span>}
+        </div>
+        <div className="col-span-1 flex justify-end">
+          {trend === null ? <span className="text-[10px] text-slate-300">—</span> : (
+            <span className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+              trend < -2 ? 'bg-green-50 text-green-700' : trend > 2 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {trend < -2 ? <TrendingDown size={10}/> : trend > 2 ? <TrendingUp size={10}/> : <Minus size={10}/>}
+              {Math.abs(trend).toFixed(0)}%
+            </span>
+          )}
+        </div>
+      </div>
+      {hasDesglose && showDesglose && (
+        <div className="px-6 pb-3 bg-slate-50/60">
+          <div className="flex flex-wrap gap-2 pt-2">
+            {FOOD_TAXONOMY.flatMap(g => g.items)
+              .filter(item => desgloseKgMes[item.id] > 0)
+              .sort((a, b) => (desgloseKgMes[b.id] || 0) - (desgloseKgMes[a.id] || 0))
+              .map(item => {
+                const kgCat = desgloseKgMes[item.id];
+                const pct = thisMonthKg > 0 ? (kgCat / thisMonthKg) * 100 : 0;
+                const { Icon } = item;
+                return (
+                  <div key={item.id} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold ${item.color}`}>
+                    <Icon size={11} style={{ color: item.iconColor }} />
+                    <span>{item.label}</span>
+                    <span className="font-black">{kgCat.toFixed(1)} kg</span>
+                    <span className="opacity-60">({pct.toFixed(0)}%)</span>
+                  </div>
+                );
+              })}
+          </div>
+          {thisMonthKg > 0 && (
+            <div className="mt-2.5 flex rounded-full overflow-hidden h-2 gap-px">
+              {FOOD_TAXONOMY.flatMap(g => g.items)
+                .filter(item => desgloseKgMes[item.id] > 0)
+                .sort((a, b) => (desgloseKgMes[b.id] || 0) - (desgloseKgMes[a.id] || 0))
+                .map(item => (
+                  <div key={item.id} title={`${item.label}: ${desgloseKgMes[item.id].toFixed(1)} kg`}
+                    style={{ width: `${(desgloseKgMes[item.id] / thisMonthKg) * 100}%`, backgroundColor: item.iconColor }} />
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface MeasurementFormProps {
   config: MeasurementConfig;
   setConfig: (config: MeasurementConfig) => void;
@@ -282,7 +387,10 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
       }
     });
 
-    return { area, hotel, thisMonthKg, prevMonthKg, totalDays, trend, relPor, avgKgEstancia, avgKgComensal, costeTotal, desgloseKgMes };
+    const totalComensales = thisRegs.reduce((s, r) => s + ((r as any).comensales || 0), 0);
+    const totalEstancias  = thisRegs.reduce((s, r) => s + ((r as any).estancias  || 0), 0);
+
+    return { area, hotel, thisMonthKg, prevMonthKg, totalDays, trend, relPor, avgKgEstancia, avgKgComensal, costeTotal, desgloseKgMes, totalComensales, totalEstancias };
   }), [pesajeZones, registros, comparativaMonth, prevComparativaMonth]);
 
   const zonesByHotel = useMemo(() => {
@@ -296,6 +404,56 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
     });
     return order.map(k => ({ hotelName: k, zones: map[k] }));
   }, [zoneStats, scope]);
+
+  // ── Vista de zonas: agregado (sum cross-hotel) vs. por hotel ────────────
+  const [zoneView, setZoneView] = useState<'agregado' | 'porHotel'>('agregado');
+
+  // Zonas idénticas fusionadas (agrupa por nombre de zona, suma kg/comensales/estancias)
+  const aggregatedZoneStats = useMemo(() => {
+    if (scope !== 'corporate') return [];
+    const groups: Record<string, typeof zoneStats> = {};
+    zoneStats.forEach(z => {
+      const key = z.area.nombre.toLowerCase().trim();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(z);
+    });
+    return Object.entries(groups).map(([, zones]) => {
+      const nombre        = zones[0].area.nombre;
+      const hoteles       = zones.map(z => z.hotel).filter(Boolean);
+      const thisMonthKg   = zones.reduce((s, z) => s + z.thisMonthKg, 0);
+      const prevMonthKg   = zones.reduce((s, z) => s + z.prevMonthKg, 0);
+      const totalDays     = Math.max(...zones.map(z => z.totalDays));
+      const trend         = prevMonthKg > 0 ? ((thisMonthKg - prevMonthKg) / prevMonthKg) * 100 : null;
+      const totalCom      = zones.reduce((s, z) => s + z.totalComensales, 0);
+      const totalEst      = zones.reduce((s, z) => s + z.totalEstancias,  0);
+      const avgKgComensal = totalCom > 0 ? thisMonthKg / totalCom : null;
+      const avgKgEstancia = totalEst > 0 ? thisMonthKg / totalEst : null;
+      const costeTotal    = zones.some(z => z.costeTotal != null)
+        ? zones.reduce((s, z) => s + (z.costeTotal ?? 0), 0) : null;
+      const desgloseKgMes: Record<string, number> = {};
+      zones.forEach(z => Object.entries(z.desgloseKgMes).forEach(([k, v]) => {
+        desgloseKgMes[k] = (desgloseKgMes[k] || 0) + v;
+      }));
+      return { nombre, hoteles, thisMonthKg, prevMonthKg, totalDays, trend, avgKgComensal, avgKgEstancia, costeTotal, desgloseKgMes };
+    }).sort((a, b) => b.thisMonthKg - a.thisMonthKg);
+  }, [scope, zoneStats]);
+
+  // Datos por hotel para la sección comparativa
+  const hotelComparativa = useMemo(() => {
+    if (scope !== 'corporate') return [];
+    return zonesByHotel.map(({ hotelName, zones }) => {
+      const totalKg  = zones.reduce((s, z) => s + z.thisMonthKg, 0);
+      const prevKg   = zones.reduce((s, z) => s + z.prevMonthKg, 0);
+      const trend    = prevKg > 0 ? ((totalKg - prevKg) / prevKg) * 100 : null;
+      const totalCom = zones.reduce((s, z) => s + z.totalComensales, 0);
+      const totalEst = zones.reduce((s, z) => s + z.totalEstancias,  0);
+      const avgKgComensal = totalCom > 0 ? totalKg / totalCom : null;
+      const avgKgEstancia = totalEst > 0 ? totalKg / totalEst : null;
+      const costeTotal    = zones.some(z => z.costeTotal != null)
+        ? zones.reduce((s, z) => s + (z.costeTotal ?? 0), 0) : null;
+      return { hotelName, totalKg, prevKg, trend, avgKgComensal, avgKgEstancia, costeTotal };
+    }).sort((a, b) => b.totalKg - a.totalKg);
+  }, [scope, zonesByHotel]);
 
   const met: MetodologiaMedicion = config.metodologia ?? { tipo: 'bascula', responsable: '' };
 
@@ -442,49 +600,87 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
 
             {scope === 'corporate' ? (
               <>
-                {zonesByHotel.map(({ hotelName, zones }) => {
-                  const isCollapsed = collapsedHotels.has(hotelName);
-                  const hotelTotal = zones.reduce((s, z) => s + z.thisMonthKg, 0);
-                  const hasCoste = zones.some(z => z.costeTotal != null);
-                  const hotelCoste = hasCoste ? zones.reduce((s, z) => s + (z.costeTotal ?? 0), 0) : null;
-                  return (
-                    <div key={hotelName}>
-                      <button type="button" onClick={() => toggleHotel(hotelName)}
-                        className="w-full px-6 py-2.5 bg-brand-50/70 flex items-center gap-2 hover:bg-brand-50 transition-colors border-b border-brand-100">
-                        {isCollapsed
-                          ? <ChevronDown size={13} className="text-brand-500 flex-shrink-0" />
-                          : <ChevronUp size={13} className="text-brand-500 flex-shrink-0" />}
-                        <Building2 size={13} className="text-brand-600 flex-shrink-0" />
-                        <span className="text-[11px] font-black text-brand-900 uppercase tracking-wide truncate">{hotelName}</span>
-                        <div className="ml-auto flex items-center gap-5 flex-shrink-0">
-                          <span className="text-xs font-black text-slate-700">{fmtKg(hotelTotal)}</span>
-                          {hotelCoste != null && (
-                            <span className="text-xs font-bold text-slate-500">
-                              {hotelCoste.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
+                {/* Toggle vista: Agregado / Por hotel */}
+                <div className="px-6 py-2 border-b border-slate-100 flex items-center gap-1">
+                  {(['agregado', 'porHotel'] as const).map(v => (
+                    <button key={v} type="button" onClick={() => setZoneView(v)}
+                      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                        zoneView === v ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-100'
+                      }`}>
+                      {v === 'agregado' ? 'Por zona (agrupado)' : 'Por hotel (detalle)'}
+                    </button>
+                  ))}
+                </div>
+
+                {zoneView === 'agregado' ? (
+                  // ── Vista agregada: zonas fusionadas cross-hotel ──
+                  <>
+                    {aggregatedZoneStats.map(z => (
+                      <AggZoneRow key={z.nombre} {...z} />
+                    ))}
+                    {aggregatedZoneStats.length > 0 && (
+                      <div className="px-6 py-3 bg-slate-100 grid grid-cols-12 gap-3 items-center border-t-2 border-slate-300">
+                        <div className="col-span-3"><span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Total global</span></div>
+                        <div className="col-span-2 text-right"><span className="text-sm font-black text-slate-800">{fmtKg(aggregatedZoneStats.reduce((s, z) => s + z.thisMonthKg, 0))}</span></div>
+                        <div className="col-span-4" />
+                        <div className="col-span-2 text-right">
+                          {aggregatedZoneStats.some(z => z.costeTotal != null) && (
+                            <span className="text-sm font-black text-slate-800">
+                              {aggregatedZoneStats.reduce((s, z) => s + (z.costeTotal ?? 0), 0).toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
                             </span>
                           )}
-                          <span className="text-[10px] text-slate-400">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
                         </div>
-                      </button>
-                      {!isCollapsed && zones.map(z => <ZoneRow key={z.area.id} {...z} hotel={null} />)}
-                    </div>
-                  );
-                })}
-                {/* Total global */}
-                {zoneStats.length > 0 && (
-                  <div className="px-6 py-3 bg-slate-100 grid grid-cols-12 gap-3 items-center border-t-2 border-slate-300">
-                    <div className="col-span-3"><span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Total global</span></div>
-                    <div className="col-span-2 text-right"><span className="text-sm font-black text-slate-800">{fmtKg(zoneStats.reduce((s, z) => s + z.thisMonthKg, 0))}</span></div>
-                    <div className="col-span-4" />
-                    <div className="col-span-2 text-right">
-                      {zoneStats.some(z => z.costeTotal != null) && (
-                        <span className="text-sm font-black text-slate-800">
-                          {zoneStats.reduce((s, z) => s + (z.costeTotal ?? 0), 0).toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
-                        </span>
-                      )}
-                    </div>
-                    <div className="col-span-1" />
-                  </div>
+                        <div className="col-span-1" />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // ── Vista por hotel: desglose colapsable ──
+                  <>
+                    {zonesByHotel.map(({ hotelName, zones }) => {
+                      const isCollapsed = collapsedHotels.has(hotelName);
+                      const hotelTotal = zones.reduce((s, z) => s + z.thisMonthKg, 0);
+                      const hasCoste = zones.some(z => z.costeTotal != null);
+                      const hotelCoste = hasCoste ? zones.reduce((s, z) => s + (z.costeTotal ?? 0), 0) : null;
+                      return (
+                        <div key={hotelName}>
+                          <button type="button" onClick={() => toggleHotel(hotelName)}
+                            className="w-full px-6 py-2.5 bg-brand-50/70 flex items-center gap-2 hover:bg-brand-50 transition-colors border-b border-brand-100">
+                            {isCollapsed
+                              ? <ChevronDown size={13} className="text-brand-500 flex-shrink-0" />
+                              : <ChevronUp size={13} className="text-brand-500 flex-shrink-0" />}
+                            <Building2 size={13} className="text-brand-600 flex-shrink-0" />
+                            <span className="text-[11px] font-black text-brand-900 uppercase tracking-wide truncate">{hotelName}</span>
+                            <div className="ml-auto flex items-center gap-5 flex-shrink-0">
+                              <span className="text-xs font-black text-slate-700">{fmtKg(hotelTotal)}</span>
+                              {hotelCoste != null && (
+                                <span className="text-xs font-bold text-slate-500">
+                                  {hotelCoste.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400">{zones.length} zona{zones.length !== 1 ? 's' : ''}</span>
+                            </div>
+                          </button>
+                          {!isCollapsed && zones.map(z => <ZoneRow key={z.area.id} {...z} hotel={null} />)}
+                        </div>
+                      );
+                    })}
+                    {zoneStats.length > 0 && (
+                      <div className="px-6 py-3 bg-slate-100 grid grid-cols-12 gap-3 items-center border-t-2 border-slate-300">
+                        <div className="col-span-3"><span className="text-[10px] font-black text-slate-700 uppercase tracking-wider">Total global</span></div>
+                        <div className="col-span-2 text-right"><span className="text-sm font-black text-slate-800">{fmtKg(zoneStats.reduce((s, z) => s + z.thisMonthKg, 0))}</span></div>
+                        <div className="col-span-4" />
+                        <div className="col-span-2 text-right">
+                          {zoneStats.some(z => z.costeTotal != null) && (
+                            <span className="text-sm font-black text-slate-800">
+                              {zoneStats.reduce((s, z) => s + (z.costeTotal ?? 0), 0).toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
+                            </span>
+                          )}
+                        </div>
+                        <div className="col-span-1" />
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             ) : (
@@ -513,6 +709,103 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
         )}
       </div>
 
+      {/* ── SECCIÓN 0b: Comparativa entre hoteles (solo corporativo) ── */}
+      {scope === 'corporate' && hotelComparativa.length > 1 && (() => {
+        const maxKg  = Math.max(...hotelComparativa.map(h => h.totalKg), 0.001);
+        const hasCom = hotelComparativa.some(h => h.avgKgComensal !== null);
+        const hasEst = hotelComparativa.some(h => h.avgKgEstancia  !== null);
+        const maxCom = Math.max(...hotelComparativa.map(h => h.avgKgComensal ?? 0), 0.001);
+        const maxEst = Math.max(...hotelComparativa.map(h => h.avgKgEstancia  ?? 0), 0.001);
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+              <Building2 size={16} className="text-brand-600" />
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Comparativa entre hoteles</h3>
+              <span className="ml-auto text-[10px] text-slate-400 capitalize">{comparativaLabel}</span>
+            </div>
+
+            <div className={`grid ${hasCom || hasEst ? 'md:grid-cols-3' : 'grid-cols-1'} divide-x divide-slate-100`}>
+
+              {/* kg totales */}
+              <div className="px-5 py-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Total kg generado</p>
+                <div className="space-y-2.5">
+                  {hotelComparativa.map(h => (
+                    <div key={h.hotelName}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold text-slate-700 truncate max-w-[60%]">{h.hotelName}</span>
+                        <div className="flex items-center gap-1.5">
+                          {h.trend !== null && (
+                            <span className={`text-[9px] font-bold ${h.trend < -2 ? 'text-green-600' : h.trend > 2 ? 'text-red-500' : 'text-slate-400'}`}>
+                              {h.trend > 0 ? '+' : ''}{h.trend.toFixed(0)}%
+                            </span>
+                          )}
+                          <span className="text-[10px] font-black text-slate-800">{h.totalKg.toFixed(1)} kg</span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-500 rounded-full transition-all"
+                          style={{ width: `${(h.totalKg / maxKg) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* kg/comensal */}
+              {hasCom && (
+                <div className="px-5 py-4">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Kg / comensal</p>
+                  <div className="space-y-2.5">
+                    {hotelComparativa.map(h => (
+                      <div key={h.hotelName}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-slate-700 truncate max-w-[60%]">{h.hotelName}</span>
+                          <span className="text-[10px] font-black text-brand-700">
+                            {h.avgKgComensal !== null ? h.avgKgComensal.toFixed(3) : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          {h.avgKgComensal !== null && (
+                            <div className="h-full bg-brand-400 rounded-full transition-all"
+                              style={{ width: `${(h.avgKgComensal / maxCom) * 100}%` }} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* kg/estancia */}
+              {hasEst && (
+                <div className="px-5 py-4">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Kg / estancia</p>
+                  <div className="space-y-2.5">
+                    {hotelComparativa.map(h => (
+                      <div key={h.hotelName}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-slate-700 truncate max-w-[60%]">{h.hotelName}</span>
+                          <span className="text-[10px] font-black text-brand-700">
+                            {h.avgKgEstancia !== null ? h.avgKgEstancia.toFixed(3) : '—'}
+                          </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                          {h.avgKgEstancia !== null && (
+                            <div className="h-full bg-sky-400 rounded-full transition-all"
+                              style={{ width: `${(h.avgKgEstancia / maxEst) * 100}%` }} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── SECCIÓN 1: ANALYTICS ── */}
       <MeasurementChart
         registros={registros}
@@ -522,8 +815,10 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
         comparativaMonth={comparativaMonth}
       />
 
-      {/* ── SECCIÓN 2: KPIs por Hotel (corporativo) ── */}
-      {scope === 'corporate' && hotels.length > 0 && (
+      {/* ── SECCIÓN 2: KPIs por Hotel (solo hoteles con medición configurada) ── */}
+      {scope === 'corporate' && hotels.filter(h => (h.areas || []).some(a => a.tienePuntoPesaje)).length > 0 && (() => {
+        const kpiHotels = hotels.filter(h => (h.areas || []).some(a => a.tienePuntoPesaje));
+        return (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 pb-3 border-b border-slate-100 mb-4">
             <Scale size={16} className="text-brand-600" /> Indicadores Clave (KPIs) por Hotel
@@ -531,7 +826,7 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
 
           {/* Pestañas de hotel */}
           <div className="flex flex-wrap gap-1.5 mb-4">
-            {hotels.map(h => (
+            {kpiHotels.map(h => (
               <button
                 key={h.nombreComercial}
                 type="button"
@@ -623,7 +918,8 @@ export const MeasurementForm: React.FC<MeasurementFormProps> = ({
             <p className="text-center text-xs text-slate-400 py-4 italic">Selecciona un hotel para editar sus KPIs</p>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* ── SECCIÓN 2 (oculta): KPIs legacy — mantenemos datos pero no mostramos UI ── */}
       {false && <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">

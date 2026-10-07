@@ -141,6 +141,17 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
   const months = useMemo(() => getMonthsForPeriod(period), [period]);
   const zonas  = useMemo(() => getZonas(registros, areas, hotels), [registros, areas, hotels]);
 
+  // Para corporativo: fusiona zonas con el mismo nombre en una sola entrada con varios IDs
+  const mergedZonas = useMemo(() => {
+    const seen = new Map<string, { ids: string[]; nombre: string }>();
+    zonas.forEach(z => {
+      const key = z.nombre.toLowerCase().trim();
+      if (!seen.has(key)) seen.set(key, { ids: [], nombre: z.nombre });
+      seen.get(key)!.ids.push(z.id);
+    });
+    return [...seen.values()];
+  }, [zonas]);
+
   const comparativaLabel = useMemo(() => {
     const [y, m] = comparativaMonth.split('-').map(Number);
     const d = new Date(y, m - 1, 1);
@@ -318,46 +329,55 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
   // ── Datos para gráfico evolución mensual ──────────────────────────────────
   const chartData = useMemo(() => months.map(ym => {
     const row: any = { mes: labelMes(ym) };
-    zonas.forEach(z => {
-      const recs = registros.filter(r => (r.area_id || r.areaId) === z.id && r.fecha.startsWith(ym));
+    mergedZonas.forEach(z => {
+      const recs = registros.filter(r => z.ids.includes((r.area_id || r.areaId) ?? '') && r.fecha.startsWith(ym));
       if (metric === 'kg') {
         row[z.nombre] = Math.round(recs.reduce((s, r) => s + r.kg, 0) * 10) / 10;
       } else if (metric === 'kgEstancia') {
-        const con = recs.filter(r => r.estancias && r.estancias > 0);
-        row[z.nombre] = con.length > 0
-          ? Math.round(con.reduce((s, r) => s + r.kg / r.estancias!, 0) / con.length * 1000) / 1000
-          : null;
+        const totalEst = recs.reduce((s, r) => s + (r.estancias || 0), 0);
+        const totalKg  = recs.reduce((s, r) => s + r.kg, 0);
+        row[z.nombre] = totalEst > 0 ? Math.round(totalKg / totalEst * 1000) / 1000 : null;
       } else {
-        const con = recs.filter(r => r.comensales && r.comensales > 0);
-        row[z.nombre] = con.length > 0
-          ? Math.round(con.reduce((s, r) => s + r.kg / r.comensales!, 0) / con.length * 1000) / 1000
-          : null;
+        const totalCom = recs.reduce((s, r) => s + (r.comensales || 0), 0);
+        const totalKg  = recs.reduce((s, r) => s + r.kg, 0);
+        row[z.nombre] = totalCom > 0 ? Math.round(totalKg / totalCom * 1000) / 1000 : null;
       }
     });
     return row;
-  }), [months, zonas, registros, metric]);
+  }), [months, mergedZonas, registros, metric]);
 
   // ── Datos comparativa — mes seleccionado ──────────────────────────────────
   const compMRecs = useMemo(() =>
     registros.filter(r => r.fecha.startsWith(comparativaMonth)),
   [registros, comparativaMonth]);
 
-  const zoneComparativa = useMemo(() => zonas.map((z, i) => {
-    const recs = compMRecs.filter(r => (r.area_id || r.areaId) === z.id);
-    const kg   = recs.reduce((s, r) => s + r.kg, 0);
-    const con  = recs.filter(r => r.estancias && r.estancias > 0);
-    const conC = recs.filter(r => r.comensales && r.comensales > 0);
-    const area = areas.find(a => a.id === z.id);
-    const coste = area?.costePorKg != null && kg > 0 ? Math.round(kg * area.costePorKg) : null;
-    return {
-      nombre:      z.nombre,
-      kg:          Math.round(kg * 10) / 10,
-      kgEstancia:  con.length > 0 ? Math.round(con.reduce((s,r) => s + r.kg/r.estancias!, 0)/con.length*1000)/1000 : null,
-      kgComensal:  conC.length > 0 ? Math.round(conC.reduce((s,r) => s + r.kg/r.comensales!, 0)/conC.length*1000)/1000 : null,
-      coste,
-      color:       ZONE_COLORS[i % ZONE_COLORS.length],
-    };
-  }).filter(z => z.kg > 0).sort((a, b) => b.kg - a.kg), [zonas, compMRecs, areas]);
+  const zoneComparativa = useMemo(() => {
+    const allAreas = [...areas, ...hotels.flatMap((h: any) => h.areas || [])];
+    return mergedZonas.map((z, i) => {
+      const recs     = compMRecs.filter(r => z.ids.includes((r.area_id || r.areaId) ?? ''));
+      const kg       = recs.reduce((s, r) => s + r.kg, 0);
+      const totalEst = recs.reduce((s, r) => s + (r.estancias  || 0), 0);
+      const totalCom = recs.reduce((s, r) => s + (r.comensales || 0), 0);
+      // Coste: suma ponderada por zona origen
+      let costeSum = 0; let hasCoste = false;
+      z.ids.forEach(id => {
+        const a = allAreas.find(a => a.id === id);
+        if (a?.costePorKg != null) {
+          const zKg = recs.filter(r => (r.area_id || r.areaId) === id).reduce((s, r) => s + r.kg, 0);
+          costeSum += zKg * a.costePorKg;
+          hasCoste = true;
+        }
+      });
+      return {
+        nombre:     z.nombre,
+        kg:         Math.round(kg * 10) / 10,
+        kgEstancia: totalEst > 0 ? Math.round(kg / totalEst * 1000) / 1000 : null,
+        kgComensal: totalCom > 0 ? Math.round(kg / totalCom * 1000) / 1000 : null,
+        coste:      hasCoste && kg > 0 ? Math.round(costeSum) : null,
+        color:      ZONE_COLORS[i % ZONE_COLORS.length],
+      };
+    }).filter(z => z.kg > 0).sort((a, b) => b.kg - a.kg);
+  }, [mergedZonas, compMRecs, areas, hotels]);
 
   const hasCoste = areas.some(a => a.costePorKg != null && a.costePorKg > 0);
 
@@ -566,10 +586,10 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
             <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-            {zonas.map((z, i) => (
-              <Bar key={z.id} dataKey={z.nombre} fill={ZONE_COLORS[i % ZONE_COLORS.length]}
+            {mergedZonas.map((z, i) => (
+              <Bar key={z.nombre} dataKey={z.nombre} fill={ZONE_COLORS[i % ZONE_COLORS.length]}
                 radius={[3,3,0,0]} maxBarSize={28}
-                opacity={activeZone && activeZone !== z.id ? 0.3 : 1} />
+                opacity={activeZone && activeZone !== z.nombre ? 0.3 : 1} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -656,34 +676,41 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
           };
         });
 
+        const allAreas2 = [...areas, ...hotels.flatMap((h: any) => h.areas || [])];
         const lineData = weeks.map(w => {
           const row: any = { semana: w.label };
-          zonas.forEach(z => {
-            const recs = registros.filter(r =>
-              (r.area_id||r.areaId) === z.id && r.fecha >= w.from && r.fecha <= w.to
-            );
+          mergedZonas.forEach(z => {
+            const recs = registros.filter(r => {
+              const id = r.area_id || r.areaId || '';
+              return z.ids.includes(id) && r.fecha >= w.from && r.fecha <= w.to;
+            });
             if (tendenciaMetric === 'kg') {
               const v = recs.reduce((s,r)=>s+r.kg,0);
               row[z.nombre] = v > 0 ? Math.round(v*10)/10 : null;
             } else if (tendenciaMetric === 'kgEstancia') {
-              const con = recs.filter(r => (r as any).estancias > 0);
-              row[z.nombre] = con.length > 0
-                ? Math.round(con.reduce((s,r)=>s+r.kg/(r as any).estancias,0)/con.length*1000)/1000 : null;
+              const totalEst = recs.reduce((s,r)=>s+(r.estancias||0),0);
+              const totalKg  = recs.reduce((s,r)=>s+r.kg,0);
+              row[z.nombre] = totalEst > 0 ? Math.round(totalKg/totalEst*1000)/1000 : null;
             } else if (tendenciaMetric === 'kgComensal') {
-              const con = recs.filter(r => (r as any).comensales > 0);
-              row[z.nombre] = con.length > 0
-                ? Math.round(con.reduce((s,r)=>s+r.kg/(r as any).comensales,0)/con.length*1000)/1000 : null;
+              const totalCom = recs.reduce((s,r)=>s+(r.comensales||0),0);
+              const totalKg  = recs.reduce((s,r)=>s+r.kg,0);
+              row[z.nombre] = totalCom > 0 ? Math.round(totalKg/totalCom*1000)/1000 : null;
             } else if (tendenciaMetric === 'coste') {
-              const area = areas.find(a => a.id === z.id);
-              const kg = recs.reduce((s,r)=>s+r.kg,0);
-              row[z.nombre] = area?.costePorKg && kg > 0
-                ? Math.round(kg * area.costePorKg) : null;
+              let costeSum = 0; let hasC = false;
+              z.ids.forEach(id => {
+                const a = allAreas2.find(a => a.id === id);
+                if (a?.costePorKg) {
+                  costeSum += recs.filter(r=>(r.area_id||r.areaId)===id).reduce((s,r)=>s+r.kg,0) * a.costePorKg;
+                  hasC = true;
+                }
+              });
+              row[z.nombre] = hasC && costeSum > 0 ? Math.round(costeSum) : null;
             }
           });
           return row;
         });
 
-        const hasData = lineData.some(r => zonas.some(z => r[z.nombre] !== null));
+        const hasData = lineData.some(r => mergedZonas.some(z => r[z.nombre] !== null));
         if (!hasData) return null;
 
         const tendUnit = tendenciaMetric === 'kg' ? ' kg'
@@ -716,8 +743,8 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
                   tickFormatter={v => `${v}${tendUnit}`} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                {zonas.map((z, i) => (
-                  <Line key={z.id} type="monotone" dataKey={z.nombre}
+                {mergedZonas.map((z, i) => (
+                  <Line key={z.nombre} type="monotone" dataKey={z.nombre}
                     stroke={ZONE_COLORS[i % ZONE_COLORS.length]}
                     strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
                 ))}
@@ -907,9 +934,11 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
 
         const totalKgDesglose = Object.values(desgloseTotal).reduce((s, v) => s + v, 0);
 
-        const stackedData = zonas.map((z, i) => {
+        const stackedData = mergedZonas.map(z => {
           const row: Record<string, any> = { zona: z.nombre };
-          FOOD_FLAT.forEach(item => { row[item.id] = desgloseByZone[z.id]?.[item.id] || 0; });
+          FOOD_FLAT.forEach(item => {
+            row[item.id] = z.ids.reduce((s, id) => s + (desgloseByZone[id]?.[item.id] || 0), 0);
+          });
           return row;
         }).filter(row => FOOD_FLAT.some(item => row[item.id] > 0));
 

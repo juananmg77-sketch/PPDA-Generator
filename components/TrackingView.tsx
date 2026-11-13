@@ -230,6 +230,14 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
               const t = getYearTracking(o, currentYear);
               return getProgress(o, t) === 100;
             }).length;
+            const avgProgress = Math.round(
+              phaseObjs.reduce((sum, o) => sum + getProgress(o, getYearTracking(o, currentYear)), 0) / phaseObjs.length
+            );
+            const pctBadgeClass = avgProgress === 0
+              ? 'bg-slate-100 text-slate-400 border-slate-200'
+              : avgProgress >= 80
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200';
 
             return (
               <div key={phase.id} className="space-y-2.5">
@@ -249,10 +257,10 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ objectives, setObjec
                       <span className="text-slate-300">·</span>
                       <h3 className="text-sm font-black text-slate-800 tracking-tight">{phase.label}</h3>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{phase.description}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{phase.description} · {doneCount}/{phaseObjs.length} completados</p>
                   </div>
-                  <div className={`flex-shrink-0 text-xs font-black px-2.5 py-1 rounded-full border ${phase.badge}`}>
-                    {doneCount}/{phaseObjs.length}
+                  <div className={`flex-shrink-0 text-xs font-black px-2.5 py-1 rounded-full border ${pctBadgeClass}`}>
+                    {avgProgress}%
                   </div>
                   <ChevronDown
                     size={16}

@@ -23,9 +23,10 @@ interface CloudPlan {
   hotel: string;
   data: AppState;
   date: string;
-  sheetIdName?: string; // Para borrado: guarda el nombre exacto que tiene la hoja en Columna A
+  sheetIdName?: string;
   version?: string;
-  planId: string; // Nuevo identificador único
+  estado?: string;
+  planId: string;
   consultor?: string | null;
 }
 
@@ -125,7 +126,7 @@ const INITIAL_STATE_FACTORY: AppState = {
     isAiLoading: false,
     currentTrackingYear: new Date().getFullYear() + 1,
     originalHotelName: '', // Estado inicial vacío
-    version: 'V0', // Versión inicial borrador
+    version: '', // Sin versión hasta el primer cierre
     planId: '', // Se generará al crear nuevo plan
 };
 
@@ -188,6 +189,10 @@ const App: React.FC = () => {
   const [consultorOptions, setConsultorOptions] = useState<{ email: string; full_name: string }[]>([]);
 
   // Modal nueva versión
+  const [planEstado, setPlanEstado] = useState<'Borrador' | 'Cerrado'>('Borrador');
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeDescription, setCloseDescription] = useState('');
+  // kept for compat but no longer used
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [versionDescription, setVersionDescription] = useState('');
 
@@ -298,15 +303,15 @@ const App: React.FC = () => {
       const saveTimestamp = new Date().toISOString();
       const dataToSave: AppState = {
         ...state,
-        version: state.version || 'V1',
+        version: state.version || '',
         originalHotelName: identifier.trim(),
         planId: currentPlanId,
         lastModified: saveTimestamp,
       };
       await planService.saveDraft(dataToSave, saveTimestamp);
-      setState(s => ({ ...s, planId: currentPlanId, originalHotelName: identifier.trim() }));
+      setState(s => ({ ...s, planId: currentPlanId, originalHotelName: identifier.trim(), version: dataToSave.version }));
       setHasUnsavedChanges(false);
-      alert(`✅ Borrador guardado (${state.version || 'V1'}).`);
+      alert(`✅ Borrador guardado${state.version ? ` (${state.version})` : ''}.`);
     } catch (error: any) {
       alert(`❌ Error al guardar: ${error.message}`);
     } finally {
@@ -314,48 +319,56 @@ const App: React.FC = () => {
     }
   };
 
-  // Abrir modal para nueva versión
-  const handleSaveNewVersion = () => {
+  // Abrir modal para cerrar plan (crear versión oficial)
+  const handleClosePlan = () => {
     const isCorporate = state.scope === 'corporate';
     const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
     if (!identifier) {
       alert(`⚠️ Por favor, introduce el ${isCorporate ? 'Nombre de la Sociedad' : 'Nombre Comercial del hotel'} en el paso 1.`);
       return;
     }
-    setVersionDescription('');
-    setShowVersionModal(true);
+    setCloseDescription('');
+    setShowCloseModal(true);
   };
 
-  // Confirmar nueva versión desde el modal
-  const handleConfirmNewVersion = async () => {
-    if (!versionDescription.trim()) {
-      alert('⚠️ Describe los cambios de esta versión.');
+  // Confirmar cierre de plan desde el modal
+  const handleConfirmClose = async () => {
+    if (!closeDescription.trim()) {
+      alert('⚠️ Describe brevemente el contenido de esta versión.');
       return;
     }
     const isCorporate = state.scope === 'corporate';
     const identifier = isCorporate ? state.society.razonSocial : state.hotelData.nombreComercial;
     setIsSyncing(true);
-    setShowVersionModal(false);
+    setShowCloseModal(false);
     try {
-      const currentVersionNumber = parseInt((state.version || 'V1').replace(/[^0-9]/g, '')) || 1;
-      const newVersion = `V${currentVersionNumber + 1}`;
       const currentPlanId = state.planId || crypto.randomUUID();
-      const dataToSave: AppState = {
-        ...state,
-        version: newVersion,
-        originalHotelName: identifier!.trim(),
-        planId: currentPlanId,
-        lastModified: new Date().toISOString(),
-      };
-      await planService.saveNewVersion(dataToSave, versionDescription.trim());
+      const stateWithId = { ...state, planId: currentPlanId, originalHotelName: identifier!.trim() };
+      const newVersion = await planService.closePlan(stateWithId, closeDescription.trim());
       setState(s => ({ ...s, version: newVersion, planId: currentPlanId, originalHotelName: identifier!.trim() }));
+      setPlanEstado('Cerrado');
       setHasUnsavedChanges(false);
-      alert(`✅ Nueva versión creada: ${newVersion}.`);
+      alert(`✅ Plan cerrado: ${newVersion} oficial.`);
     } catch (error: any) {
-      alert(`❌ Error al guardar: ${error.message}`);
+      alert(`❌ Error al cerrar: ${error.message}`);
     } finally {
       setIsSyncing(false);
-      setVersionDescription('');
+      setCloseDescription('');
+    }
+  };
+
+  // Reabrir plan cerrado para edición
+  const handleReopenPlan = async () => {
+    if (!window.confirm('¿Reabrir el plan para editarlo? Se mantendrá la versión actual hasta el próximo cierre.')) return;
+    setIsSyncing(true);
+    try {
+      await planService.reopenPlan(state);
+      setPlanEstado('Borrador');
+      alert(`✅ Plan reabierto. Versión actual: ${state.version || 'sin versión'}.`);
+    } catch (error: any) {
+      alert(`❌ Error al reabrir: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -391,6 +404,7 @@ const App: React.FC = () => {
         date: p.updated_at,
         sheetIdName: p.plan_id,
         version: p.version,
+        estado: p.estado,
         planId: p.plan_id,
         consultor: p.consultor,
       }));
@@ -492,8 +506,8 @@ const App: React.FC = () => {
               // IMPORTANTE: Aquí está la clave. Usamos 'sheetIdName' (el valor real de la celda, aunque sea una fecha corrupta)
               // como el 'originalHotelName'. De esta forma, 'handleCloudSave' detectará que el nombre actual ("Hotel X")
               // es diferente al original ("2026-02-17...") y ofrecerá limpiar el registro corrupto.
-              originalHotelName: plan.sheetIdName || plan.hotel, 
-              version: plan.version || 'V1', // Recuperar versión
+              originalHotelName: plan.sheetIdName || plan.hotel,
+              version: plan.version || '', // Recuperar versión
 
               // Asegurar sub-objetos críticos
               measurementConfig: incomingData.measurementConfig || INITIAL_MEASUREMENT_CONFIG,
@@ -507,6 +521,7 @@ const App: React.FC = () => {
           };
 
           setState(mergedState);
+          setPlanEstado((plan.estado === 'Cerrado' ? 'Cerrado' : 'Borrador') as 'Borrador' | 'Cerrado');
           setView('wizard');
           setShowCloudModal(false);
       } catch (e) {
@@ -521,6 +536,7 @@ const App: React.FC = () => {
         consultor: currentUser || '',
         planId: crypto.randomUUID()
     });
+    setPlanEstado('Borrador');
     setView('wizard');
   };
 
@@ -1201,8 +1217,10 @@ const App: React.FC = () => {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold text-white leading-none truncate">{planLabel}</h1>
-              <span className="text-[9px] bg-white/15 text-white/80 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5 flex-shrink-0">
-                <GitBranch size={9}/> {state.version || 'V0'}
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5 flex-shrink-0 ${
+                planEstado === 'Cerrado' ? 'bg-blue-400/30 text-blue-200' : 'bg-white/15 text-white/80'
+              }`}>
+                <GitBranch size={9}/> {state.version || 'Borrador'}
               </span>
             </div>
             <p className="text-xs text-header-muted mt-1 tracking-wide">Creación de Planes de Desperdicio PPDA · <span className="text-white/50">Ley 1/2025</span></p>
@@ -1219,23 +1237,32 @@ const App: React.FC = () => {
                 Sin guardar
               </span>
             )}
-            <button onClick={handleCloudSave} disabled={isSyncing}
+            <button onClick={handleCloudSave} disabled={isSyncing || planEstado === 'Cerrado'}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                isSyncing
+                isSyncing || planEstado === 'Cerrado'
                   ? 'bg-white/10 text-white/40 cursor-not-allowed'
                   : hasUnsavedChanges
                   ? 'bg-amber-400 text-amber-900 hover:bg-amber-300 shadow-sm font-semibold'
                   : 'bg-white text-header hover:bg-white/90 shadow-sm'
-              }`}>
+              }`}
+              title={planEstado === 'Cerrado' ? 'Plan cerrado — reábrelo para editar' : ''}>
               {isSyncing ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
               <span>{isSyncing ? 'Guardando...' : 'Guardar'}</span>
             </button>
             {currentUserRole !== 'viewer' && (
-              <button onClick={handleSaveNewVersion} disabled={isSyncing}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-white/15 hover:bg-white/25 transition-all border border-white/25">
-                <GitBranch size={13} />
-                <span>Nueva versión</span>
-              </button>
+              planEstado === 'Cerrado' ? (
+                <button onClick={handleReopenPlan} disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-500/40 hover:bg-blue-500/60 transition-all border border-blue-400/50">
+                  <GitBranch size={13} />
+                  <span>Reabrir plan</span>
+                </button>
+              ) : (
+                <button onClick={handleClosePlan} disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-white/15 hover:bg-white/25 transition-all border border-white/25">
+                  <CheckSquare size={13} />
+                  <span>Cerrar plan</span>
+                </button>
+              )
             )}
           </>
           {state.step < 6 && (
@@ -1306,6 +1333,15 @@ const App: React.FC = () => {
       {/* Contenido principal */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-6 py-6 pb-24">
+
+        {/* Banner plan cerrado */}
+        {planEstado === 'Cerrado' && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm font-medium">
+            <CheckSquare size={16} className="text-blue-500 flex-shrink-0" />
+            <span>Plan cerrado — {state.version || ''}. Haz clic en <strong>Reabrir plan</strong> para editarlo.</span>
+          </div>
+        )}
+
         {state.step === 1 && (
           <div className="space-y-6">
             <header className="border-b border-slate-200 pb-2 flex justify-between items-center">
@@ -1439,7 +1475,7 @@ const App: React.FC = () => {
                 state={state}
                 setState={setState}
                 onCloudSave={handleCloudSave}
-                onSaveNewVersion={currentUserRole !== 'viewer' ? handleSaveNewVersion : undefined}
+                onSaveNewVersion={currentUserRole !== 'viewer' ? handleClosePlan : undefined}
                 isSyncing={isSyncing}
             />
         )}
@@ -1491,39 +1527,39 @@ const App: React.FC = () => {
         </div>
       )}
 
-    {/* Modal nueva versión */}
-    {showVersionModal && (
+    {/* Modal cerrar plan */}
+    {showCloseModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="p-6 border-b">
-              <h3 className="text-lg font-bold text-slate-800">Nueva versión</h3>
+              <h3 className="text-lg font-bold text-slate-800">Cerrar plan</h3>
               <p className="text-sm text-slate-500 mt-1">
-                Se creará la versión <strong>{`V${(parseInt((state.version || 'V1').replace(/[^0-9]/g, '')) || 1) + 1}`}</strong>. Describe los cambios realizados.
+                Se creará la versión oficial <strong>{`V${Math.max(parseInt((state.version || '').replace(/\D/g, ''), 10) || 0, 0) + 1}`}</strong>. Describe el contenido o los cambios de esta versión.
               </p>
             </div>
             <div className="p-6">
               <textarea
                 autoFocus
-                value={versionDescription}
-                onChange={e => setVersionDescription(e.target.value)}
-                placeholder="Ej: Actualización de objetivos de reducción de pan. Revisión del diagnóstico de cocina..."
+                value={closeDescription}
+                onChange={e => setCloseDescription(e.target.value)}
+                placeholder="Ej: Plan inicial tras visita de diagnóstico. Incluye objetivos de reducción buffet y formación staff..."
                 rows={4}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
             <div className="p-6 pt-0 flex justify-end gap-3">
               <button
-                onClick={() => setShowVersionModal(false)}
+                onClick={() => setShowCloseModal(false)}
                 className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
               >
                 Cancelar
               </button>
               <button
-                onClick={handleConfirmNewVersion}
-                disabled={!versionDescription.trim()}
-                className="px-5 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 disabled:opacity-40"
+                onClick={handleConfirmClose}
+                disabled={!closeDescription.trim()}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40"
               >
-                Crear versión
+                Cerrar plan
               </button>
             </div>
           </div>

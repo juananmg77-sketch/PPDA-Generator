@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lock, ShieldAlert, LogIn, Eye, EyeOff, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../services/supabase';
 
@@ -29,6 +29,43 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [forgotMode, setForgotMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [recoveryStatus, setRecoveryStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes('type=recovery')) {
+      setRecoveryMode(true);
+    }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSetNewPassword = async () => {
+    if (newPassword.length < 8) {
+      setRecoveryStatus({ type: 'error', msg: 'La contraseña debe tener al menos 8 caracteres.' });
+      return;
+    }
+    setRecoveryLoading(true);
+    setRecoveryStatus(null);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    setRecoveryLoading(false);
+    if (error) {
+      setRecoveryStatus({ type: 'error', msg: error.message });
+    } else {
+      setRecoveryStatus({ type: 'success', msg: '¡Contraseña actualizada correctamente! Ya puedes iniciar sesión.' });
+      setRecoveryMode(false);
+      setNewPassword('');
+      window.location.hash = '';
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +120,51 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       setLoading(false);
     }
   };
+
+  if (recoveryMode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-8 w-full max-w-sm">
+          <div className="flex justify-center mb-5">
+            <HsGreenLogoSmall />
+          </div>
+          <h2 className="text-lg font-bold text-slate-800 text-center mb-1">Establece tu nueva contraseña</h2>
+          <p className="text-sm text-slate-500 text-center mb-6">Introduce la contraseña que quieres usar a partir de ahora.</p>
+
+          {recoveryStatus && (
+            <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${recoveryStatus.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+              {recoveryStatus.msg}
+            </div>
+          )}
+
+          {!recoveryStatus?.type || recoveryStatus.type === 'error' ? (
+            <>
+              <div className="relative mb-4">
+                <input
+                  type={showNewPwd ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Nueva contraseña (mín. 8 caracteres)"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  onKeyDown={e => e.key === 'Enter' && handleSetNewPassword()}
+                />
+                <button type="button" onClick={() => setShowNewPwd(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                  {showNewPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <button
+                onClick={handleSetNewPassword}
+                disabled={recoveryLoading || !newPassword}
+                className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black py-3 rounded-xl transition-colors"
+              >
+                {recoveryLoading ? 'Guardando…' : 'Cambiar contraseña'}
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">

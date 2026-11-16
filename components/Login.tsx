@@ -167,60 +167,45 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div
+      className="min-h-screen relative"
+      style={{ backgroundImage: "url('/login-hotel.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+    >
+      {/* Filo inferior con el degradado de marca */}
+      <div className="absolute inset-x-0 bottom-0 h-2 z-20" style={{ background: 'linear-gradient(90deg,#24CBF5,#0002C9)' }} />
 
-      {/* ── Panel izquierdo corporativo ── */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center px-16 py-12" style={{ backgroundColor: '#1a3d2b' }}>
-        {/* Logo grande — fondo transparente, directo sobre verde */}
-        <div className="mb-10" style={{ width: '280px' }}>
-          <img src="/logo-hsgreen.png" alt="HS Green" className="w-full h-auto object-contain drop-shadow-lg" />
-        </div>
-
-        {/* Título y descripción */}
-        <div className="text-center max-w-sm">
-          <h1 className="text-2xl font-bold text-white leading-snug mb-3">
-            Creación de Planes de Desperdicio PPDA
-          </h1>
-          <p className="text-sm leading-relaxed mb-6" style={{ color: 'rgba(255,255,255,0.65)' }}>
-            Plataforma profesional para la elaboración, gestión y seguimiento de Planes de Prevención y Reducción del Desperdicio Alimentario.
-          </p>
-          <span className="inline-block text-xs font-semibold px-3 py-1.5 rounded-full border border-white/20 text-white/70">
-            Ley 1/2025 · Ley 7/2022
-          </span>
-        </div>
-
-        {/* Footer panel */}
-        <div className="mt-auto pt-12 text-center">
-          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            © {new Date().getFullYear()} HS Consulting · Environment & Sustainability
-          </p>
-        </div>
+      {/* Barra superior de cristal con las dos marcas, centradas */}
+      <div
+        className="absolute inset-x-0 top-0 z-10 h-16 flex items-center justify-center gap-5 px-4"
+        style={{ background: 'rgba(255,255,255,0.78)', backdropFilter: 'blur(14px) saturate(1.2)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', borderBottom: '1px solid rgba(255,255,255,0.55)' }}
+      >
+        <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-10 w-auto" />
+        <span className="w-px h-8" style={{ background: 'rgba(0,9,61,0.3)' }} />
+        <img src="/logo-hs-group.png" alt="HS Consulting Group" className="h-9 w-auto" />
       </div>
 
-      {/* ── Panel derecho: formulario ── */}
-      <div className="w-full lg:w-1/2 flex flex-col items-center justify-center px-8 py-12 bg-slate-50">
-
-        {/* Logo mobile (solo visible en < lg) */}
-        <div className="lg:hidden mb-8" style={{ width: '200px' }}>
-          <img src="/logo-hsgreen.png" alt="HS Green" className="w-full h-auto object-contain" />
-        </div>
-
+      {/* Tarjeta de acceso centrada, bajo el rótulo del hotel (deja ver cartel y cargadores) */}
+      <div className="relative z-10 min-h-screen flex justify-center items-start px-4 pt-24 pb-12 lg:pt-[56vh]">
+        <div
+          className="w-full max-w-[22rem] rounded-2xl p-6"
+          style={{ background: 'rgba(255,255,255,0.58)', backdropFilter: 'blur(14px) saturate(1.2)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 12px 40px rgba(0,9,61,0.25)' }}
+        >
         <div className="w-full max-w-sm">
 
           {/* ── Modo recuperación: confirmación enviada ── */}
           {forgotMode && resetSent ? (
             <div className="text-center">
               <div className="flex justify-center mb-4">
-                <CheckCircle2 size={48} style={{ color: '#1a3d2b' }} />
+                <CheckCircle2 size={48} style={{ color: '#00BF46' }} />
               </div>
               <h2 className="text-xl font-bold text-slate-800 mb-2">Revisa tu email</h2>
-              <p className="text-sm text-slate-500 mb-6">
+              <p className="text-sm text-slate-700 mb-6">
                 Hemos enviado un enlace de recuperación a <strong>{email}</strong>. El enlace caduca en 24 horas.
               </p>
               <button
                 onClick={() => { setForgotMode(false); setResetSent(false); setError(null); }}
                 className="text-sm font-semibold flex items-center gap-1.5 mx-auto"
-                style={{ color: '#1a3d2b' }}
+                style={{ color: '#00BF46' }}
               >
                 <ArrowLeft size={14} /> Volver al inicio de sesión
               </button>
@@ -229,20 +214,20 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           ) : forgotMode ? (
             /* ── Modo recuperación: formulario ── */
             <>
-              <div className="mb-8">
+              <div className="mb-5">
                 <button
                   onClick={() => { setForgotMode(false); setError(null); }}
-                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 mb-4"
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-800 mb-4"
                 >
                   <ArrowLeft size={13} /> Volver
                 </button>
-                <h2 className="text-2xl font-bold text-slate-800">Recuperar contraseña</h2>
-                <p className="text-sm text-slate-500 mt-1">Te enviaremos un enlace a tu email corporativo</p>
+                <h2 className="text-xl font-bold text-slate-900">Recuperar contraseña</h2>
+                <p className="text-sm text-slate-700 mt-1">Te enviaremos un enlace a tu email corporativo</p>
               </div>
 
-              <form onSubmit={handleForgotPassword} className="space-y-5">
+              <form onSubmit={handleForgotPassword} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-800 mb-1.5">
                     Email corporativo
                   </label>
                   <input
@@ -251,7 +236,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     onChange={e => setEmail(e.target.value)}
                     placeholder="nombre@empresa.com"
                     autoComplete="email"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white/75 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -266,7 +251,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   type="submit"
                   disabled={loading}
                   className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
-                  style={{ backgroundColor: loading ? '#94a3b8' : '#1a3d2b' }}
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#00BF46' }}
                 >
                   {loading
                     ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -279,14 +264,14 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           ) : (
             /* ── Login normal ── */
             <>
-              <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-800">Iniciar sesión</h2>
-                <p className="text-sm text-slate-500 mt-1">Introduce tus credenciales corporativas</p>
+              <div className="mb-5">
+                <h2 className="text-xl font-bold text-slate-900">Iniciar sesión</h2>
+                <p className="text-sm text-slate-700 mt-1">Introduce tus credenciales corporativas</p>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-5">
+              <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-800 mb-1.5">
                     Email corporativo
                   </label>
                   <input
@@ -295,21 +280,21 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     onChange={e => setEmail(e.target.value)}
                     placeholder="nombre@empresa.com"
                     autoComplete="email"
-                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-                    style={{ '--tw-ring-color': '#1a3d2b' } as any}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white/75 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                    style={{ '--tw-ring-color': '#00BF46' } as any}
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-800">
                       Contraseña
                     </label>
                     <button
                       type="button"
                       onClick={() => { setForgotMode(true); setError(null); }}
                       className="text-xs font-medium hover:underline"
-                      style={{ color: '#1a3d2b' }}
+                      style={{ color: '#00BF46' }}
                     >
                       ¿Olvidaste tu contraseña?
                     </button>
@@ -321,12 +306,12 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
                       autoComplete="current-password"
-                      className="w-full px-4 py-3 pr-12 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                      className="w-full px-4 py-3 pr-12 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white/75 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(v => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-800"
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -344,7 +329,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   type="submit"
                   disabled={loading}
                   className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
-                  style={{ backgroundColor: loading ? '#94a3b8' : '#1a3d2b' }}
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#00BF46' }}
                 >
                   {loading
                     ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -355,12 +340,16 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </>
           )}
 
-          <p className="text-xs text-slate-400 text-center mt-8">
-            © {new Date().getFullYear()} HS Consulting · Environment & Sustainability
-          </p>
+
+
+        </div>
         </div>
       </div>
 
+      <span className="absolute right-3 bottom-4 z-10 text-[10px] text-white/90 bg-[#00093D]/50 px-2 py-0.5 rounded">Imagen ilustrativa</span>
+      <span className="absolute left-4 bottom-4 z-10 text-[10px] text-white/90" style={{ textShadow: '0 1px 4px rgba(0,9,61,0.8)' }}>
+        © {new Date().getFullYear()} HS Consulting · Environment & Sustainability
+      </span>
     </div>
   );
 };

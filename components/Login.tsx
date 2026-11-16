@@ -168,28 +168,23 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
   return (
     <div
-      className="min-h-screen relative"
-      style={{ backgroundImage: "url('/login-hotel.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+      className="min-h-screen relative flex"
+      style={{ backgroundImage: "url('/login-hotel.jpg')", backgroundSize: 'cover', backgroundPosition: '28% center' }}
     >
       {/* Filo inferior con el degradado de marca */}
       <div className="absolute inset-x-0 bottom-0 h-2 z-20" style={{ background: 'linear-gradient(90deg,#24CBF5,#0002C9)' }} />
 
-      {/* Barra superior de cristal con las dos marcas, centradas */}
-      <div
-        className="absolute inset-x-0 top-0 z-10 h-16 flex items-center justify-center gap-5 px-4"
-        style={{ background: 'rgba(255,255,255,0.78)', backdropFilter: 'blur(14px) saturate(1.2)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', borderBottom: '1px solid rgba(255,255,255,0.55)' }}
-      >
-        <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-10 w-auto" />
-        <span className="w-px h-8" style={{ background: 'rgba(0,9,61,0.3)' }} />
-        <img src="/logo-hs-group.png" alt="HS Consulting Group" className="h-9 w-auto" />
-      </div>
+      {/* Zona de imagen: limpia, sin textos encima */}
+      <div className="hidden lg:block flex-1" />
+      <span className="absolute left-4 bottom-5 z-10 text-[10px] text-white/90 bg-[#00093D]/50 px-2 py-0.5 rounded">Imagen ilustrativa</span>
 
-      {/* Tarjeta de acceso centrada, bajo el rótulo del hotel (deja ver cartel y cargadores) */}
-      <div className="relative z-10 min-h-screen flex justify-center items-start px-4 pt-24 pb-12 lg:pt-[56vh]">
-        <div
-          className="w-full max-w-[22rem] rounded-2xl p-6"
-          style={{ background: 'rgba(255,255,255,0.58)', backdropFilter: 'blur(14px) saturate(1.2)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 12px 40px rgba(0,9,61,0.25)' }}
-        >
+      {/* Bloque de acceso a la derecha, en cristal */}
+      <div
+        className="relative z-10 w-full lg:w-[34%] min-h-screen flex flex-col items-center justify-center px-9 py-10"
+        style={{ background: 'rgba(255,255,255,0.74)', backdropFilter: 'blur(18px) saturate(1.2)', WebkitBackdropFilter: 'blur(18px) saturate(1.2)', borderLeft: '1px solid rgba(255,255,255,0.6)' }}
+      >
+        <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="w-56 h-auto mb-8" />
+
         <div className="w-full max-w-sm">
 
           {/* ── Modo recuperación: confirmación enviada ── */}
@@ -342,14 +337,16 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
 
 
-        </div>
+          <div className="mt-8 flex flex-col items-center gap-1">
+            <span className="text-[11px] font-semibold text-slate-600">Una marca de</span>
+            <img src="/logo-hs-group.png" alt="HS Consulting Group" className="w-40 h-auto" />
+          </div>
+          <p className="text-[11px] text-slate-500 text-center mt-4">
+            © {new Date().getFullYear()} HS Consulting · Environment & Sustainability
+          </p>
         </div>
       </div>
 
-      <span className="absolute right-3 bottom-4 z-10 text-[10px] text-white/90 bg-[#00093D]/50 px-2 py-0.5 rounded">Imagen ilustrativa</span>
-      <span className="absolute left-4 bottom-4 z-10 text-[10px] text-white/90" style={{ textShadow: '0 1px 4px rgba(0,9,61,0.8)' }}>
-        © {new Date().getFullYear()} HS Consulting · Environment & Sustainability
-      </span>
     </div>
   );
 };

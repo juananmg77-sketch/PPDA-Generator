@@ -135,6 +135,66 @@ export const ocupacionService = {
   },
 };
 
+// ── donaciones (REG-DON-01) ───────────────────────────────────────────────────
+
+export interface DonacionRow {
+  id?: string;
+  plan_id: string;
+  hotel_nombre: string;
+  fecha: string;              // YYYY-MM-DD
+  kg_donados: number;
+  entidad_receptora: string;
+  tipo_alimento?: string;
+  notas?: string;
+  registrado_por?: string;
+  created_at?: string;
+}
+
+export const donacionesService = {
+
+  async upsert(row: DonacionRow): Promise<DonacionRow> {
+    if (row.id) {
+      const { data, error } = await supabase
+        .from('donaciones')
+        .update({ ...row, updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as DonacionRow;
+    }
+    const { data, error } = await supabase
+      .from('donaciones')
+      .insert({ ...row, updated_at: new Date().toISOString() })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as DonacionRow;
+  },
+
+  async fetchByPlan(planId: string, mes?: string): Promise<DonacionRow[]> {
+    let q = supabase
+      .from('donaciones')
+      .select('*')
+      .eq('plan_id', planId)
+      .order('fecha', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (mes) {
+      q = q.gte('fecha', `${mes}-01`).lte('fecha', `${mes}-31`);
+    }
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data as DonacionRow[]) || [];
+  },
+
+  async delete(id: string): Promise<void> {
+    const { error } = await supabase.from('donaciones').delete().eq('id', id);
+    if (error) throw error;
+  },
+};
+
 // ── Helpers de cálculo ────────────────────────────────────────────────────────
 
 /** Ratio kg/estancia o kg/comensal */

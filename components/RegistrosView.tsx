@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AppState, Area } from '../types';
-import { pesajesService, ocupacionService, PesajeRow, OcupacionRow } from '../services/pesajesService';
+import { pesajesService, ocupacionService, donacionesService, PesajeRow, OcupacionRow, DonacionRow } from '../services/pesajesService';
+import { exportDonacionesXLS } from '../utils/exportXLS';
 import { FOOD_TAXONOMY } from './Forms';
 import {
   ArrowLeft, Scale, Check, ChevronLeft, ChevronRight,
-  Save, RefreshCw, CheckCircle2, ChevronDown
+  Save, RefreshCw, CheckCircle2, ChevronDown,
+  HandHeart, Trash2, Plus, FileSpreadsheet
 } from 'lucide-react';
 
 interface Props {
@@ -436,6 +438,137 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
   );
 };
 
+// ── Formulario de donación (bottom sheet) ────────────────────────────────────
+
+interface DonacionSheetProps {
+  fecha: string;
+  existing: DonacionRow | null;
+  onConfirm: (row: Omit<DonacionRow, 'plan_id' | 'hotel_nombre' | 'fecha' | 'registrado_por'>) => void;
+  onClose: () => void;
+  saving: boolean;
+}
+
+const DonacionSheet: React.FC<DonacionSheetProps> = ({ fecha, existing, onConfirm, onClose, saving }) => {
+  const [kg,       setKg]       = useState(existing?.kg_donados?.toString() || '');
+  const [entidad,  setEntidad]  = useState(existing?.entidad_receptora || '');
+  const [tipo,     setTipo]     = useState(existing?.tipo_alimento || '');
+  const [notas,    setNotas]    = useState(existing?.notas || '');
+
+  const kgNum = parseFloat(kg) || 0;
+  const canConfirm = kgNum > 0 && entidad.trim().length > 0;
+
+  const ENTIDADES_COMUNES = ['Banco de Alimentos', 'Cruz Roja', 'Cáritas', 'Too Good To Go'];
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end sm:items-center sm:justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl z-10 overflow-hidden flex flex-col max-h-[92vh]">
+
+        {/* Cabecera */}
+        <div className="px-5 py-4 border-b flex items-center justify-between flex-shrink-0"
+          style={{ backgroundColor: '#1a4d3b' }}>
+          <div>
+            <p className="text-white font-bold text-base leading-none">
+              {existing ? 'Editar donación' : 'Nueva donación'}
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              {new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ color: 'rgba(255,255,255,0.6)' }} className="p-1.5 hover:text-white transition-colors">✕</button>
+        </div>
+
+        {/* Cuerpo */}
+        <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
+
+          {/* Kg donados */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Kg donados <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number" inputMode="decimal" min="0.1" step="0.1"
+                value={kg} onChange={e => setKg(e.target.value)}
+                placeholder="0.0" autoFocus
+                className="w-full text-center text-3xl font-black py-4 px-4 border-2 rounded-2xl focus:outline-none transition-all"
+                style={{ borderColor: kgNum > 0 ? '#1a4d3b' : '#e2e8f0', color: kgNum > 0 ? '#1a4d3b' : '#94a3b8' }}
+              />
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">kg</span>
+            </div>
+          </div>
+
+          {/* Entidad receptora */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Entidad receptora <span className="text-red-400">*</span>
+            </label>
+            <div className="flex gap-2 flex-wrap mb-2">
+              {ENTIDADES_COMUNES.map(e => (
+                <button key={e} type="button"
+                  onClick={() => setEntidad(e)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    entidad === e
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                  }`}>
+                  {e}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={entidad} onChange={e => setEntidad(e.target.value)}
+              placeholder="Nombre de la entidad…"
+              className="w-full py-2.5 px-4 border-2 rounded-xl text-sm focus:outline-none transition-all border-slate-200 focus:border-emerald-400"
+            />
+          </div>
+
+          {/* Tipo de alimento */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Tipo de alimento <span className="text-slate-300 font-normal normal-case">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={tipo} onChange={e => setTipo(e.target.value)}
+              placeholder="Ej: Excedente buffet cena, Productos envasados…"
+              className="w-full py-2.5 px-4 border-2 rounded-xl text-sm focus:outline-none transition-all border-slate-200 focus:border-emerald-400"
+            />
+          </div>
+
+          {/* Notas */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Observaciones <span className="text-slate-300 font-normal normal-case">(opcional)</span>
+            </label>
+            <textarea
+              value={notas} onChange={e => setNotas(e.target.value)}
+              placeholder="Condiciones de entrega, receptor, incidencias…"
+              rows={2}
+              className="w-full py-2.5 px-4 border-2 rounded-xl text-sm focus:outline-none transition-all border-slate-200 focus:border-emerald-400 resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Pie */}
+        <div className="flex-shrink-0 px-5 pb-6 pt-3 border-t border-slate-100 bg-white">
+          <button
+            onClick={() => onConfirm({ id: existing?.id, kg_donados: kgNum, entidad_receptora: entidad.trim(), tipo_alimento: tipo.trim() || undefined, notas: notas.trim() || undefined })}
+            disabled={!canConfirm || saving}
+            className="w-full py-4 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 disabled:opacity-40"
+            style={{ backgroundColor: canConfirm ? '#1a4d3b' : '#e2e8f0', color: canConfirm ? '#fff' : '#94a3b8' }}
+          >
+            {saving
+              ? <><RefreshCw size={16} className="animate-spin" /> Guardando...</>
+              : <><HandHeart size={18} /> {existing ? 'Actualizar' : `Registrar ${kgNum > 0 ? kgNum.toFixed(1) + ' kg' : ''}`}</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Vista principal ───────────────────────────────────────────────────────────
 
 export const RegistrosView: React.FC<Props> = ({
@@ -445,10 +578,13 @@ export const RegistrosView: React.FC<Props> = ({
   const [currentMonth,  setCurrentMonth]  = useState(isoToday().slice(0, 7));
   const [pesajes,   setPesajes]   = useState<PesajeRow[]>([]);
   const [ocupacion, setOcupacion] = useState<OcupacionRow[]>([]);
+  const [donaciones, setDonaciones] = useState<DonacionRow[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [saving,    setSaving]    = useState(false);
   const [saved,     setSaved]     = useState(false);
   const [activeZone, setActiveZone] = useState<Area | null>(null);
+  const [activeDonacion, setActiveDonacion] = useState<DonacionRow | 'new' | null>(null);
+  const [deletingDonId, setDeletingDonId] = useState<string | null>(null);
 
   const monthGrid  = useMemo(() => getMonthGrid(currentMonth), [currentMonth]);
   const todayYM    = isoToday().slice(0, 7);
@@ -465,17 +601,19 @@ export const RegistrosView: React.FC<Props> = ({
   const load = async () => {
     setLoading(true);
     try {
-      const [p, o] = await Promise.all([
+      const [p, o, d] = await Promise.all([
         pesajesService.fetchByPlan(planId),
         ocupacionService.fetchByPlan(planId),
+        donacionesService.fetchByPlan(planId),
       ]);
       setPesajes(p);
       setOcupacion(o);
+      setDonaciones(d);
       // Si hoy no tiene registros pero hay datos anteriores, navegar al último día con datos
       const todayStr = isoToday();
       const hasTodayRecords = p.some((r: PesajeRow) => r.fecha === todayStr);
       if (!hasTodayRecords && p.length > 0) {
-        const lastDate = p[0].fecha; // fetchByPlan ordena DESC, el primero es el más reciente
+        const lastDate = p[0].fecha;
         setSelectedDate(lastDate);
         setCurrentMonth(lastDate.slice(0, 7));
       }
@@ -564,6 +702,60 @@ export const RegistrosView: React.FC<Props> = ({
     }
   };
 
+  // Donaciones del día seleccionado
+  const donacionesHoy = useMemo(() =>
+    donaciones.filter(d => d.fecha === selectedDate),
+  [donaciones, selectedDate]);
+
+  // Total kg donados del día
+  const totalDonadoHoy = useMemo(() =>
+    donacionesHoy.reduce((s, d) => s + d.kg_donados, 0),
+  [donacionesHoy]);
+
+  // Indicador en calendario: días con donación
+  const fechasConDonacion = useMemo(() =>
+    new Set(donaciones.map(d => d.fecha)),
+  [donaciones]);
+
+  // Guardar donación
+  const handleDonacionConfirm = async (fields: Omit<DonacionRow, 'plan_id' | 'hotel_nombre' | 'fecha' | 'registrado_por'>) => {
+    setSaving(true);
+    try {
+      const row: DonacionRow = {
+        ...fields,
+        plan_id:          planId,
+        hotel_nombre:     hotelNombre || '',
+        fecha:            selectedDate,
+        registrado_por:   currentUser,
+      };
+      const saved = await donacionesService.upsert(row);
+      setDonaciones(prev => {
+        if (fields.id) return prev.map(d => d.id === fields.id ? saved : d);
+        return [...prev, saved];
+      });
+      setActiveDonacion(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e: any) {
+      alert('Error al guardar donación: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Eliminar donación
+  const handleDonacionDelete = async (id: string) => {
+    setDeletingDonId(id);
+    try {
+      await donacionesService.delete(id);
+      setDonaciones(prev => prev.filter(d => d.id !== id));
+    } catch (e: any) {
+      alert('Error al eliminar: ' + e.message);
+    } finally {
+      setDeletingDonId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f1f5f9' }}>
@@ -585,13 +777,23 @@ export const RegistrosView: React.FC<Props> = ({
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-semibold text-white truncate leading-none">{hotelNombre}</h1>
             <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              Registros de pesaje
+              Pesajes · Donaciones
             </p>
           </div>
           {saved && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 text-white text-[11px] font-medium">
               <CheckCircle2 size={12} /> Guardado
             </div>
+          )}
+          {donaciones.length > 0 && (
+            <button
+              onClick={() => exportDonacionesXLS(donaciones, hotelNombre, currentMonth)}
+              className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
+              title="Exportar REG-DON-01"
+            >
+              <FileSpreadsheet size={18} />
+            </button>
           )}
         </div>
       </header>
@@ -634,6 +836,7 @@ export const RegistrosView: React.FC<Props> = ({
               const isSel    = d === selectedDate;
               const isFuture = d > today;
               const hasDat   = pesajes.some(p => p.fecha === d);
+              const hasDon   = fechasConDonacion.has(d);
               return (
                 <button key={d}
                   onClick={() => !isFuture && setSelectedDate(d)}
@@ -652,9 +855,11 @@ export const RegistrosView: React.FC<Props> = ({
                   }`}>
                     {new Date(d + 'T12:00:00').getDate()}
                   </span>
-                  <div className={`w-1 h-1 rounded-full mt-0.5 ${
-                    hasDat ? (isSel ? 'bg-white/80' : 'bg-brand-500') : 'bg-transparent'
-                  }`} />
+                  {/* Indicadores: pesaje (verde) y/o donación (azul) */}
+                  <div className="flex gap-0.5 mt-0.5 h-1 items-center">
+                    <div className={`w-1 h-1 rounded-full ${hasDat ? (isSel ? 'bg-white/80' : 'bg-brand-500') : 'bg-transparent'}`} />
+                    <div className={`w-1 h-1 rounded-full ${hasDon ? (isSel ? 'bg-white/60' : 'bg-blue-400') : 'bg-transparent'}`} />
+                  </div>
                 </button>
               );
             })}
@@ -664,22 +869,48 @@ export const RegistrosView: React.FC<Props> = ({
 
       {/* ── Resumen del día ── */}
       <div className="max-w-lg mx-auto w-full px-4 pt-4">
-        <div className="bg-white rounded-xl border border-slate-200 px-5 py-3 flex items-center justify-between shadow-sm">
-          <div>
-            <p className="text-xs text-slate-400">{dayInfo.full}</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {zonas.filter(z => getPesaje(z.id)).length}/{zonas.length} zonas registradas
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider">Total</p>
-            <p className="text-xl font-bold" style={{ color: totalHoy > 0 ? '#1a3d2b' : '#cbd5e1' }}>
-              {totalHoy > 0 ? `${totalHoy.toFixed(1)} kg` : '—'}
-            </p>
-            {costeTotalHoy != null && costeTotalHoy > 0 && (
-              <p className="text-xs font-semibold text-slate-700 mt-0.5">
-                {costeTotalHoy.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} €
+        <div className="bg-white rounded-xl border border-slate-200 px-5 py-3 shadow-sm">
+          <p className="text-xs text-slate-400 mb-2">{dayInfo.full}</p>
+          <div className="flex items-center justify-between gap-3">
+            {/* Columna desperdicio */}
+            <div className="flex-1 text-center">
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Desperdicio</p>
+              <p className="text-xl font-black" style={{ color: totalHoy > 0 ? '#1a3d2b' : '#cbd5e1' }}>
+                {totalHoy > 0 ? `${totalHoy.toFixed(1)}` : '—'}
+                {totalHoy > 0 && <span className="text-sm font-semibold ml-0.5">kg</span>}
               </p>
+              <p className="text-[10px] text-slate-400">
+                {zonas.filter(z => getPesaje(z.id)).length}/{zonas.length} zonas
+              </p>
+            </div>
+
+            {/* Separador */}
+            <div className="w-px h-10 bg-slate-100" />
+
+            {/* Columna donación */}
+            <div className="flex-1 text-center">
+              <p className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Donado</p>
+              <p className="text-xl font-black" style={{ color: totalDonadoHoy > 0 ? '#1d4ed8' : '#cbd5e1' }}>
+                {totalDonadoHoy > 0 ? `${totalDonadoHoy.toFixed(1)}` : '—'}
+                {totalDonadoHoy > 0 && <span className="text-sm font-semibold ml-0.5">kg</span>}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                {donacionesHoy.length > 0 ? `${donacionesHoy.length} entrega${donacionesHoy.length > 1 ? 's' : ''}` : 'Sin registros'}
+              </p>
+            </div>
+
+            {/* Coste (si aplica) */}
+            {costeTotalHoy != null && costeTotalHoy > 0 && (
+              <>
+                <div className="w-px h-10 bg-slate-100" />
+                <div className="flex-1 text-center">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Coste</p>
+                  <p className="text-xl font-black text-slate-700">
+                    {costeTotalHoy.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    <span className="text-sm font-semibold ml-0.5">€</span>
+                  </p>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -817,7 +1048,92 @@ export const RegistrosView: React.FC<Props> = ({
         )}
       </div>
 
-      {/* ── Bottom sheet de entrada ── */}
+      {/* ── Sección Donaciones ── */}
+      <div className="max-w-lg mx-auto w-full px-4 pb-10">
+        {/* Cabecera sección */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#eff6ff' }}>
+              <HandHeart size={15} style={{ color: '#1d4ed8' }} />
+            </div>
+            <span className="text-sm font-black text-slate-700 uppercase tracking-wide">Donaciones</span>
+            {totalDonadoHoy > 0 && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+                {totalDonadoHoy.toFixed(1)} kg hoy
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setActiveDonacion('new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+            style={{ backgroundColor: '#1d4ed8', color: '#fff' }}
+          >
+            <Plus size={13} /> Nueva
+          </button>
+        </div>
+
+        {donacionesHoy.length === 0 ? (
+          <div className="bg-white rounded-2xl border-2 border-dashed border-slate-200 py-8 flex flex-col items-center gap-2">
+            <HandHeart size={28} className="text-slate-200" />
+            <p className="text-sm text-slate-400 font-medium">Sin donaciones registradas hoy</p>
+            <button
+              onClick={() => setActiveDonacion('new')}
+              className="mt-1 text-xs font-semibold text-blue-500 underline underline-offset-2"
+            >
+              + Registrar primera donación del día
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {donacionesHoy.map(don => (
+              <div key={don.id}
+                className="bg-white rounded-2xl border-2 overflow-hidden shadow-sm"
+                style={{ borderColor: '#bfdbfe' }}>
+                {/* Franja color */}
+                <div className="h-1.5 w-full" style={{ backgroundColor: '#3b82f6' }} />
+                <div className="px-5 py-4">
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-800 text-base truncate">{don.entidad_receptora}</p>
+                      {don.tipo_alimento && (
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">{don.tipo_alimento}</p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-3xl font-black" style={{ color: '#1d4ed8' }}>{don.kg_donados.toFixed(1)}</span>
+                      <span className="text-base font-semibold text-slate-400 ml-1">kg</span>
+                    </div>
+                  </div>
+                  {don.notas && (
+                    <p className="text-xs text-slate-400 italic mb-3">{don.notas}</p>
+                  )}
+                  <div className="flex gap-2 mt-3">
+                    <button
+                      onClick={() => setActiveDonacion(don)}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
+                      style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1.5px solid #bfdbfe' }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => don.id && handleDonacionDelete(don.id)}
+                      disabled={deletingDonId === don.id}
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-40"
+                      style={{ backgroundColor: '#fff1f2', color: '#e11d48', border: '1.5px solid #fecdd3' }}
+                    >
+                      {deletingDonId === don.id
+                        ? <RefreshCw size={12} className="animate-spin" />
+                        : <Trash2 size={12} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom sheet de entrada pesajes ── */}
       {activeZone && (
         <EntrySheet
           area={activeZone}
@@ -829,8 +1145,19 @@ export const RegistrosView: React.FC<Props> = ({
         />
       )}
 
+      {/* ── Bottom sheet de donación ── */}
+      {activeDonacion !== null && (
+        <DonacionSheet
+          fecha={selectedDate}
+          existing={activeDonacion === 'new' ? null : activeDonacion}
+          onConfirm={handleDonacionConfirm}
+          onClose={() => setActiveDonacion(null)}
+          saving={saving}
+        />
+      )}
+
       {/* ── Toast de confirmación ── */}
-      {saved && !activeZone && (
+      {saved && !activeZone && !activeDonacion && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl shadow-xl text-white text-sm font-semibold pointer-events-none"
           style={{ backgroundColor: '#1a3d2b', boxShadow: '0 8px 32px rgba(26,61,43,0.35)' }}>
           <CheckCircle2 size={16} />

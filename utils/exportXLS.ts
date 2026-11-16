@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { SupabasePlan } from '../services/planService';
 import { AppState, Objective } from '../types';
+import { DonacionRow } from '../services/pesajesService';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -193,5 +194,65 @@ export function exportStatusXLS(plans: SupabasePlan[]): void {
 
   // ── Download ────────────────────────────────────────────────────────────────
   const fileName = `PPDA_Status_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
+
+// ─── Exportación REG-DON-01 ────────────────────────────────────────────────────
+
+export function exportDonacionesXLS(
+  donaciones: DonacionRow[],
+  hotelNombre: string,
+  mes?: string,        // 'YYYY-MM' — si se pasa, filtra y etiqueta el mes
+): void {
+  const now = new Date();
+  const fechaStr = now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // Filtrar por mes si se indica
+  const rows = (mes
+    ? donaciones.filter(d => d.fecha.startsWith(mes))
+    : [...donaciones]
+  ).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  const dataRows = rows.map((d, i) => ({
+    'Nº': i + 1,
+    'Fecha': fmtDate(d.fecha),
+    'Hotel': d.hotel_nombre || hotelNombre,
+    'Entidad Receptora': d.entidad_receptora,
+    'Tipo de Alimento': d.tipo_alimento || '—',
+    'Kg Donados': d.kg_donados,
+    'Observaciones': d.notas || '',
+    'Registrado por': d.registrado_por || '',
+  }));
+
+  const mesLabel = mes
+    ? new Date(mes + '-01').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })
+    : 'Histórico completo';
+
+  const titleRows: any[][] = [
+    [`REG-DON-01 — REGISTRO DE DONACIONES REALIZADAS`],
+    [`Establecimiento: ${hotelNombre}   ·   Período: ${mesLabel}   ·   Generado: ${fechaStr}`],
+    [`Total registros: ${dataRows.length}   ·   Total kg donados: ${rows.reduce((s, d) => s + d.kg_donados, 0).toFixed(1)} kg`],
+    [],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(titleRows);
+  XLSX.utils.sheet_add_json(ws, dataRows, { origin: 'A5', skipHeader: false });
+
+  ws['!cols'] = [
+    { wch: 5 },   // Nº
+    { wch: 12 },  // Fecha
+    { wch: 30 },  // Hotel
+    { wch: 30 },  // Entidad
+    { wch: 35 },  // Tipo alimento
+    { wch: 12 },  // Kg
+    { wch: 40 },  // Observaciones
+    { wch: 20 },  // Registrado por
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'REG-DON-01');
+
+  const sufijo = mes ? `_${mes}` : '';
+  const fileName = `REG-DON-01_${hotelNombre.replace(/[^a-zA-Z0-9]/g, '_')}${sufijo}_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }

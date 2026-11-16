@@ -1189,7 +1189,7 @@ const App: React.FC = () => {
     : (state.hotelData?.nombreComercial || 'Nuevo Plan');
 
   return (
-  <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col selection:bg-brand-100">
+  <div className="plan-view min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col selection:bg-brand-100">
 
     {/* ── Header corporativo wizard ── */}
     <header className="bg-header shadow-md sticky top-0 z-30 no-print flex-shrink-0">

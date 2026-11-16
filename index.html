@@ -22,7 +22,7 @@
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
@@ -33,21 +33,21 @@
             colors: {
               /* ── Brand verde corporativo (más sobrio) ── */
               brand: {
-                50:  '#f0fdf6',
-                100: '#dcfcea',
-                200: '#b8f5d4',
-                300: '#7eeab4',
-                400: '#3dd68c',
-                500: '#1aba6e',
-                600: '#0f9958',
-                700: '#0e7a47',
-                800: '#0f6039',
-                900: '#0d4f30',
+                50:  '#f0fbf3',
+                100: '#dcf6e3',
+                200: '#b8ecc7',
+                300: '#8fe0a5',
+                400: '#77D464',
+                500: '#00BF46',
+                600: '#00923A',
+                700: '#007A30',
+                800: '#066126',
+                900: '#0a4a21',
               },
               /* ── Header corporativo oscuro ── */
               header: {
-                DEFAULT: '#1a3d2b',
-                light:   '#22503a',
+                DEFAULT: '#00093D',
+                light:   '#0a1a5c',
                 text:    '#ffffff',
                 muted:   'rgba(255,255,255,0.65)',
               },
@@ -55,8 +55,8 @@
               nav: {
                 bg:     '#ffffff',
                 border: '#e2e8f0',
-                active: '#0f9958',
-                hover:  '#f0fdf6',
+                active: '#00923A',
+                hover:  '#f0fbf3',
                 text:   '#475569',
                 num:    '#94a3b8',
               }
@@ -65,6 +65,12 @@
         }
       }
     </script>
+    <style>
+      /* HS GREEN · imagen de marca: títulos en Montserrat y filo degradado bajo las cabeceras */
+      h1, h2 { font-family: 'Montserrat', 'Inter', sans-serif; }
+      header { border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, #24CBF5, #0002C9) 1; }
+      @media print { header { border-image: none; border-bottom: 0; } }
+    </style>
     <style>
       /* ESTILOS ELEGANTES PARA SELECTS (GLOBAL) */
       select {

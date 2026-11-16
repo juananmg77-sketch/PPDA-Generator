@@ -31,7 +31,7 @@ interface Props {
 
 // Colores por zona
 const ZONE_COLORS = [
-  '#1a3d2b', '#0f9958', '#22c55e', '#86efac',
+  '#00093D', '#0f9958', '#22c55e', '#86efac',
   '#0d47a1', '#1976d2', '#4fc3f7', '#7e57c2',
   '#e65100', '#f57c00', '#ffb300', '#8d6e63',
 ];
@@ -430,7 +430,7 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
         {/* Total mes */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Total mes</p>
-          <p className="text-2xl font-black" style={{ color: '#1a3d2b' }}>{totalKgMes.toFixed(1)}<span className="text-sm font-normal text-slate-400 ml-1">kg</span></p>
+          <p className="text-2xl font-black" style={{ color: '#00093D' }}>{totalKgMes.toFixed(1)}<span className="text-sm font-normal text-slate-400 ml-1">kg</span></p>
           <p className="text-[10px] text-slate-400 mt-0.5 capitalize">{comparativaLabel}</p>
         </div>
         {/* Tendencia */}
@@ -458,7 +458,7 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
             <Users size={9}/>
             {ratioTotalCom !== null ? 'Ratio total/com.' : ratioEvitableCom !== null ? 'Ratio evitable/com.' : 'kg/comensal'}
           </p>
-          <p className="text-2xl font-black" style={{ color: ratioTotalCom !== null ? '#7c3aed' : '#1a3d2b' }}>
+          <p className="text-2xl font-black" style={{ color: ratioTotalCom !== null ? '#7c3aed' : '#00093D' }}>
             {(ratioTotalCom ?? ratioEvitableCom ?? avgComensal)?.toFixed(3) ?? '—'}
           </p>
           <p className="text-[10px] text-slate-400 mt-0.5">
@@ -518,7 +518,7 @@ export const MeasurementChart: React.FC<Props> = ({ registros, areas, hotels = [
             {ratioTotalCom !== null && (
               <div className="bg-slate-50 rounded-xl px-4 py-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Ratio total/com.</p>
-                <p className="text-xl font-black" style={{ color: '#1a3d2b' }}>{ratioTotalCom.toFixed(3)}<span className="text-xs font-normal text-slate-400 ml-1">kg/com</span></p>
+                <p className="text-xl font-black" style={{ color: '#00093D' }}>{ratioTotalCom.toFixed(3)}<span className="text-xs font-normal text-slate-400 ml-1">kg/com</span></p>
                 <p className="text-[10px] text-slate-400 mt-0.5">incl. merma técnica</p>
               </div>
             )}

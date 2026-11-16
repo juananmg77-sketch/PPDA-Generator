@@ -191,7 +191,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           {forgotMode && resetSent ? (
             <div className="text-center">
               <div className="flex justify-center mb-4">
-                <CheckCircle2 size={48} style={{ color: '#00BF46' }} />
+                <CheckCircle2 size={48} style={{ color: '#00923A' }} />
               </div>
               <h2 className="text-xl font-bold text-slate-800 mb-2">Revisa tu email</h2>
               <p className="text-sm text-slate-700 mb-6">
@@ -200,7 +200,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               <button
                 onClick={() => { setForgotMode(false); setResetSent(false); setError(null); }}
                 className="text-sm font-semibold flex items-center gap-1.5 mx-auto"
-                style={{ color: '#00BF46' }}
+                style={{ color: '#00923A' }}
               >
                 <ArrowLeft size={14} /> Volver al inicio de sesión
               </button>
@@ -246,7 +246,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   type="submit"
                   disabled={loading}
                   className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
-                  style={{ backgroundColor: loading ? '#94a3b8' : '#00BF46' }}
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#00923A' }}
                 >
                   {loading
                     ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -276,7 +276,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                     placeholder="nombre@empresa.com"
                     autoComplete="email"
                     className="w-full px-4 py-3 rounded-lg border border-slate-200 text-sm text-slate-800 bg-white/75 focus:outline-none focus:ring-2 focus:border-transparent transition-all"
-                    style={{ '--tw-ring-color': '#00BF46' } as any}
+                    style={{ '--tw-ring-color': '#00923A' } as any}
                   />
                 </div>
 
@@ -289,7 +289,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                       type="button"
                       onClick={() => { setForgotMode(true); setError(null); }}
                       className="text-xs font-medium hover:underline"
-                      style={{ color: '#00BF46' }}
+                      style={{ color: '#00923A' }}
                     >
                       ¿Olvidaste tu contraseña?
                     </button>
@@ -324,7 +324,7 @@ export const LoginView: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   type="submit"
                   disabled={loading}
                   className="w-full py-3 px-4 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
-                  style={{ backgroundColor: loading ? '#94a3b8' : '#00BF46' }}
+                  style={{ backgroundColor: loading ? '#94a3b8' : '#00923A' }}
                 >
                   {loading
                     ? <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />

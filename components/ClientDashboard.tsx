@@ -108,10 +108,10 @@ export const ClientDashboard: React.FC<Props> = ({
     <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" style={{ backgroundColor: '#f1f5f9' }}>
 
       {/* ── Header corporativo ── */}
-      <header style={{ backgroundColor: '#1a3d2b' }} className="shadow-md flex-shrink-0 w-full">
+      <header style={{ backgroundColor: '#00093D' }} className="shadow-md flex-shrink-0 w-full">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
-            <img src="/logo-hsgreen.png" alt="HS Green" className="h-8 w-auto object-contain" />
+            <span className="bg-white rounded-lg px-2.5 py-1 flex items-center"><img src="/logo-hsgreen-recortado.png" alt="HS GREEN" className="h-7 w-auto object-contain" /></span>
             <div className="w-px h-5 bg-white/20" />
             <div>
               <h1 className="text-sm font-semibold text-white leading-none">Portal Cliente</h1>
@@ -161,7 +161,7 @@ export const ClientDashboard: React.FC<Props> = ({
             {plans.map(plan => {
               const zonas = countZonasPesaje(plan);
               const isCorp = plan.scope === 'corporate';
-              const borderColor = plan.estado === 'Activo' ? '#1a3d2b' : plan.estado === 'En revisión' ? '#1d4ed8' : '#cbd5e1';
+              const borderColor = plan.estado === 'Activo' ? '#00093D' : plan.estado === 'En revisión' ? '#0002C9' : '#cbd5e1';
               return (
                 <div key={plan.plan_id}
                   className="bg-white rounded-2xl shadow-sm overflow-hidden flex"
@@ -201,7 +201,7 @@ export const ClientDashboard: React.FC<Props> = ({
                         onClick={() => handleRegistros(plan)}
                         disabled={zonas === 0}
                         className="relative w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden"
-                        style={{ backgroundColor: '#1a3d2b' }}
+                        style={{ backgroundColor: '#00923A' }}
                       >
                         <div className="absolute inset-0 opacity-10"
                           style={{ background: 'radial-gradient(circle at 85% 50%, #4ade80, transparent 55%)' }} />
@@ -240,7 +240,7 @@ export const ClientDashboard: React.FC<Props> = ({
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between"
-              style={{ backgroundColor: '#1a3d2b' }}>
+              style={{ backgroundColor: '#00093D' }}>
               <div>
                 <p className="text-white font-semibold text-sm">Selecciona el establecimiento</p>
                 <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
@@ -262,7 +262,7 @@ export const ClientDashboard: React.FC<Props> = ({
                   className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50 transition-colors text-left"
                 >
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold"
-                    style={{ backgroundColor: '#1a3d2b22', color: '#1a3d2b' }}>
+                    style={{ backgroundColor: '#00093D22', color: '#00093D' }}>
                     {hotel.charAt(0).toUpperCase()}
                   </div>
                   <span className="text-sm font-medium text-slate-800 flex-1 truncate">{hotel}</span>
@@ -278,7 +278,7 @@ export const ClientDashboard: React.FC<Props> = ({
       {showChangePwd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: '#1a3d2b' }}>
+            <div className="px-6 py-4 flex items-center justify-between" style={{ backgroundColor: '#00093D' }}>
               <div className="flex items-center gap-3">
                 <KeyRound size={18} className="text-white/70" />
                 <div>
@@ -325,7 +325,7 @@ export const ClientDashboard: React.FC<Props> = ({
                 }}
                 disabled={pwdLoading || !newPwd || !confirmPwd}
                 className="w-full py-2.5 text-white rounded-lg font-semibold text-sm transition-all disabled:opacity-40"
-                style={{ backgroundColor: '#1a3d2b' }}
+                style={{ backgroundColor: '#00093D' }}
               >
                 {pwdLoading ? 'Guardando…' : 'Cambiar contraseña'}
               </button>

@@ -196,7 +196,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
 
         {/* Cabecera */}
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between flex-shrink-0"
-          style={{ backgroundColor: '#1a3d2b' }}>
+          style={{ backgroundColor: '#00093D' }}>
           <div>
             <p className="text-white font-bold text-base leading-none">{area.nombre}</p>
             {area.tipoServicio && (
@@ -385,7 +385,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
                   value={kg} onChange={e => setKg(e.target.value)}
                   placeholder="0.0" autoFocus
                   className="w-full text-center text-2xl font-bold py-3 px-4 border-2 rounded-xl focus:outline-none transition-all"
-                  style={{ borderColor: totalKg > 0 ? '#1a3d2b' : '#e2e8f0', color: totalKg > 0 ? '#1a3d2b' : '#94a3b8' }}
+                  style={{ borderColor: totalKg > 0 ? '#00093D' : '#e2e8f0', color: totalKg > 0 ? '#00093D' : '#94a3b8' }}
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">kg</span>
               </div>
@@ -430,7 +430,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
             onClick={handleConfirm}
             disabled={!canConfirm || saving}
             className="w-full py-4 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 disabled:opacity-40"
-            style={{ backgroundColor: canConfirm ? '#1a3d2b' : '#e2e8f0', color: canConfirm ? '#fff' : '#94a3b8' }}
+            style={{ backgroundColor: canConfirm ? '#00923A' : '#e2e8f0', color: canConfirm ? '#fff' : '#94a3b8' }}
           >
             {saving
               ? <><RefreshCw size={16} className="animate-spin" /> Guardando...</>
@@ -470,7 +470,7 @@ const DonacionSheet: React.FC<DonacionSheetProps> = ({ fecha, existing, onConfir
 
         {/* Cabecera */}
         <div className="px-5 py-4 border-b flex items-center justify-between flex-shrink-0"
-          style={{ backgroundColor: '#1a4d3b' }}>
+          style={{ backgroundColor: '#0a1a5c' }}>
           <div>
             <p className="text-white font-bold text-base leading-none">
               {existing ? 'Editar donación' : 'Nueva donación'}
@@ -496,7 +496,7 @@ const DonacionSheet: React.FC<DonacionSheetProps> = ({ fecha, existing, onConfir
                 value={kg} onChange={e => setKg(e.target.value)}
                 placeholder="0.0" autoFocus
                 className="w-full text-center text-3xl font-black py-4 px-4 border-2 rounded-2xl focus:outline-none transition-all"
-                style={{ borderColor: kgNum > 0 ? '#1a4d3b' : '#e2e8f0', color: kgNum > 0 ? '#1a4d3b' : '#94a3b8' }}
+                style={{ borderColor: kgNum > 0 ? '#0a1a5c' : '#e2e8f0', color: kgNum > 0 ? '#0a1a5c' : '#94a3b8' }}
               />
               <span className="absolute right-5 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-medium">kg</span>
             </div>
@@ -561,7 +561,7 @@ const DonacionSheet: React.FC<DonacionSheetProps> = ({ fecha, existing, onConfir
             onClick={() => onConfirm({ id: existing?.id, kg_donados: kgNum, entidad_receptora: entidad.trim(), tipo_alimento: tipo.trim() || undefined, notas: notas.trim() || undefined })}
             disabled={!canConfirm || saving}
             className="w-full py-4 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-2 disabled:opacity-40"
-            style={{ backgroundColor: canConfirm ? '#1a4d3b' : '#e2e8f0', color: canConfirm ? '#fff' : '#94a3b8' }}
+            style={{ backgroundColor: canConfirm ? '#0a1a5c' : '#e2e8f0', color: canConfirm ? '#fff' : '#94a3b8' }}
           >
             {saving
               ? <><RefreshCw size={16} className="animate-spin" /> Guardando...</>
@@ -795,7 +795,7 @@ export const RegistrosView: React.FC<Props> = ({
     <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" style={{ backgroundColor: '#f1f5f9' }}>
 
       {/* ── Header ── */}
-      <header style={{ backgroundColor: '#1a3d2b' }} className="shadow-md flex-shrink-0 sticky top-0 z-20">
+      <header style={{ backgroundColor: '#00093D' }} className="shadow-md flex-shrink-0 sticky top-0 z-20">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 rounded-lg transition-colors flex-shrink-0"
             style={{ color: 'rgba(255,255,255,0.7)' }}>
@@ -867,7 +867,7 @@ export const RegistrosView: React.FC<Props> = ({
                 className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
               <button onClick={handleChangePwd} disabled={pwdLoading || !newPwd || !confirmPwd}
                 className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40"
-                style={{ backgroundColor: '#1a3d2b' }}>
+                style={{ backgroundColor: '#00923A' }}>
                 {pwdLoading ? 'Guardando…' : 'Cambiar contraseña'}
               </button>
             </div>
@@ -920,8 +920,8 @@ export const RegistrosView: React.FC<Props> = ({
                   disabled={isFuture}
                   className="flex flex-col items-center justify-center py-1.5 rounded-lg transition-all relative"
                   style={{
-                    backgroundColor: isSel ? '#1a3d2b' : isToday ? '#f0fdf4' : 'transparent',
-                    border: isToday && !isSel ? '1.5px solid #1a3d2b' : '1.5px solid transparent',
+                    backgroundColor: isSel ? '#00093D' : isToday ? '#f0fdf4' : 'transparent',
+                    border: isToday && !isSel ? '1.5px solid #00093D' : '1.5px solid transparent',
                     opacity: isFuture ? 0.2 : 1,
                   }}>
                   {isToday && !isSel && (
@@ -952,7 +952,7 @@ export const RegistrosView: React.FC<Props> = ({
             {/* Columna desperdicio */}
             <div className="flex-1 text-center">
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Desperdicio</p>
-              <p className="text-xl font-black" style={{ color: totalHoy > 0 ? '#1a3d2b' : '#cbd5e1' }}>
+              <p className="text-xl font-black" style={{ color: totalHoy > 0 ? '#00093D' : '#cbd5e1' }}>
                 {totalHoy > 0 ? `${totalHoy.toFixed(1)}` : '—'}
                 {totalHoy > 0 && <span className="text-sm font-semibold ml-0.5">kg</span>}
               </p>
@@ -967,7 +967,7 @@ export const RegistrosView: React.FC<Props> = ({
             {/* Columna donación */}
             <div className="flex-1 text-center">
               <p className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Donado</p>
-              <p className="text-xl font-black" style={{ color: totalDonadoHoy > 0 ? '#1d4ed8' : '#cbd5e1' }}>
+              <p className="text-xl font-black" style={{ color: totalDonadoHoy > 0 ? '#0002C9' : '#cbd5e1' }}>
                 {totalDonadoHoy > 0 ? `${totalDonadoHoy.toFixed(1)}` : '—'}
                 {totalDonadoHoy > 0 && <span className="text-sm font-semibold ml-0.5">kg</span>}
               </p>
@@ -1046,7 +1046,7 @@ export const RegistrosView: React.FC<Props> = ({
                   <div className="px-5 pb-4">
                     {/* KG grande + coste */}
                     <div className="flex items-baseline gap-1.5 mb-3">
-                      <span className="text-4xl font-black" style={{ color: '#1a3d2b' }}>
+                      <span className="text-4xl font-black" style={{ color: '#00093D' }}>
                         {pesaje!.kg.toFixed(1)}
                       </span>
                       <span className="text-lg font-semibold text-slate-400">kg</span>
@@ -1112,7 +1112,7 @@ export const RegistrosView: React.FC<Props> = ({
                     className="w-full py-3.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
                     style={registered
                       ? { backgroundColor: '#ffffff', color: '#16a34a', border: '1.5px solid #86efac' }
-                      : { backgroundColor: '#1a3d2b', color: '#ffffff' }}
+                      : { backgroundColor: '#00923A', color: '#ffffff' }}
                   >
                     {registered
                       ? <><Scale size={15} /> Modificar</>
@@ -1131,11 +1131,11 @@ export const RegistrosView: React.FC<Props> = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#eff6ff' }}>
-              <HandHeart size={15} style={{ color: '#1d4ed8' }} />
+              <HandHeart size={15} style={{ color: '#0002C9' }} />
             </div>
             <span className="text-sm font-black text-slate-700 uppercase tracking-wide">Donaciones</span>
             {totalDonadoHoy > 0 && (
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#eff6ff', color: '#0002C9' }}>
                 {totalDonadoHoy.toFixed(1)} kg hoy
               </span>
             )}
@@ -1143,7 +1143,7 @@ export const RegistrosView: React.FC<Props> = ({
           <button
             onClick={() => setActiveDonacion('new')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            style={{ backgroundColor: '#1d4ed8', color: '#fff' }}
+            style={{ backgroundColor: '#0002C9', color: '#fff' }}
           >
             <Plus size={13} /> Nueva
           </button>
@@ -1177,7 +1177,7 @@ export const RegistrosView: React.FC<Props> = ({
                       )}
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <span className="text-3xl font-black" style={{ color: '#1d4ed8' }}>{don.kg_donados.toFixed(1)}</span>
+                      <span className="text-3xl font-black" style={{ color: '#0002C9' }}>{don.kg_donados.toFixed(1)}</span>
                       <span className="text-base font-semibold text-slate-400 ml-1">kg</span>
                     </div>
                   </div>
@@ -1188,7 +1188,7 @@ export const RegistrosView: React.FC<Props> = ({
                     <button
                       onClick={() => setActiveDonacion(don)}
                       className="flex-1 py-2 rounded-xl text-xs font-bold transition-all"
-                      style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1.5px solid #bfdbfe' }}
+                      style={{ backgroundColor: '#eff6ff', color: '#0002C9', border: '1.5px solid #bfdbfe' }}
                     >
                       Editar
                     </button>
@@ -1236,7 +1236,7 @@ export const RegistrosView: React.FC<Props> = ({
       {/* ── Toast de confirmación ── */}
       {saved && !activeZone && !activeDonacion && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 rounded-2xl shadow-xl text-white text-sm font-semibold pointer-events-none"
-          style={{ backgroundColor: '#1a3d2b', boxShadow: '0 8px 32px rgba(26,61,43,0.35)' }}>
+          style={{ backgroundColor: '#00093D', boxShadow: '0 8px 32px rgba(26,61,43,0.35)' }}>
           <CheckCircle2 size={16} />
           Datos guardados
         </div>

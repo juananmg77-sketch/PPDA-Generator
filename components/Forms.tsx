@@ -1005,7 +1005,7 @@ export const AreasForm: React.FC<AreasFormProps> = ({ areas, setAreas }) => {
              onDragEnd={handleDragEnd}
              className="rounded-xl border bg-white shadow-sm overflow-hidden transition-all"
              style={{
-               borderColor:  isOver   ? '#1a3d2b' : '#e2e8f0',
+               borderColor:  isOver   ? '#00093D' : '#e2e8f0',
                borderWidth:  isOver   ? 2         : 1,
                opacity:      isDragged ? 0.4       : 1,
                boxShadow:    isOver   ? '0 0 0 3px rgba(26,61,43,0.12)' : undefined,

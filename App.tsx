@@ -32,26 +32,7 @@ interface CloudPlan {
 
 // Logo Component
 const HsGreenLogoDashboard = () => (
-    <div className="flex flex-col md:flex-row items-center gap-3 select-none">
-        <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 35 C 5 35, 25 55, 40 55 C 40 55, 30 35, 15 25 C 10 22, 5 35, 5 35 Z" fill="#66cc33" />
-            <path d="M15 25 C 15 25, 30 35, 40 55 C 45 45, 25 25, 15 25" fill="#75c05d" /> 
-            <path d="M5 50 C 5 50, 25 55, 40 65 C 40 65, 35 55, 30 50 C 20 40, 5 50, 5 50 Z" fill="#009933" />
-            <path d="M40 55 C 40 55, 45 75, 42 85 C 42 85, 50 75, 52 55 L 40 55" fill="#4ade80" />
-            <path d="M52 55 C 52 55, 55 70, 45 85 C 55 80, 65 65, 60 50 L 52 55" fill="#ff9900" />
-            <path d="M52 55 L 60 50 C 60 50, 70 50, 75 35 C 75 35, 65 30, 55 40 C 55 40, 50 45, 52 55" fill="#0033cc" />
-            <path d="M75 35 L 85 40 L 75 42" fill="#0033cc" />
-            <circle cx="68" cy="38" r="2" fill="white" />
-        </svg>
-        <div className="flex flex-col items-center md:items-start justify-center">
-            <h1 className="text-5xl font-black text-[#5bb545] tracking-tight leading-none m-0">
-                HSGREEN
-            </h1>
-            <p className="text-xs font-bold tracking-[0.3em] text-slate-500 uppercase leading-none md:ml-0.5 mt-2">
-                Environment & Sustainability
-            </p>
-        </div>
-    </div>
+    <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-24 w-auto select-none" />
 );
 
 // MATRIZ DE TRAZABILIDAD — corregida según phaseConfig.tsx y constants.ts

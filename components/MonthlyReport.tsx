@@ -664,7 +664,7 @@ export const MonthlyReport: React.FC<Props> = ({ registros, areas, hotelNombre, 
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{
+    <div className="paper" style={{
       position:'fixed', inset:0, zIndex:9999,
       background:'rgba(0,0,0,0.6)', display:'flex', flexDirection:'column',
       fontFamily:"'Inter',system-ui,sans-serif",

@@ -349,7 +349,7 @@ export const FinalReport: React.FC<FinalReportProps> = ({ state, setState, onClo
   const today = new Date().toLocaleDateString();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 paper">
       {/* Action Bar */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200 no-print">
         <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">

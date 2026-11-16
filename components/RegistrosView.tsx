@@ -785,17 +785,17 @@ export const RegistrosView: React.FC<Props> = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f1f5f9' }}>
+      <div className="min-h-screen flex items-center justify-center" >
         <RefreshCw size={24} className="animate-spin text-slate-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" style={{ backgroundColor: '#f1f5f9' }}>
+    <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" >
 
       {/* ── Header ── */}
-      <header style={{ backgroundColor: '#00093D' }} className="shadow-md flex-shrink-0 sticky top-0 z-20">
+      <header className="bg-header shadow-md flex-shrink-0 sticky top-0 z-20">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
           <button onClick={onBack} className="p-1.5 rounded-lg transition-colors flex-shrink-0"
             style={{ color: 'rgba(255,255,255,0.7)' }}>

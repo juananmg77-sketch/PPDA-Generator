@@ -14,7 +14,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { RegistrosView } from './components/RegistrosView';
 import { pesajesService } from './services/pesajesService';
 import { LoginView } from './components/Login';
-import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users, Briefcase, KeyRound, Eye, EyeOff, FileSpreadsheet, Building2, ScanSearch, Target, Scale, FileText, History, MapPin, CheckSquare } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users, Briefcase, KeyRound, Eye, EyeOff, FileSpreadsheet, Building2, ScanSearch, Target, Scale, FileText, History, MapPin, CheckSquare, Salad, Recycle, Cloud } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
 import { ClientDashboard } from './components/ClientDashboard';
 import { exportStatusXLS } from './utils/exportXLS';
@@ -875,6 +875,31 @@ const App: React.FC = () => {
             {/* Logo */}
             <div className="mb-12">
               <HsGreenLogoDashboard />
+            </div>
+
+            {/* Selector de producto HS GREEN */}
+            <div className="w-full max-w-3xl mb-6">
+              <h2 className="text-lg font-extrabold text-header mb-3">Elige el producto con el que quieres trabajar</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                  <div className="w-11 h-11 rounded-xl bg-brand-100 flex items-center justify-center mb-3"><Salad size={22} className="text-brand-700" /></div>
+                  <h3 className="text-sm font-bold text-slate-800">Desperdicio alimentario</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">PPDA · Ley 1/2025</p>
+                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Disponible</span>
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
+                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-3"><Recycle size={22} className="text-blue-700" /></div>
+                  <h3 className="text-sm font-bold text-slate-800">Circularidad</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Ley 3/2022 Illes Balears</p>
+                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
+                </div>
+                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
+                  <div className="w-11 h-11 rounded-xl bg-cyan-100 flex items-center justify-center mb-3"><Cloud size={22} className="text-cyan-700" /></div>
+                  <h3 className="text-sm font-bold text-slate-800">Huella de carbono</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Registro balear · Cat. 1 y 2</p>
+                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
+                </div>
+              </div>
             </div>
 
             {/* Tarjetas de acción */}

@@ -105,10 +105,10 @@ export const ClientDashboard: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" style={{ backgroundColor: '#f1f5f9' }}>
+    <div className="min-h-screen flex flex-col font-sans overflow-x-hidden" >
 
       {/* ── Header corporativo ── */}
-      <header style={{ backgroundColor: '#00093D' }} className="shadow-md flex-shrink-0 w-full">
+      <header className="bg-header shadow-md flex-shrink-0 w-full">
         <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <span className="bg-white rounded-lg px-2.5 py-1 flex items-center"><img src="/logo-hsgreen-recortado.png" alt="HS GREEN" className="h-7 w-auto object-contain" /></span>

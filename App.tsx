@@ -832,10 +832,9 @@ const App: React.FC = () => {
               <div className="flex items-center gap-4">
                 <div>
                   <div className="flex items-center gap-3">
-                    <h1 className="text-xl font-bold text-white leading-none tracking-tight">Creación de Planes de Desperdicio PPDA</h1>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/15 text-white/80 tracking-wide whitespace-nowrap">Ley 1/2025</span>
+                    <h1 className="text-xl font-bold text-white leading-none tracking-tight">Gestión integral de la sostenibilidad hotelera</h1>
                   </div>
-                  <p className="text-xs text-header-muted mt-1 tracking-wide">Plan de Prevención y Reducción del Desperdicio Alimentario</p>
+                  <p className="text-xs text-header-muted mt-1 tracking-wide">Desperdicio alimentario · Circularidad · Huella de carbono</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -845,11 +844,6 @@ const App: React.FC = () => {
                 </div>
                 {currentUserRole === 'admin' && (
                   <>
-                    <button onClick={handleExportXLS} disabled={isExporting}
-                      className="p-1.5 text-header-muted hover:text-white hover:bg-header-light rounded-lg transition-colors"
-                      title="Exportar resumen XLS">
-                      {isExporting ? <RefreshCw size={17} className="animate-spin" /> : <FileSpreadsheet size={17} />}
-                    </button>
                     <button onClick={() => setView('users')}
                       className="p-1.5 text-header-muted hover:text-white hover:bg-header-light rounded-lg transition-colors"
                       title="Gestión de usuarios">
@@ -881,59 +875,41 @@ const App: React.FC = () => {
             <div className="w-full max-w-3xl mb-6">
               <h2 className="text-lg font-extrabold text-header mb-3">Elige el producto con el que quieres trabajar</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                  <div className="w-11 h-11 rounded-xl bg-brand-100 flex items-center justify-center mb-3"><Salad size={22} className="text-brand-700" /></div>
-                  <h3 className="text-sm font-bold text-slate-800">Desperdicio alimentario</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">PPDA · Ley 1/2025</p>
-                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Disponible</span>
-                </div>
+                <button
+                  onClick={() => handleFetchCloudPlans(true)}
+                  disabled={isSyncing}
+                  className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-left hover:border-brand-500 hover:shadow-lg transition-all"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-brand-100 flex items-center justify-center mb-3 group-hover:bg-brand-200 transition-colors">
+                    {isSyncing ? <RefreshCw size={22} className="animate-spin text-brand-700" /> : <Salad size={22} className="text-brand-700" />}
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-800 group-hover:text-brand-700 transition-colors">Desperdicio alimentario</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Plan de prevención (PPDA)</p>
+                  <p className="text-[11px] text-slate-500 mt-2 leading-snug">Ley 1/2025 · Ley 7/2022</p>
+                  <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Abrir biblioteca de planes <ChevronRight size={11} /></span>
+                </button>
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
                   <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-3"><Recycle size={22} className="text-blue-700" /></div>
                   <h3 className="text-sm font-bold text-slate-800">Circularidad</h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Ley 3/2022 Illes Balears</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Plan de circularidad turística</p>
+                  <p className="text-[11px] text-slate-500 mt-2 leading-snug">Ley 3/2022 Illes Balears · Ley 7/2022</p>
                   <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
                   <div className="w-11 h-11 rounded-xl bg-cyan-100 flex items-center justify-center mb-3"><Cloud size={22} className="text-cyan-700" /></div>
                   <h3 className="text-sm font-bold text-slate-800">Huella de carbono</h3>
                   <p className="text-xs text-slate-500 mt-0.5">Registro balear · Cat. 1 y 2</p>
+                  <p className="text-[11px] text-slate-500 mt-2 leading-snug">Decreto 48/2021 · Ley 10/2019 · Ley 7/2021</p>
                   <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
                 </div>
               </div>
             </div>
-
-            {/* Tarjetas de acción */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl">
-              {/* BIBLIOTECA DE PLANES */}
-              <button
-                onClick={() => handleFetchCloudPlans(true)}
-                disabled={isSyncing}
-                className="group bg-white border border-slate-200 rounded-xl p-7 text-left hover:border-header hover:shadow-lg transition-all flex flex-col gap-4"
-              >
-                <div className="w-12 h-12 bg-header/10 rounded-xl flex items-center justify-center group-hover:bg-header/20 transition-colors">
-                  {isSyncing ? <RefreshCw size={22} className="animate-spin text-header" /> : <Database size={22} className="text-header" />}
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-slate-800 mb-1 group-hover:text-header transition-colors">Biblioteca de Planes</h2>
-                  <p className="text-sm text-slate-500 leading-relaxed">Accede a los planes guardados en la base de datos corporativa.</p>
-                </div>
-              </button>
-
-              {/* NUEVO PLAN */}
-              <button
-                onClick={createNewPlan}
-                className="group bg-white border border-slate-200 rounded-xl p-7 text-left hover:border-brand-500 hover:shadow-lg transition-all flex flex-col gap-4"
-              >
-                <div className="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center group-hover:bg-brand-100 transition-colors">
-                  <Plus size={22} className="text-brand-600" />
-                </div>
-                <div>
-                  <h2 className="text-base font-semibold text-slate-800 mb-1 group-hover:text-brand-700 transition-colors">Nuevo Plan</h2>
-                  <p className="text-sm text-slate-500 leading-relaxed">Iniciar un nuevo PPDA desde cero para un establecimiento.</p>
-                </div>
-              </button>
-            </div>
           </main>
+
+          <footer className="px-6 py-4 text-center text-[11px] text-slate-600 no-print">
+            <p>Marco normativo: Ley 1/2025 · Ley 7/2022 · Ley 3/2022 (Illes Balears) · Decreto 48/2021 · Ley 10/2019 · Ley 7/2021</p>
+            <p className="mt-1">© {new Date().getFullYear()} HS Consulting · Environment & Sustainability</p>
+          </footer>
 
             {/* ── Biblioteca de Planes (modal) ── */}
             {showCloudModal && (
@@ -949,10 +925,16 @@ const App: React.FC = () => {
                         <p className="text-xs text-white/60 mt-0.5">{cloudPlans.length} planes disponibles</p>
                       </div>
                     </div>
-                    <button onClick={() => setShowCloudModal(false)}
-                      className="p-1.5 text-white/60 hover:text-white hover:bg-header-light rounded-lg transition-colors">
-                      <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setShowCloudModal(false); createNewPlan(); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg transition-colors">
+                        <Plus size={14} /> Nuevo plan
+                      </button>
+                      <button onClick={() => setShowCloudModal(false)}
+                        className="p-1.5 text-white/60 hover:text-white hover:bg-header-light rounded-lg transition-colors">
+                        <X size={18} />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Barra de filtros */}

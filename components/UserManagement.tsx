@@ -6,7 +6,7 @@ interface UserProfile {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'consultor' | 'viewer';
+  role: 'admin' | 'consultor' | 'viewer' | 'operador';
   active: boolean;
   created_at: string;
 }
@@ -31,7 +31,8 @@ interface Props {
 const ROLE_CONFIG = {
   admin:     { label: 'Administrador', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: Shield },
   consultor: { label: 'Consultor',     color: 'bg-blue-100 text-blue-700 border-blue-200',       icon: Briefcase },
-  viewer:    { label: 'Cliente',        color: 'bg-green-100 text-green-700 border-green-200',    icon: Users },
+  viewer:    { label: 'Cliente',       color: 'bg-green-100 text-green-700 border-green-200',    icon: Users },
+  operador:  { label: 'Operador',      color: 'bg-amber-100 text-amber-700 border-amber-200',    icon: Users },
 };
 
 export const UserManagement: React.FC<Props> = ({ onBack }) => {
@@ -123,7 +124,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
     if (!createdCreds) return;
     const roleLabel = ROLE_CONFIG[createdCreds.role as keyof typeof ROLE_CONFIG]?.label || createdCreds.role;
     const text =
-      `🌱 Acceso a PPDA Generator — HS Consulting\n\n` +
+      `🌱 Acceso a HS Green — Planes de Desperdicio Alimentario\n\n` +
       `Hola ${createdCreds.fullName},\n\n` +
       `Se ha creado tu acceso como ${roleLabel}.\n\n` +
       `🔗 App: https://ppdagenerator.netlify.app\n` +
@@ -182,8 +183,8 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
   };
 
   const q = search.toLowerCase().trim();
-  const clients   = users.filter(u => u.role === 'viewer' && (!q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
-  const teamUsers = users.filter(u => u.role !== 'viewer' && (!q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
+  const clients   = users.filter(u => (u.role === 'viewer' || u.role === 'operador') && (!q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
+  const teamUsers = users.filter(u => u.role !== 'viewer' && u.role !== 'operador' && (!q || u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -213,6 +214,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
               <select value={inviteRole} onChange={e => setInviteRole(e.target.value as any)}
                 className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                 <option value="viewer">Cliente</option>
+                <option value="operador">Operador</option>
                 <option value="consultor">Consultor</option>
                 <option value="admin">Administrador</option>
               </select>
@@ -317,6 +319,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
                             title="Cambiar rol"
                           >
                             <option value="viewer">Cliente</option>
+                            <option value="operador">Operador</option>
                             <option value="consultor">Consultor</option>
                             <option value="admin">Administrador</option>
                           </select>
@@ -393,6 +396,7 @@ export const UserManagement: React.FC<Props> = ({ onBack }) => {
                             className={`text-xs font-bold px-2 py-1.5 rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${ROLE_CONFIG[user.role]?.color}`}>
                             <option value="admin">Administrador</option>
                             <option value="consultor">Consultor</option>
+                            <option value="operador">Operador</option>
                             <option value="viewer">Cliente</option>
                           </select>
                           <button onClick={() => { setConfirmDeleteId(user.id); setDeleteErr(null); }}

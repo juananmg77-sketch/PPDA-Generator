@@ -64,7 +64,7 @@ function buildPlanRow(state: AppState, extraFields?: Partial<SupabasePlan>) {
     : state.hotelData?.numEmpleados || null;
 
   // Parse version number from string like "V3" → 3
-  const versionNum = parseInt((state.version || 'V1').replace(/\D/g, ''), 10) || 1;
+  const versionNum = parseInt((state.version || '').replace(/\D/g, ''), 10) || 0;
 
   return {
     plan_id: state.planId || hotelName,
@@ -78,7 +78,7 @@ function buildPlanRow(state: AppState, extraFields?: Partial<SupabasePlan>) {
     num_habitaciones: numHabitaciones || null,
     num_empleados: numEmpleados || null,
     num_hoteles: numHoteles,
-    version: state.version || 'V1',
+    version: state.version || '',
     version_num: versionNum,
     baseline_year: state.baselineYear || null,
     periodo_plan: state.periodoPlan || null,
@@ -86,7 +86,7 @@ function buildPlanRow(state: AppState, extraFields?: Partial<SupabasePlan>) {
     consultor: state.consultor || null,
     objetivo_reduccion: state.objetivoGeneralReduccion || null,
     num_objetivos: state.objectives?.length || 0,
-    estado: 'Activo',
+    estado: 'Borrador',
     data: cleanState,
     updated_at: new Date().toISOString(),
     ...extraFields,
@@ -104,8 +104,7 @@ export const planService = {
     return (data as SupabasePlan[]) || [];
   },
 
-  // Guardar borrador (sin cambiar versión, estado Borrador)
-  // updatedAt: timestamp explícito para que el lock optimista sea consistente
+  // Guardar borrador (sin cambiar versión ni historial)
   async saveDraft(state: AppState, updatedAt?: string): Promise<void> {
     const row = buildPlanRow(state);
     row.estado = 'Borrador';
@@ -116,27 +115,39 @@ export const planService = {
     if (error) throw error;
   },
 
-  // Guardar nueva versión (incrementa versión, guarda historial con descripción)
-  async saveNewVersion(state: AppState, changeDescription: string): Promise<void> {
-    const row = buildPlanRow(state);
-    row.estado = 'Activo';
+  // Cerrar plan: incrementa versión, estado Cerrado, registra en historial
+  async closePlan(state: AppState, changeDescription: string): Promise<string> {
+    const currentNum = Math.max(parseInt((state.version || '').replace(/\D/g, ''), 10) || 0, 0);
+    const newVersion = `V${currentNum + 1}`;
+    const row = buildPlanRow({ ...state, version: newVersion });
+    row.estado = 'Cerrado';
 
-    // Primero guardamos el plan con la nueva versión
     const { error } = await supabase
       .from('plans')
       .upsert(row, { onConflict: 'plan_id' });
     if (error) throw error;
 
-    // Luego insertamos la entrada en el historial con la descripción de cambios
     const { data: { user } } = await supabase.auth.getUser();
     await supabase.from('plan_history').insert({
       plan_id: row.plan_id,
-      version: row.version,
-      version_num: row.version_num,
+      version: newVersion,
+      version_num: currentNum + 1,
       saved_by: user?.id || null,
       data: row.data,
       change_description: changeDescription,
     });
+
+    return newVersion;
+  },
+
+  // Reabrir plan cerrado para edición (mantiene versión, cambia estado a Borrador)
+  async reopenPlan(state: AppState): Promise<void> {
+    const row = buildPlanRow(state);
+    row.estado = 'Borrador';
+    const { error } = await supabase
+      .from('plans')
+      .upsert(row, { onConflict: 'plan_id' });
+    if (error) throw error;
   },
 
   // upsert genérico (compatibilidad con migración)

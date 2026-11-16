@@ -1,7 +1,163 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { HotelData, Area, AreaMedicion, TeamMember } from '../types';
 import { COMMON_PPDA_FUNCTIONS } from '../constants';
-import { Building2, MapPin, Users, Utensils, Clock, Trash2, Plus, Upload, CheckCircle2, FileText, ImageIcon, PenTool, Eraser, X, ChevronDown, ChevronUp, CheckSquare, Square, Beef, Leaf, Droplets, Apple, Flame, Egg, Drumstick, Zap, Sprout, Wheat, Cookie } from 'lucide-react';
+import { Building2, MapPin, Users, Utensils, Clock, Trash2, Plus, Upload, CheckCircle2, FileText, ImageIcon, PenTool, Eraser, X, ChevronDown, ChevronUp, CheckSquare, Square, Beef, Leaf, Droplets, Apple, Flame, Egg, Drumstick, Zap, Sprout, Wheat, Cookie, Search, Database, RefreshCw } from 'lucide-react';
+
+// ── API HS Consulting ─────────────────────────────────────────────────────────
+const HS_API_BASE = 'https://ltuukumhzmbyvtvicuze.supabase.co/functions/v1/api-hoteles';
+const HS_API_KEY  = 'hs-audit-ext-2026-k7Xm9pQrW4vB';
+const hsHeaders   = { 'x-api-key': HS_API_KEY };
+
+interface HsHotelResult {
+  value: string;       // hotel_id en el endpoint /buscar
+  label: string;       // "Nombre Hotel (Cadena)"
+  cadena_hotelera?: string;
+  codigo_hotel?: string;
+  municipio?: string;
+  isla?: string;
+  pais?: string;
+}
+
+function mapFichaToHotelData(ficha: any, current: HotelData): HotelData {
+  const h = ficha.data ?? ficha.hotel ?? ficha;
+  const contactos: any[] = h.contactos ?? ficha.contactos ?? [];
+  const puntos: any[] = h.puntos_alimentacion ?? h.areas ?? [];
+
+  let cp = h.codigo_postal ?? '';
+  if (!cp && h.direccion_completa) {
+    const m = h.direccion_completa.match(/\b(\d{5})\b/);
+    if (m) cp = m[1];
+  }
+
+  const team: TeamMember[] = contactos
+    .filter((c: any) => c.tipo_contacto === 'establecimiento' || !c.tipo_contacto)
+    .map((c: any, i: number) => ({
+      id: c.id ?? `hs-${i}`,
+      departamento: c.cargo ?? '',
+      nombre: c.nombre ?? '',
+      cargo: c.cargo ?? '',
+      email: c.email ?? '',
+      telefono: c.telefono ?? '',
+      funcion: '',
+    }));
+
+  const areas: Area[] = puntos.map((p: any, i: number) => ({
+    id: p.id ?? `area-hs-${i}`,
+    nombre: p.nombre_establecimiento ?? p.nombre ?? '',
+    superficie: p.superficie ?? 0,
+    capacidad: p.capacidad ?? 0,
+    numServiciosDia: p.num_servicios_dia ?? 0,
+    tipoServicio: p.tipo ?? p.tipo_servicio ?? '',
+    esBuffet: false,
+    horarios: '',
+    tienePuntoPesaje: false,
+  }));
+
+  return {
+    ...current,
+    nombreComercial: h.nombre_hotel ?? current.nombreComercial,
+    razonSocial:     h.titular ?? current.razonSocial,
+    cif:             h.cif ?? current.cif,
+    direccion:       h.direccion_completa ?? current.direccion,
+    codigoPostal:    cp || current.codigoPostal,
+    municipio:       h.municipio ?? current.municipio,
+    provincia:       h.ccaa ?? current.provincia,
+    numHabitaciones: h.num_habitaciones ?? current.numHabitaciones,
+    capacidadMax:    h.num_plazas ?? current.capacidadMax,
+    ...(team.length > 0 ? { team } : {}),
+    ...(areas.length > 0 ? { areas } : {}),
+  };
+}
+
+interface HsSearchProps {
+  onImport: (data: HotelData) => void;
+  currentData: HotelData;
+}
+
+const HsHotelSearch: React.FC<HsSearchProps> = ({ onImport, currentData }) => {
+  const [query, setQuery]       = useState('');
+  const [results, setResults]   = useState<HsHotelResult[]>([]);
+  const [open, setOpen]         = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [imported, setImported] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click (use mousedown but ignore if target is inside)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const search = useCallback(async (q: string) => {
+    if (q.length < 2) { setResults([]); setOpen(false); return; }
+    setSearching(true);
+    try {
+      const res = await fetch(`${HS_API_BASE}/buscar?q=${encodeURIComponent(q)}&limit=10`, { headers: hsHeaders });
+      const json = await res.json();
+      const list: HsHotelResult[] = Array.isArray(json) ? json : (json.data ?? json.results ?? []);
+      setResults(list);
+      setOpen(list.length > 0);
+    } catch { setResults([]); }
+    finally { setSearching(false); }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => search(query), 300);
+    return () => clearTimeout(t);
+  }, [query, search]);
+
+  const handleSelect = async (hotel: HsHotelResult) => {
+    setOpen(false);
+    setQuery(hotel.label);
+    setLoading(true);
+    try {
+      const res = await fetch(`${HS_API_BASE}/ficha-desperdicio?hotel_id=${hotel.value}`, { headers: hsHeaders });
+      const ficha = await res.json();
+      onImport(mapFichaToHotelData(ficha, currentData));
+      setImported(true);
+      setTimeout(() => setImported(false), 3000);
+    } catch (e) { alert('Error al cargar los datos del hotel.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div ref={ref} className="relative mb-5">
+      <div className={`flex items-center gap-2 rounded-xl border-2 px-3 py-2.5 transition-all ${open ? 'border-brand-400 bg-white' : 'border-dashed border-brand-200 bg-brand-50 hover:border-brand-300'}`}>
+        <Database size={15} className="text-brand-500 flex-shrink-0" />
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setImported(false); }}
+          placeholder="Buscar hotel en BBDD HS Consulting…"
+          className="flex-1 bg-transparent text-sm text-slate-700 placeholder-brand-300 focus:outline-none"
+        />
+        {loading ? <RefreshCw size={14} className="animate-spin text-brand-500" /> :
+         imported ? <CheckCircle2 size={14} className="text-green-500" /> :
+         searching ? <RefreshCw size={14} className="animate-spin text-slate-400" /> :
+         <Search size={14} className="text-slate-400" />}
+      </div>
+      {imported && <p className="mt-1 text-xs text-green-600 font-medium pl-1">✓ Datos importados — puedes editarlos antes de guardar</p>}
+      {open && results.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden max-h-64 overflow-y-auto">
+          {results.map(h => (
+            <button key={h.value}
+              onMouseDown={e => { e.preventDefault(); handleSelect(h); }}
+              className="w-full text-left px-4 py-3 hover:bg-brand-50 border-b border-slate-50 last:border-0 transition-colors">
+              <p className="text-sm font-bold text-slate-900">{h.label || '—'}</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {[h.cadena_hotelera, h.municipio, h.isla, h.pais].filter(Boolean).join(' · ')}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CATEGORIAS_PESAJE = ['Desperdicio Buffet', 'Mermas cocina', 'Restos de plato', 'Caducidades/almacén', 'Comedor personal'];
 
@@ -24,6 +180,7 @@ export const FOOD_TAXONOMY: CatGroup[] = [
       { id: 'verduras_frias', label: 'Verduras Frías', Icon: Leaf,      color: 'bg-green-100 border-green-400 text-green-800', iconColor: '#15803d' },
       { id: 'lacteos',        label: 'Lácteos',        Icon: Droplets,  color: 'bg-blue-100 border-blue-400 text-blue-800',   iconColor: '#0369a1' },
       { id: 'frutas',         label: 'Frutas',         Icon: Apple,     color: 'bg-orange-100 border-orange-400 text-orange-700', iconColor: '#ea580c' },
+      { id: 'cascara_naranja', label: 'Cáscara de Naranja', Icon: Apple, color: 'bg-amber-100 border-amber-400 text-amber-800', iconColor: '#d97706' },
     ],
   },
   {
@@ -567,6 +724,12 @@ export const GeneralForm: React.FC<GeneralFormProps> = ({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4">
+
+      {/* ── Buscador BBDD HS ── */}
+      <div className="md:col-span-2">
+        <HsHotelSearch currentData={data} onImport={onChange} />
+      </div>
+
       <div className={sectionClass}>
         <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-2">
             <div className="flex items-center gap-2">

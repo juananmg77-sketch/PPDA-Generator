@@ -146,6 +146,10 @@ interface ReportPayload {
   costeTotal: number | null;
   kgDelta: number | null;
   avgKgComDelta: number | null;
+  topRatioValue: number | null;
+  topRatioLabel: string;
+  topRatioDelta: number | null;
+  topRatioAccent: string;
   costeDelta: number | null;
   byMonth: { ym: string; label: string; totalKg: number }[];
   byZone: { id: string; nombre: string; kg: number; color: string; pct: number }[];
@@ -289,9 +293,9 @@ table{border-collapse:collapse;width:100%}
 <!-- KPIs -->
 <div class="kpi-grid">
   <div class="kpi">
-    <div class="kpi-label">kg / Comensal</div>
-    <div class="kpi-value" style="color:${BRAND}">${p.avgKgCom ? fmt(p.avgKgCom,3) : '—'}<span class="kpi-unit">kg/com.</span></div>
-    <div class="kpi-sub">${deltaHtmlFor(p.avgKgComDelta, 'promedio del período')}</div>
+    <div class="kpi-label">${p.topRatioLabel}</div>
+    <div class="kpi-value" style="color:${p.topRatioAccent}">${p.topRatioValue ? fmt(p.topRatioValue,3) : '—'}<span class="kpi-unit">kg/com.</span></div>
+    <div class="kpi-sub">${deltaHtmlFor(p.topRatioDelta, 'promedio del período')}</div>
   </div>
   <div class="kpi">
     <div class="kpi-label">CO₂ Equivalente</div>
@@ -533,6 +537,34 @@ export const MonthlyReport: React.FC<Props> = ({ registros, areas, hotelNombre, 
   const ratioTotalCom = mermaAreaIds.size > 0 && ratioComData.length > 0
     ? ratioComData.reduce((s, d) => s + (d.kgEv + d.kgM) / d.com, 0) / ratioComData.length : null;
 
+  // Previous period equivalents for top-card delta
+  const prevMermaByDay = useMemo(() => {
+    const m: Record<string, number> = {};
+    prevRecs.filter(r => mermaAreaIds.has((r.area_id ?? r.areaId) ?? '')).forEach(r => { m[r.fecha] = (m[r.fecha] || 0) + r.kg; });
+    return m;
+  }, [prevRecs, mermaAreaIds]);
+  const prevRatioComData = useMemo(() => {
+    const byDate: Record<string, { kgEv: number; com: number }> = {};
+    prevRecs.filter(r => !mermaAreaIds.has((r.area_id ?? r.areaId) ?? '')).forEach(r => {
+      if (!r.comensales || r.comensales <= 0) return;
+      if (!byDate[r.fecha]) byDate[r.fecha] = { kgEv: 0, com: 0 };
+      byDate[r.fecha].kgEv += r.kg;
+      byDate[r.fecha].com = Math.max(byDate[r.fecha].com, r.comensales);
+    });
+    return Object.entries(byDate).map(([fecha, v]) => ({ ...v, kgM: prevMermaByDay[fecha] || 0 }));
+  }, [prevRecs, mermaAreaIds, prevMermaByDay]);
+  const prevRatioEvitableCom = prevRatioComData.length > 0
+    ? prevRatioComData.reduce((s, d) => s + d.kgEv / d.com, 0) / prevRatioComData.length : null;
+  const prevRatioTotalCom = mermaAreaIds.size > 0 && prevRatioComData.length > 0
+    ? prevRatioComData.reduce((s, d) => s + (d.kgEv + d.kgM) / d.com, 0) / prevRatioComData.length : null;
+
+  // Top-card: best available ratio (total > evitable > per-record average)
+  const topRatioValue  = ratioTotalCom ?? ratioEvitableCom ?? avgKgCom;
+  const prevTopRatio   = ratioTotalCom !== null ? prevRatioTotalCom : ratioEvitableCom !== null ? prevRatioEvitableCom : prevAvgKgCom;
+  const topRatioLabel  = ratioTotalCom !== null ? 'Ratio total/com.' : ratioEvitableCom !== null ? 'Ratio evitable/com.' : 'kg / Comensal';
+  const topRatioAccent = ratioTotalCom !== null ? '#7c3aed' : BRAND;
+  const topRatioDelta  = topRatioValue !== null && prevTopRatio !== null ? pctDelta(topRatioValue, prevTopRatio) : null;
+
   const zonaIds = useMemo(() =>
     [...new Set(periodRecs.map(r => r.area_id || r.areaId || '').filter(Boolean))],
     [periodRecs]
@@ -617,6 +649,7 @@ export const MonthlyReport: React.FC<Props> = ({ registros, areas, hotelNombre, 
     const payload: ReportPayload = {
       hotelNombre, periodLabel, months, zones, totalKg, prevKg,
       co2, dias, avgKgCom, costeTotal, kgDelta, avgKgComDelta, costeDelta,
+      topRatioValue, topRatioLabel, topRatioDelta, topRatioAccent,
       kgEvitable, kgMerma, pctEvitable, ratioEvitableCom, ratioTotalCom,
       byMonth, byZone, weekly: weeklyData, dowData, catTotals,
       heatmap: heatmapData,
@@ -696,9 +729,9 @@ export const MonthlyReport: React.FC<Props> = ({ registros, areas, hotelNombre, 
               { label:'Total período', value:`${fmt(totalKg,0)} kg`, accent:BRAND,
                 sub: kgDelta!==null ? `${kgDelta>0?'▲':'▼'} ${Math.abs(kgDelta).toFixed(1)}% vs anterior` : undefined,
                 subColor: kgDelta!==null ? (kgDelta<0?'#16a34a':'#dc2626') : MUTED },
-              { label:'kg / Comensal', value: avgKgCom ? `${fmt(avgKgCom,3)}` : '—', unit:'kg/com.', accent:BRAND,
-                sub: avgKgComDelta !== null ? `${avgKgComDelta > 0 ? '▲' : '▼'} ${Math.abs(avgKgComDelta).toFixed(1)}% vs anterior` : undefined,
-                subColor: avgKgComDelta !== null ? (avgKgComDelta < 0 ? '#16a34a' : '#dc2626') : MUTED },
+              { label: topRatioLabel, value: topRatioValue ? `${fmt(topRatioValue,3)}` : '—', unit:'kg/com.', accent: topRatioAccent,
+                sub: topRatioDelta !== null ? `${topRatioDelta > 0 ? '▲' : '▼'} ${Math.abs(topRatioDelta).toFixed(1)}% vs anterior` : undefined,
+                subColor: topRatioDelta !== null ? (topRatioDelta < 0 ? '#16a34a' : '#dc2626') : MUTED },
               { label:'CO₂ equiv.', value:`${fmt(co2/1000,2)}`, unit:'t CO₂eq', accent:'#d97706',
                 sub: kgDelta !== null ? `${kgDelta > 0 ? '▲' : '▼'} ${Math.abs(kgDelta).toFixed(1)}% vs anterior` : undefined,
                 subColor: kgDelta !== null ? (kgDelta < 0 ? '#16a34a' : '#dc2626') : MUTED },
@@ -730,6 +763,7 @@ export const MonthlyReport: React.FC<Props> = ({ registros, areas, hotelNombre, 
                   { label:'Merma técnica', value:`${fmt(kgMerma,1)} kg`, sub: pctEvitable !== null ? `${(100-pctEvitable).toFixed(1)}% del total` : '', accent:'#d97706' },
                   ...(ratioEvitableCom !== null ? [{ label:'Ratio evitable/com.', value:`${ratioEvitableCom.toFixed(3)} kg/com.`, sub:'promedio diario', accent:BRAND }] : []),
                   ...(ratioTotalCom !== null ? [{ label:'Ratio total/com.', value:`${ratioTotalCom.toFixed(3)} kg/com.`, sub:'evitable + merma', accent:'#7c3aed' }] : []),
+                  ...(avgKgCom !== null ? [{ label:'Media kg/zona/com.', value:`${avgKgCom.toFixed(3)} kg/com.`, sub:'promedio por registro de zona', accent:'#64748b' }] : []),
                 ].map(k => (
                   <div key={k.label} style={{ flex:'1 1 100px', minWidth:100, background:'#f8fafc', border:`1.5px solid ${BORDER}`, borderRadius:10, padding:'10px 13px' }}>
                     <p style={{ fontSize:8, fontWeight:700, color:MUTED, textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:4 }}>{k.label}</p>

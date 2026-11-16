@@ -1,7 +1,7 @@
 {
-  "name": "PPDA Generator — HsGreen",
-  "short_name": "PPDA Gen",
-  "description": "Generador de Planes de Prevención y Desperdicio Alimentario",
+  "name": "HS Green — Planes de Desperdicio Alimentario",
+  "short_name": "HS Green",
+  "description": "Planes de Prevención y Reducción del Desperdicio Alimentario — HS Green",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f0fdf4",

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AppState, Area } from '../types';
 import { pesajesService, ocupacionService, donacionesService, PesajeRow, OcupacionRow, DonacionRow } from '../services/pesajesService';
 import { exportDonacionesXLS } from '../utils/exportXLS';
+import { supabase } from '../services/supabase';
 import { FOOD_TAXONOMY } from './Forms';
 import {
   ArrowLeft, Scale, Check, ChevronLeft, ChevronRight,
   Save, RefreshCw, CheckCircle2, ChevronDown,
-  HandHeart, Trash2, Plus, FileSpreadsheet
+  HandHeart, Trash2, Plus, FileSpreadsheet, LogOut, KeyRound, Eye, EyeOff, X
 } from 'lucide-react';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   planData: AppState;
   currentUser: string;
   onBack: () => void;
+  onLogout?: () => void;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -151,7 +153,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
   const ratioEst = estNum > 0 && totalKg > 0 ? (totalKg / estNum).toFixed(3) : null;
   const ratioCom = comNum > 0 && totalKg > 0 ? (totalKg / comNum).toFixed(3) : null;
 
-  const canConfirm = isP1 ? comNum > 0 : totalKg > 0;
+  const canConfirm = isP1 ? (comNum > 0 || existing != null) : (existing != null || totalKg > 0);
 
   const handleConfirm = () => {
     const desgloseNums = usesDesglose
@@ -162,11 +164,13 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
         )
       : undefined;
     // P1: siempre guarda comensales; kg = calculado o manual
-    const finalComensales = isP1 ? comNum : (rel === 'comensal' || rel === 'ambos') ? (comNum || null) : null;
+    const comFinal = comensales.trim() !== '' ? comNum : null;
+    const estFinal = estancias.trim() !== '' ? estNum : null;
+    const finalComensales = isP1 ? comNum : (rel === 'comensal' || rel === 'ambos') ? comFinal : null;
     onConfirm(
       totalKg,
-      (rel === 'estancia' || rel === 'ambos') ? (estNum || null) : null,
-      finalComensales || null,
+      (rel === 'estancia' || rel === 'ambos') ? estFinal : null,
+      finalComensales,
       desgloseNums as Record<string, number> | undefined,
     );
   };
@@ -430,7 +434,7 @@ const EntrySheet: React.FC<SheetProps> = ({ area, existing, ocupacion, onConfirm
           >
             {saving
               ? <><RefreshCw size={16} className="animate-spin" /> Guardando...</>
-              : <><Check size={18} /> {isP1 ? `Confirmar ${comNum} com. · ${kgP1.toFixed(1)} kg` : usesDesglose ? `Confirmar ${totalKg.toFixed(1)} kg` : 'Confirmar'}</>}
+              : <><Check size={18} /> {totalKg > 0 ? `Confirmar · ${totalKg.toFixed(1)} kg` : 'Confirmar'}</>}
           </button>
         </div>
       </div>
@@ -572,7 +576,7 @@ const DonacionSheet: React.FC<DonacionSheetProps> = ({ fecha, existing, onConfir
 // ── Vista principal ───────────────────────────────────────────────────────────
 
 export const RegistrosView: React.FC<Props> = ({
-  planId, hotelNombre, planData, currentUser, onBack
+  planId, hotelNombre, planData, currentUser, onBack, onLogout
 }) => {
   const [selectedDate,  setSelectedDate]  = useState(isoToday());
   const [currentMonth,  setCurrentMonth]  = useState(isoToday().slice(0, 7));
@@ -585,6 +589,24 @@ export const RegistrosView: React.FC<Props> = ({
   const [activeZone, setActiveZone] = useState<Area | null>(null);
   const [activeDonacion, setActiveDonacion] = useState<DonacionRow | 'new' | null>(null);
   const [deletingDonId, setDeletingDonId] = useState<string | null>(null);
+
+  // Cambiar contraseña (solo visible para operadores con onLogout)
+  const [showPwd, setShowPwd] = useState(false);
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [showPwdText, setShowPwdText] = useState(false);
+  const [pwdStatus, setPwdStatus] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [pwdLoading, setPwdLoading] = useState(false);
+
+  const handleChangePwd = async () => {
+    if (newPwd.length < 8) { setPwdStatus({ type: 'err', msg: 'Mínimo 8 caracteres.' }); return; }
+    if (newPwd !== confirmPwd) { setPwdStatus({ type: 'err', msg: 'Las contraseñas no coinciden.' }); return; }
+    setPwdLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPwd });
+    setPwdLoading(false);
+    if (error) { setPwdStatus({ type: 'err', msg: error.message }); }
+    else { setPwdStatus({ type: 'ok', msg: '¡Contraseña actualizada!' }); setNewPwd(''); setConfirmPwd(''); setTimeout(() => setShowPwd(false), 1800); }
+  };
 
   const monthGrid  = useMemo(() => getMonthGrid(currentMonth), [currentMonth]);
   const todayYM    = isoToday().slice(0, 7);
@@ -624,30 +646,35 @@ export const RegistrosView: React.FC<Props> = ({
     }
   };
 
+  // Pesajes filtrados al hotel actual (evita ver datos de otros hoteles del plan)
+  const myPesajes = useMemo(() =>
+    pesajes.filter(p => !p.hotel_nombre || p.hotel_nombre.toLowerCase() === hotelNombre?.toLowerCase()),
+  [pesajes, hotelNombre]);
+
   // Obtener pesaje de una zona en la fecha seleccionada
   const getPesaje = useCallback((areaId: string) =>
-    pesajes.find(p => p.area_id === areaId && p.fecha === selectedDate) || null,
-  [pesajes, selectedDate]);
+    myPesajes.find(p => p.area_id === areaId && p.fecha === selectedDate) || null,
+  [myPesajes, selectedDate]);
 
   // Ocupación del hotel en la fecha seleccionada
   const getOcupacion = useCallback(() =>
-    ocupacion.find(o => o.hotel_nombre === hotelNombre && o.fecha === selectedDate) || null,
+    ocupacion.find(o => o.hotel_nombre?.toLowerCase() === hotelNombre?.toLowerCase() && o.fecha === selectedDate) || null,
   [ocupacion, hotelNombre, selectedDate]);
 
   // Total kg del día
   const totalHoy = useMemo(() =>
-    pesajes.filter(p => p.fecha === selectedDate).reduce((s, p) => s + p.kg, 0),
-  [pesajes, selectedDate]);
+    myPesajes.filter(p => p.fecha === selectedDate).reduce((s, p) => s + p.kg, 0),
+  [myPesajes, selectedDate]);
 
   // Coste total del día
   const costeTotalHoy = useMemo(() => {
-    const recs = pesajes.filter(p => p.fecha === selectedDate);
+    const recs = myPesajes.filter(p => p.fecha === selectedDate);
     const total = recs.reduce((s, p) => {
       const area = zonas.find(a => a.id === p.area_id);
       return s + p.kg * (area?.costePorKg ?? 0);
     }, 0);
     return zonas.some(a => a.costePorKg != null) ? total : null;
-  }, [pesajes, selectedDate, zonas]);
+  }, [myPesajes, selectedDate, zonas]);
 
   // Guardar un registro
   const handleConfirm = async (kg: number, estancias: number | null, comensales: number | null, desglose?: Record<string, number>) => {
@@ -687,7 +714,7 @@ export const RegistrosView: React.FC<Props> = ({
         };
         const oSaved = await ocupacionService.upsert(oRow);
         setOcupacion(prev => {
-          const idx = prev.findIndex(o => o.hotel_nombre === hotelNombre && o.fecha === selectedDate);
+          const idx = prev.findIndex(o => o.hotel_nombre?.toLowerCase() === hotelNombre?.toLowerCase() && o.fecha === selectedDate);
           return idx >= 0 ? prev.map((o, i) => i === idx ? oSaved : o) : [...prev, oSaved];
         });
       }
@@ -795,8 +822,58 @@ export const RegistrosView: React.FC<Props> = ({
               <FileSpreadsheet size={18} />
             </button>
           )}
+          {onLogout && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={() => { setShowPwd(true); setPwdStatus(null); setNewPwd(''); setConfirmPwd(''); }}
+                className="p-1.5 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.7)' }}
+                title="Cambiar contraseña">
+                <KeyRound size={17} />
+              </button>
+              <button onClick={onLogout}
+                className="p-1.5 rounded-lg transition-colors" style={{ color: 'rgba(255,255,255,0.7)' }}
+                title="Cerrar sesión">
+                <LogOut size={17} />
+              </button>
+            </div>
+          )}
         </div>
       </header>
+
+      {/* Modal cambiar contraseña */}
+      {showPwd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-slate-900 text-base">Cambiar contraseña</h3>
+              <button onClick={() => setShowPwd(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            {pwdStatus && (
+              <div className={`mb-3 rounded-xl px-4 py-3 text-sm font-medium ${pwdStatus.type === 'ok' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                {pwdStatus.msg}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div className="relative">
+                <input type={showPwdText ? 'text' : 'password'} placeholder="Nueva contraseña"
+                  value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <button type="button" onClick={() => setShowPwdText(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  {showPwdText ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              <input type={showPwdText ? 'text' : 'password'} placeholder="Repetir contraseña"
+                value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              <button onClick={handleChangePwd} disabled={pwdLoading || !newPwd || !confirmPwd}
+                className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40"
+                style={{ backgroundColor: '#1a3d2b' }}>
+                {pwdLoading ? 'Guardando…' : 'Cambiar contraseña'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Calendario mensual ── */}
       <div className="bg-white border-b border-slate-200 flex-shrink-0">
@@ -835,7 +912,7 @@ export const RegistrosView: React.FC<Props> = ({
               const isToday  = d === today;
               const isSel    = d === selectedDate;
               const isFuture = d > today;
-              const hasDat   = pesajes.some(p => p.fecha === d);
+              const hasDat   = myPesajes.some(p => p.fecha === d);
               const hasDon   = fechasConDonacion.has(d);
               return (
                 <button key={d}

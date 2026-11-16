@@ -145,7 +145,7 @@ export const ClientDashboard: React.FC<Props> = ({
 
         <div className="mb-6">
           <h2 className="text-xl font-bold text-slate-800">Mis Planes PPDA</h2>
-          <p className="text-sm text-slate-500 mt-1">Accede al plan o introduce los registros diarios de pesaje.</p>
+          <p className="text-sm text-slate-700 font-medium mt-1">Accede al plan o introduce los registros diarios de pesaje.</p>
         </div>
 
         {loading ? (

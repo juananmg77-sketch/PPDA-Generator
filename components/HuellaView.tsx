@@ -11,7 +11,7 @@ import { informeAHtml } from '../huella/informeHtml';
 import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
-import { aplicarGas, esKwhAmbiguo, modoInicialGas } from '../huella/gas';
+import { aplicarGas, modoAutomatico, resolverGas } from '../huella/gas';
 import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
@@ -923,7 +923,8 @@ function evaluarDoc(d: Documento, factores: ConjuntoFactores | null, anio: numbe
     .map((x) => ({ id: x.id.slice(0, 8), centro: x.centro_id ?? undefined, proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo }));
   // Si no trae contador y su periodo se solapa con el de otros contadores, se deduce a cuál pertenece (propuesta visible y revisable)
   const asignacion = asignarContador(e0, { centro, existentes });
-  const e: ExtraccionFactura = asignacion.contador ? { ...e0, contador: asignacion.contador } : e0;
+  const eContador: ExtraccionFactura = asignacion.contador ? { ...e0, contador: asignacion.contador } : e0;
+  const e = resolverGas(eContador); // gas natural: se decide solo si son PCS, PCI o m³ (con nota)
   const incidencias = factores ? validarExtraccion(e, { anioInventario: anio, centro, factores, existentes }) : [];
   const fuente = fuentePorDefecto(e, factores);
   const errores = incidencias.filter((i) => i.gravedad === 'error').length;
@@ -1008,15 +1009,6 @@ const PanelFacturas: React.FC<{
     setSel(new Set()); setCargando(false); onCambio();
     if (fallos.length) falla(`No se pudieron confirmar ${fallos.length} facturas:\n${fallos.join('\n')}`);
   };
-  // Gas natural en kWh sin indicar PCS/PCI: en la facturación española el kWh de gas es PCS; se confirma de golpe para todas
-  const ambiguas = pendientes.filter((d) => d.extraccion && esKwhAmbiguo(d.extraccion));
-  const gasComoPcs = async () => {
-    if (!ambiguas.length) return;
-    if (!confirm(`Va a confirmar que los kWh de ${ambiguas.length} factura(s) de gas natural son PCS (poder calorífico superior), como se factura en España. Compruebe que ninguna indica PCI. ¿Continuar?`)) return;
-    setCargando(true);
-    try { for (const d of ambiguas) await huellaService.actualizarDocumento(d.id, { extraccion: aplicarGas(d.extraccion!, 'pcs') }); } catch (e) { falla(e); }
-    setCargando(false); onCambio();
-  };
   const alternar = (id: string) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
@@ -1068,7 +1060,6 @@ const PanelFacturas: React.FC<{
         <div className={card}>
           <div className="flex flex-wrap items-center gap-3 mb-3">
             <h2 className="text-sm font-bold text-slate-800 flex-1">Pendientes de revisar ({pendientes.length})</h2>
-            {ambiguas.length > 0 && <button className={btnS} onClick={gasComoPcs} disabled={cargando} title="El kWh de gas natural facturado en España es PCS">Los kWh de gas son PCS ({ambiguas.length})</button>}
             <button className={btnS} onClick={() => setSel(new Set(listas.map((d) => d.id)))} disabled={!listas.length}>Seleccionar las {listas.length} sin errores</button>
             <button className={btnP} onClick={confirmarSeleccion} disabled={!seleccionadasListas.length || cargando || !abierto}><CheckCircle2 size={15} /> Confirmar {seleccionadasListas.length || ''} seleccionadas</button>
           </div>
@@ -1089,7 +1080,7 @@ const PanelFacturas: React.FC<{
                         <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{nombreCentro(d.centro_id)}</span></td>
                         <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500" title={ev?.asignacion.motivo}>{ev?.e.contador ? `Contador: ${ev.e.contador}${ev.asignacion.contador ? ' (asignado)' : ''}` : ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador'}</span></td>
                         <td className="pr-3 whitespace-nowrap">{e.periodoDesde ?? '?'} → {e.periodoHasta ?? '?'}</td>
-                        <td className="pr-3 text-right tabular-nums">{e.cantidad !== undefined ? num(e.cantidad, 2) : '—'} {e.unidad ?? ''}</td>
+                        <td className="pr-3 text-right tabular-nums" title={ev?.e.nota}>{ev?.e.cantidad !== undefined ? num(ev.e.cantidad, 2) : '—'} {ev?.e.unidad ?? ''}{ev?.e.nota && ev.e.cantidad !== e.cantidad ? <span className="block text-[10px] text-slate-500">convertido</span> : null}</td>
                         <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
                         <td className="text-right whitespace-nowrap">
                           <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
@@ -1153,8 +1144,8 @@ const Revision: React.FC<{
   const conocidos = useMemo(() => Array.from(new Set(existentes.map((x) => x.contador).filter(Boolean))) as string[], [existentes]);
   const [fuente, setFuente] = useState(() => fuentePorDefecto(doc.extraccion!, factores));
   const [guardando, setGuardando] = useState(false);
-  const [modoGas, setModoGas] = useState<ModoGas>(() => modoInicialGas(doc.extraccion!.unidad));
-  const [pcsM3, setPcsM3] = useState('');
+  const [modoGas, setModoGas] = useState<ModoGas>(() => modoAutomatico(doc.extraccion!));
+  const [pcsM3, setPcsM3] = useState(() => (doc.extraccion!.factorConversion ? String(doc.extraccion!.factorConversion).replace('.', ',') : ''));
   // Para gas natural, la lectura efectiva está ya convertida a kWh PCS según lo que confirma la persona que revisa
   const efectiva = useMemo(() => (e.tipo === 'gas_natural' ? aplicarGas(e, modoGas, Number(pcsM3.replace(',', '.')) || undefined) : e), [e, modoGas, pcsM3]);
   useEffect(() => { if (!fuente) setFuente(fuentePorDefecto(e, factores)); }, [factores]); // eslint-disable-line
@@ -1200,7 +1191,8 @@ const Revision: React.FC<{
       </div>
       {e.tipo === 'gas_natural' && (
         <div className="mt-3 rounded-lg px-3 py-3 bg-blue-50 text-blue-900 text-xs">
-          <p className="font-semibold mb-2">Unidad del gas natural: la calculadora oficial exige kWh PCS</p>
+          <p className="font-semibold mb-1">Unidad del gas natural: la calculadora oficial exige kWh PCS</p>
+          <p className="mb-2 text-blue-800">Decidido automáticamente a partir de la factura. Cámbielo solo si no es correcto.</p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="font-semibold">¿Qué indica la factura?
               <select className={`${input} mt-1 w-auto min-w-[320px]`} value={modoGas} onChange={(ev) => setModoGas(ev.target.value as ModoGas)} aria-label="Unidad del gas natural">

@@ -66,7 +66,7 @@ test('entrada: límites de tamaño, formato y vacío', () => {
 
 test('el esquema coincide con ExtraccionFactura (todas las claves del tipo están definidas)', () => {
   const claves = Object.keys(ESQUEMA_EXTRACCION.properties).sort();
-  assert.deepEqual(claves, ['cantidad', 'confianza', 'contador', 'garantiaOrigen', 'importe', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'tipo', 'unidad']);
+  assert.deepEqual(claves, ['cantidad', 'confianza', 'contador', 'factorConversion', 'garantiaOrigen', 'importe', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'tipo', 'unidad']);
 });
 
 test('tipo indicado de antemano: va en las instrucciones y una lectura distinta obliga a revisar', async () => {

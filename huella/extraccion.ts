@@ -21,6 +21,8 @@ export interface ExtraccionFactura {
   /** Electricidad: ¿garantía de origen renovable? ¿de Baleares? */
   garantiaOrigen?: 'no' | 'renovable_balear' | 'renovable_otra' | 'desconocida';
   confianza?: number; // 0..1
+  /** Gas natural facturado en m³: factor de conversión a kWh (kWh/m³) que figura en la factura. */
+  factorConversion?: number;
   /** Nota de la persona que revisa (p. ej. conversión de unidades): pasa a la línea de actividad como evidencia. */
   nota?: string;
 }

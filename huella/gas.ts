@@ -30,10 +30,30 @@ export const esKwhAmbiguo = (e: ExtraccionFactura) => e.tipo === 'gas_natural' &
 export function aplicarGas(e: ExtraccionFactura, modo: ModoGas, pcsKwhM3?: number): ExtraccionFactura {
   if (e.tipo !== 'gas_natural' || typeof e.cantidad !== 'number') return e;
   const origen = `${es(e.cantidad)} ${e.unidad ?? ''}`.trim();
-  if (modo === 'pcs') return { ...e, unidad: 'kWh PCS', nota: norm(e.unidad).includes('pcs') ? e.nota : `Consumo de ${origen} confirmado como kWh PCS por la persona que revisa.` };
+  if (modo === 'pcs') return { ...e, unidad: 'kWh PCS', nota: norm(e.unidad).includes('pcs') ? e.nota : `La factura indica ${origen} sin precisar PCS ni PCI: se trata como kWh PCS, que es como se factura el gas natural en España (kWh = m³ × factor de corrección × PCS).` };
   if (modo === 'pci') return { ...e, cantidad: redondeo(e.cantidad / PCI_SOBRE_PCS), unidad: 'kWh PCS', nota: `Convertido de ${origen} (PCI) a PCS dividiendo entre ${es(PCI_SOBRE_PCS, 3)} (Inventario Nacional).` };
   if (modo === 'm3' && typeof pcsKwhM3 === 'number' && pcsKwhM3 > 0) {
     return { ...e, cantidad: redondeo(e.cantidad * pcsKwhM3), unidad: 'kWh PCS', nota: `Convertido de ${origen} × ${es(pcsKwhM3, 4)} kWh/m³ (factor de conversión de la factura).` };
   }
   return e;
+}
+
+/**
+ * Decisión automática a partir de lo que dice la factura (sin preguntar):
+ *  · «kWh PCS»  → tal cual;  · «kWh PCI» → se convierte a PCS;
+ *  · «kWh» a secas → se trata como PCS (así se factura el gas natural en España);
+ *  · «m³» con factor de conversión de la factura → se convierte con ese factor; sin factor → queda pendiente.
+ */
+export function modoAutomatico(e: ExtraccionFactura): ModoGas {
+  const u = norm(e.unidad);
+  if (u.includes('pcs')) return 'pcs';
+  if (u.includes('pci')) return 'pci';
+  if (u.includes('m3') || u.includes('m³')) return typeof e.factorConversion === 'number' && e.factorConversion > 0 ? 'm3' : '';
+  if (u === 'kwh') return 'pcs';
+  return '';
+}
+
+/** Lectura de gas natural ya resuelta a kWh PCS por la decisión automática (otros tipos, sin cambios). */
+export function resolverGas(e: ExtraccionFactura): ExtraccionFactura {
+  return e.tipo === 'gas_natural' ? aplicarGas(e, modoAutomatico(e), e.factorConversion) : e;
 }

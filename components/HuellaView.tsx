@@ -16,7 +16,7 @@ import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
-type Pestana = 'resumen' | 'centros' | 'facturas' | 'resultados' | 'cierre' | 'ajustes';
+type Pestana = 'resumen' | 'centros' | 'facturas' | 'consumos' | 'resultados' | 'cierre' | 'ajustes';
 export type RolHuella = 'consultor' | 'cliente';
 
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -164,6 +164,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
     { k: 'centros', nombre: 'Centros', icono: <Building2 size={17} />, solo: 'consultor' },
     { k: 'facturas', nombre: esConsultor ? 'Facturas' : 'Mis facturas', icono: <FileText size={17} />, badge: esConsultor ? pendientes : 0 },
+    { k: 'consumos', nombre: 'Consumos', icono: <ListChecks size={17} /> },
     { k: 'resultados', nombre: 'Resultados', icono: <BarChart3 size={17} /> },
     { k: 'cierre', nombre: esConsultor ? 'Cierre e informe' : 'Informe', icono: esConsultor ? <Lock size={17} /> : <FileCheck size={17} />, oculto: !esConsultor && !cerradoInv },
   ];
@@ -171,7 +172,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const titulos: Record<Pestana, [string, string]> = {
     resumen: [esConsultor ? 'Resumen del cálculo' : 'Su huella de carbono', esConsultor ? 'Dónde estás y qué falta para cerrar.' : 'Suba sus facturas y consulte sus resultados.'],
     centros: ['Centros de trabajo', 'Datos de cada centro, su periodo operativo y estancias.'],
-    facturas: [esConsultor ? 'Facturas y consumos' : 'Mis facturas y consumos', 'Suba un bloque completo; se leen solas, usted las revisa y debajo ve los consumos que generan.'],
+    facturas: [esConsultor ? 'Facturas' : 'Mis facturas', 'Suba un bloque completo; se leen solas y usted las revisa.'],
+    consumos: ['Consumos', 'Evolución mensual y consumos confirmados de las facturas.'],
     resultados: ['Resultados', 'Huella del cálculo según el Registro balear.'],
     cierre: esConsultor ? [pasoCierre === 'informe' ? 'Informe' : 'Cierre del cálculo', pasoCierre === 'informe' ? 'ISO 14064-1 · listo para entregar al verificador.' : 'Comprobaciones, variaciones y cierre con registro.'] : ['Informe', 'Informe del cálculo cerrado.'],
     ajustes: ['Ajustes del cálculo', 'Factores de emisión y datos de la organización.'],
@@ -258,16 +260,10 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <PanelResumen rol={rol} inv={inv} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} ir={setTab} />
               )}
               {tab === 'facturas' && inv && (
-                <div className="space-y-8">
-                  <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
-                  <section className="space-y-4" aria-label="Consumos">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-slate-900">Consumos</h2>
-                      <p className="text-sm text-slate-600">Evolución mensual y consumos confirmados de las facturas de arriba.</p>
-                    </div>
-                    <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
-                  </section>
-                </div>
+                <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
+              )}
+              {tab === 'consumos' && inv && (
+                <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
               )}
               {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
               {tab === 'cierre' && inv && (

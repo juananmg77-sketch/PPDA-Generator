@@ -114,10 +114,18 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     } catch (e) { falla(e); }
   };
 
-  const guardarOrg = async (v: Partial<Organizacion> & { nombre: string }) => {
+  const guardarOrg = async (v: Partial<Organizacion> & { nombre: string }, hoteles: HotelSuite[] = []) => {
     try {
-      if (modalOrg === 'editar' && org) { const o = await huellaService.actualizarOrganizacion(org.id, v); setOrgs((l) => l.map((x) => (x.id === o.id ? o : x))); }
-      else { const o = await huellaService.crearOrganizacion(v); setOrgs((l) => [...l, o]); setOrgId(o.id); }
+      if (modalOrg === 'editar' && org) { const o = await huellaService.actualizarOrganizacion(org.id, v); setOrgs((l) => l.map((x) => (x.id === o.id ? o : x))); return; }
+      const o = await huellaService.crearOrganizacion(v);
+      // Cada hotel elegido en HS Suite se crea como centro de trabajo con todos sus datos
+      const fallos: string[] = [];
+      for (const h of hoteles) {
+        try { await huellaService.crearCentro({ organizacion_id: o.id, ...centroDesdeHotel(h), suite_actualizado: new Date().toISOString() }); } catch (e) { fallos.push(`${h.nombre_hotel}: ${e instanceof Error ? e.message : e}`); }
+      }
+      setOrgs((l) => [...l, o]); setOrgId(o.id);
+      if (hoteles.length) setTab('centros');
+      if (fallos.length) falla(`La organización se creó, pero no se pudieron añadir ${fallos.length} centro(s):\n${fallos.join('\n')}`);
     } catch (e) { falla(e); throw e; }
   };
   const guardarCentro = async (v: Partial<Centro>) => {
@@ -258,7 +266,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               )}
             </>
           )}
-          {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} />}
+          {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} onError={falla} />}
           {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} onError={falla} />}
           {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Todavía no hay organizaciones. Cree la primera con el botón + del menú.' : 'Todavía no tiene acceso a ninguna organización.'}</div>}
         </div>
@@ -423,19 +431,45 @@ const Campo: React.FC<{ etiqueta: string; children: React.ReactNode; ancho?: boo
   <label className={`text-xs font-semibold text-slate-700 ${ancho ? 'col-span-2' : ''}`}>{etiqueta}<div className="mt-1">{children}</div></label>
 );
 
-const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }) => Promise<void>; onCerrar: () => void }> = ({ org, usuario, onGuardar, onCerrar }) => {
+const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }, hoteles: HotelSuite[]) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ org, usuario, onGuardar, onCerrar, onError }) => {
   const [cadenaSuite, setCadenaSuite] = useState<string | null>(org?.suite_cadena ?? null);
+  const [hoteles, setHoteles] = useState<HotelSuite[]>([]);
   const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: org?.criterio_consolidacion ?? 'control', consultor: org?.consultor_email ?? usuario });
   const [guardando, setGuardando] = useState(false);
   const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
-  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }); onCerrar(); } finally { setGuardando(false); } };
+  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }, hoteles); onCerrar(); } finally { setGuardando(false); } };
   return (
     <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar}>
       {!org && (
         <div className="mb-4 rounded-xl p-3" style={{ background: '#F4F7FA' }}>
-          <p className="text-xs font-semibold text-slate-700 mb-2">Rellenar desde HS Suite (opcional)</p>
-          <BuscadorHoteles textoBoton="Usar" placeholder="Busque la cadena, el titular o un hotel"
-            onElegir={(h) => { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '' })); setCadenaSuite(o.suite_cadena); }} />
+          <p className="text-xs font-semibold text-slate-700 mb-1">Buscar en HS Suite (recomendado)</p>
+          <p className="text-[11px] text-slate-600 mb-2">Elija el hotel o los hoteles: se rellenan los datos de la organización y cada hotel se crea como <strong>centro de trabajo</strong> con su dirección, municipio, isla y unidades.</p>
+          <BuscadorHoteles textoBoton="Añadir" placeholder="Busque el hotel, la cadena o el titular" vinculados={new Set(hoteles.map((h) => h.id))}
+            onElegir={(h) => {
+              setHoteles((l) => (l.some((x) => x.id === h.id) ? l : [...l, h]));
+              if (hoteles.length === 0) { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '' })); setCadenaSuite(o.suite_cadena); }
+            }}
+            onCadena={async (cadena) => {
+              try {
+                const todos = (await huellaService.buscarHoteles({ cadena, limite: 200 })).filter((h) => h.activo !== false);
+                setHoteles((l) => [...l, ...todos.filter((h) => !l.some((x) => x.id === h.id))]);
+                if (hoteles.length === 0 && todos[0]) { const o = organizacionDesdeHotel(todos[0]); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: '' })); setCadenaSuite(cadena); }
+              } catch (e) { onError?.(e); }
+            }} />
+          {hoteles.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-slate-700 mb-1">Se crearán {hoteles.length} centro{hoteles.length === 1 ? '' : 's'} de trabajo:</p>
+              <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-40 overflow-auto">
+                {hoteles.map((h) => (
+                  <li key={h.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                    <Building2 size={13} className="text-slate-500" />
+                    <span className="flex-1 min-w-0 truncate"><strong>{h.nombre_hotel}</strong> · {[h.direccion_completa, h.municipio, h.isla].filter(Boolean).join(' · ')}</span>
+                    <button className="p-1 text-slate-500 hover:text-red-600" aria-label={`Quitar ${h.nombre_hotel}`} onClick={() => setHoteles((l) => l.filter((x) => x.id !== h.id))}><XCircle size={14} /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">

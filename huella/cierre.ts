@@ -5,7 +5,7 @@ import { agruparPorTipoYContador, mesesTocados, NOMBRES_MES } from './mensual.ts
 export type Nivel = 'error' | 'aviso' | 'info' | 'ok';
 export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string }
 
-export interface DocCierre { estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null }
+export interface DocCierre { estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -65,6 +65,10 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   if (e.actividadManual > 0) add('info', 'datos_manuales', `${e.actividadManual} dato(s) introducidos a mano sin factura: el verificador pedirá su evidencia.`);
 
   if (e.centrosSinIndice.length > 0) add('aviso', 'indice_actividad', `Sin índice de actividad (estancias) en: ${e.centrosSinIndice.join(', ')}. Los ratios no se calcularán para ellos (válido si el centro estuvo cerrado).`);
+
+  // Origen de la electricidad: se pregunta aquí, una sola vez, y no en cada factura
+  const sinOrigen = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida')).length;
+  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, corríjalo en esa factura antes de cerrar.`);
 
   for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`);
 

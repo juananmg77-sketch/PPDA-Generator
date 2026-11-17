@@ -55,3 +55,12 @@ test('avisos: centros sin índice y no conformidades abiertas no bloquean', () =
   assert.equal(evaluarCierre(e).puedeCerrar, true);
   assert.deepEqual(niveles(e), ['aviso:indice_actividad', 'aviso:nc_abiertas']);
 });
+
+test('el origen de la electricidad se recuerda una vez al cerrar, sin bloquear', () => {
+  const sinOrigen = { ...base, docs: [rev('electricidad', 'A', '2024-01-01', '2024-01-31')] };
+  const r = evaluarCierre(sinOrigen);
+  assert.ok(r.items.some((i) => i.codigo === 'origen_electricidad' && i.nivel === 'info' && /1 factura/.test(i.mensaje)));
+  assert.equal(r.puedeCerrar, true);
+  const conOrigen = { ...base, docs: [{ ...rev('electricidad', 'A', '2024-01-01', '2024-01-31'), origenElectricidad: 'no' }] };
+  assert.ok(!evaluarCierre(conOrigen).items.some((i) => i.codigo === 'origen_electricidad'));
+});

@@ -43,8 +43,8 @@ test('cantidad y unidad obligatorias; cero y baja confianza generan aviso', () =
   assert.ok(codigos({ ...luz, confianza: 0.5 }).includes('confianza_baja'));
 });
 
-test('electricidad sin origen conocido se avisa; refrigerante sin PCA es un error', () => {
-  assert.ok(codigos({ ...luz, garantiaOrigen: 'desconocida' }).includes('origen_electricidad'));
+test('electricidad sin origen conocido ya no avisa por factura; refrigerante sin PCA es un error', () => {
+  assert.ok(!codigos({ ...luz, garantiaOrigen: 'desconocida' }).includes('origen_electricidad')); // ya no se avisa por factura
   const gas: ExtraccionFactura = { tipo: 'refrigerante', proveedor: 'S', periodoDesde: '2024-05-02', periodoHasta: '2024-05-02', cantidad: 3, unidad: 'kg', producto: 'R-410A' };
   assert.deepEqual(codigos(gas), []);
   assert.ok(codigos({ ...gas, producto: 'R-999' }).includes('gas_sin_pca'));

@@ -162,10 +162,7 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
     add('error', 'gas_sin_pca', `No hay potencial de calentamiento para «${e.producto}» en el conjunto ${c.factores.id}.`);
   }
 
-  // Electricidad: origen
-  if (e.tipo === 'electricidad' && (!e.garantiaOrigen || e.garantiaOrigen === 'desconocida')) {
-    add('aviso', 'origen_electricidad', 'No consta el origen de la electricidad (garantía de origen): se tratará como energía de red salvo que se acredite.');
-  }
+  // El origen de la electricidad (garantía de origen) no se pregunta factura a factura: se trata como energía de red y se recuerda al cerrar el cálculo.
 
   // Contador / punto de suministro
   if (normalizarContador(e.contador) === 'VARIOS') add('aviso', 'varios_contadores', 'La factura agrupa varios contadores o suministros: sepárelos en líneas distintas (un dato por contador) en la pestaña Actividad.');

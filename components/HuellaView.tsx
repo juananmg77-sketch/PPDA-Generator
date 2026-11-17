@@ -985,7 +985,8 @@ const PanelFacturas: React.FC<{
   const pendientes = docs.filter((d) => d.estado === 'leido' && d.extraccion);
   const evaluadas = useMemo(() => new Map(pendientes.map((d) => [d.id, evaluarDoc(d, factores, inv.anio, docs)])), [docs, factores, inv.anio]); // eslint-disable-line
   const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, contadorDoc), [docs]); // eslint-disable-line
-  const gruposTodas = useMemo(() => agruparPorTipoYContador(docs, tipoDoc, contadorDoc), [docs]);
+  const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido'), [docs]);
+  const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, contadorDoc), [docsArchivo]);
   const listas = pendientes.filter((d) => evaluadas.get(d.id)?.listo);
   const seleccionadasListas = listas.filter((d) => sel.has(d.id));
   const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
@@ -1044,7 +1045,10 @@ const PanelFacturas: React.FC<{
               <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
             {!abierto && <p className="text-xs text-amber-700 mt-2">El cálculo no está en borrador: no admite facturas nuevas.</p>}
-            {tareas.length > 0 && (
+            {tareas.length > 0 && !cargando && !tareas.some((t) => t.estado === 'error') && (
+              <p className="mt-2 text-xs text-green-700 font-semibold"><CheckCircle2 size={13} className="inline mr-1" />{tareas.length} factura{tareas.length === 1 ? '' : 's'} leída{tareas.length === 1 ? '' : 's'}: revíselas en «Pendientes de revisar».</p>
+            )}
+            {tareas.length > 0 && (cargando || tareas.some((t) => t.estado === 'error')) && (
               <ul className="mt-3 divide-y divide-slate-100 border border-slate-200 rounded-xl text-xs max-h-48 overflow-auto">
                 {tareas.map((t) => (
                   <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
@@ -1070,13 +1074,18 @@ const PanelFacturas: React.FC<{
             <button className={btnP} onClick={confirmarSeleccion} disabled={!seleccionadasListas.length || cargando || !abierto}><CheckCircle2 size={15} /> Confirmar {seleccionadasListas.length || ''} seleccionadas</button>
           </div>
           <p className="text-xs text-slate-600 mb-2">Compruebe los valores de la tabla contra las facturas («Ver»). Las que tienen errores o necesitan elegir combustible se revisan una a una.</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Tipo</th><th className="pr-3">Proveedor</th><th className="pr-3">Periodo</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
-              <tbody>
-                {gruposPend.map((g) => (
-                  <React.Fragment key={`${g.tipo}|${g.contador}`}>
-                    <tr className="bg-slate-100"><td colSpan={8} className="px-2 py-1.5"><div className="flex items-center gap-2"><div className="flex-1"><CabeceraGrupo g={g} anio={inv.anio} /></div>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</div></td></tr>
+          <div className="space-y-2">
+            {gruposPend.map((g) => (
+              <details key={`${g.tipo}|${g.contador}`} className="border border-slate-200 rounded-xl" open={gruposPend.length === 1}>
+                <summary className="cursor-pointer px-3 py-2.5 bg-slate-50 rounded-xl flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="flex-1 min-w-[220px]"><CabeceraGrupo g={g} anio={inv.anio} /></span>
+                  <span className="text-[11px] font-semibold text-slate-600">{g.items.filter((d) => evaluadas.get(d.id)?.listo).length} listas · {g.items.filter((d) => !evaluadas.get(d.id)?.listo).length} por revisar</span>
+                  {puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}
+                </summary>
+                <div className="overflow-x-auto px-2 pb-2">
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Tipo</th><th className="pr-3">Proveedor</th><th className="pr-3">Periodo</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
+                    <tbody>
                 {g.items.map((d) => {
                   const ev = evaluadas.get(d.id); const e = d.extraccion!;
                   return (
@@ -1100,20 +1109,21 @@ const PanelFacturas: React.FC<{
                     </React.Fragment>
                   );
                 })}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ))}
           </div>
         </div>
       )}
 
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Todas las facturas del cálculo {inv.anio} ({docs.length})</h2>
-        {docs.length === 0 ? <p className="text-sm text-slate-600">Aún no hay facturas.</p> : (
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Facturas confirmadas del cálculo {inv.anio} ({docsArchivo.length})</h2>
+        {docsArchivo.length === 0 ? <p className="text-sm text-slate-600">{docs.length === 0 ? 'Aún no hay facturas.' : 'Todavía no hay facturas confirmadas: revise las pendientes de arriba.'}</p> : (
           <div className="space-y-3">
             {gruposTodas.map((g) => (
-              <details key={`${g.tipo}|${g.contador}`} open className="border border-slate-200 rounded-xl">
+              <details key={`${g.tipo}|${g.contador}`} className="border border-slate-200 rounded-xl">
                 <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl flex items-center gap-2"><span className="flex-1 inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</summary>
                 <ul className="divide-y divide-slate-100 px-3">
                   {[...g.items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (

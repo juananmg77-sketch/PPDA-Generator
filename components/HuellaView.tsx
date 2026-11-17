@@ -71,7 +71,6 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const [invId, setInvId] = useState('');
   const [tab, setTab] = useState<Pestana>('resumen');
   const [vista, setVista] = useState<'biblioteca' | 'calculo'>('biblioteca');
-  const [vistaFacturas, setVistaFacturas] = useState<'facturas' | 'consumos'>('facturas');
   const [pasoCierre, setPasoCierre] = useState<'cierre' | 'informe'>('cierre');
   const [biblio, setBiblio] = useState<FilaBiblioteca[] | null>(null);
   const [nuevoCalculo, setNuevoCalculo] = useState(false);
@@ -94,7 +93,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
 
   const cargarBiblioteca = useCallback(() => { huellaService.biblioteca().then(setBiblio).catch(falla); huellaService.organizaciones().then(setOrgs).catch(falla); }, []); // eslint-disable-line
   useEffect(() => { cargarBiblioteca(); }, [cargarBiblioteca]);
-  const abrir = (oId: string, iId: string) => { setInvInicial(iId); setOrgId(oId); if (oId === orgId) setInvId(iId); setTab('resumen'); setVistaFacturas('facturas'); setVista('calculo'); };
+  const abrir = (oId: string, iId: string) => { setInvInicial(iId); setOrgId(oId); if (oId === orgId) setInvId(iId); setTab('resumen'); setVista('calculo'); };
   useEffect(() => { if (inv) setPasoCierre(inv.estado === 'borrador' ? 'cierre' : 'informe'); }, [inv?.id, inv?.estado]); // eslint-disable-line
   const volverABiblioteca = () => { setVista('biblioteca'); cargarBiblioteca(); };
   useEffect(() => {
@@ -172,7 +171,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const titulos: Record<Pestana, [string, string]> = {
     resumen: [esConsultor ? 'Resumen del cálculo' : 'Su huella de carbono', esConsultor ? 'Dónde estás y qué falta para cerrar.' : 'Suba sus facturas y consulte sus resultados.'],
     centros: ['Centros de trabajo', 'Datos de cada centro, su periodo operativo y estancias.'],
-    facturas: vistaFacturas === 'consumos' ? ['Consumos', 'Evolución mensual y consumos confirmados.'] : [esConsultor ? 'Facturas' : 'Mis facturas', 'Suba un bloque completo; se leen solas y usted las revisa.'],
+    facturas: [esConsultor ? 'Facturas y consumos' : 'Mis facturas y consumos', 'Suba un bloque completo; se leen solas, usted las revisa y debajo ve los consumos que generan.'],
     resultados: ['Resultados', 'Huella del cálculo según el Registro balear.'],
     cierre: esConsultor ? [pasoCierre === 'informe' ? 'Informe' : 'Cierre del cálculo', pasoCierre === 'informe' ? 'ISO 14064-1 · listo para entregar al verificador.' : 'Comprobaciones, variaciones y cierre con registro.'] : ['Informe', 'Informe del cálculo cerrado.'],
     ajustes: ['Ajustes del cálculo', 'Factores de emisión y datos de la organización.'],
@@ -259,11 +258,15 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <PanelResumen rol={rol} inv={inv} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} ir={setTab} />
               )}
               {tab === 'facturas' && inv && (
-                <div className="space-y-4">
-                  <Segmentos etiqueta="Vista" valor={vistaFacturas} onCambio={(v) => setVistaFacturas(v as 'facturas' | 'consumos')} opciones={[['facturas', esConsultor ? 'Facturas' : 'Mis facturas'], ['consumos', 'Consumos']]} />
-                  {vistaFacturas === 'facturas'
-                    ? <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
-                    : <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />}
+                <div className="space-y-8">
+                  <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
+                  <section className="space-y-4" aria-label="Consumos">
+                    <div>
+                      <h2 className="text-lg font-extrabold text-slate-900">Consumos</h2>
+                      <p className="text-sm text-slate-600">Evolución mensual y consumos confirmados de las facturas de arriba.</p>
+                    </div>
+                    <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
+                  </section>
                 </div>
               )}
               {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}

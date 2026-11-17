@@ -508,19 +508,6 @@ const PanelResumen: React.FC<{
   const confirmadas = actividad.filter((a) => a.estado === 'confirmada').length;
   const cerrado = inv.estado !== 'borrador';
 
-  type Paso = { nombre: string; estado: 'ok' | 'ahora' | 'espera' };
-  const pasos: Paso[] = esConsultor ? [
-    { nombre: 'Centros', estado: centros.length > 0 ? 'ok' : 'ahora' },
-    { nombre: 'Facturas', estado: docs.length > 0 && sinLeer === 0 ? 'ok' : centros.length > 0 ? 'ahora' : 'espera' },
-    { nombre: 'Revisión', estado: confirmadas > 0 && porRevisar === 0 ? 'ok' : docs.length > 0 ? 'ahora' : 'espera' },
-    { nombre: 'Resultados', estado: confirmadas > 0 ? 'ok' : 'espera' },
-    { nombre: 'Cierre', estado: cerrado ? 'ok' : confirmadas > 0 && porRevisar === 0 ? 'ahora' : 'espera' },
-  ] : [
-    { nombre: 'Subir facturas', estado: docs.length > 0 ? 'ok' : 'ahora' },
-    { nombre: 'Revisión por su consultor', estado: confirmadas > 0 && porRevisar === 0 ? 'ok' : docs.length > 0 ? 'ahora' : 'espera' },
-    { nombre: 'Resultados', estado: confirmadas > 0 ? 'ok' : 'espera' },
-  ];
-
   const pendientes: Array<{ icono: React.ReactNode; texto: string; boton: string; destino: Pestana; nivel: 'aviso' | 'ok' }> = [];
   if (esConsultor && centros.length === 0) pendientes.push({ icono: <Building2 size={18} />, texto: 'Añada el primer centro de trabajo.', boton: 'Añadir', destino: 'centros', nivel: 'aviso' });
   if (docs.length === 0 && (centros.length > 0 || !esConsultor)) pendientes.push({ icono: <Upload size={18} />, texto: 'Todavía no hay facturas: suba las del año.', boton: 'Subir', destino: 'facturas', nivel: 'aviso' });
@@ -537,18 +524,6 @@ const PanelResumen: React.FC<{
   );
   return (
     <div className="space-y-4">
-      <div className={`${card} flex gap-2`} aria-label="Progreso">
-        {pasos.map((p, i) => (
-          <div key={p.nombre} className="flex-1 text-center">
-            <div className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-sm font-bold border ${p.estado === 'ok' ? 'text-white border-transparent' : p.estado === 'ahora' ? 'text-white border-transparent' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
-              style={p.estado === 'ok' ? { background: '#00BF46' } : p.estado === 'ahora' ? { background: '#0002C9' } : undefined}>
-              {p.estado === 'ok' ? <CheckCircle2 size={16} /> : i + 1}
-            </div>
-            <p className={`text-[11px] mt-1 ${p.estado === 'ahora' ? 'font-bold text-slate-900' : 'text-slate-600'}`}>{p.nombre}</p>
-          </div>
-        ))}
-      </div>
-
       {calculo && confirmadas > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {kpi('Total', t(calculo.totales.kgCO2eTotal), 't CO₂e')}

@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:huella": "node --test huella/tests/motor.test.ts huella/tests/aceptacion-informe-ejemplo.test.ts huella/tests/extraccion.test.ts"
+    "test:huella": "node --test huella/tests/motor.test.ts huella/tests/aceptacion-informe-ejemplo.test.ts huella/tests/extraccion.test.ts huella/tests/lectura.test.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
     "@google/genai": "^1.38.0",
     "@supabase/supabase-js": "^2.100.0",
     "lucide-react": "^0.562.0",

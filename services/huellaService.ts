@@ -2,9 +2,10 @@
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
+import type { HotelSuite } from '../huella/hotelesSuite';
 
-export interface Organizacion { id: string; nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null }
-export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null }
+export interface Organizacion { id: string; nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null; suite_cadena?: string | null }
+export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null; suite_hotel_id?: string | null; suite_codigo?: string | null; suite_actualizado?: string | null }
 export interface CierreDatos {
   analisisVariacion?: string;
   /** Resultados fijados al cerrar (para reproducir y detectar cambios posteriores). */
@@ -42,6 +43,16 @@ export const huellaService = {
   async crearOrganizacion(o: Partial<Omit<Organizacion, 'id'>> & { nombre: string }) {
     const { data: u } = await supabase.auth.getUser();
     return ok<Organizacion>(await supabase.from('hc_organizaciones').insert({ ...o, created_by: u?.user?.id }).select().single());
+  },
+  /** Busca hoteles en HS Suite (solo lectura, solo consultores) a través de la función de servidor. */
+  async buscarHoteles(c: { texto?: string; cadena?: string; id?: string; limite?: number }): Promise<HotelSuite[]> {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
+    const resp = await fetch('/api/buscar-hoteles', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(c) });
+    const cuerpo = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
+    return (cuerpo.hoteles ?? []) as HotelSuite[];
   },
   async actualizarOrganizacion(id: string, c: Partial<Omit<Organizacion, 'id'>>) {
     return ok<Organizacion>(await supabase.from('hc_organizaciones').update(c).eq('id', id).select().single());

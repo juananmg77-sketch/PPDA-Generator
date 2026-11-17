@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
+import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
+import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
@@ -257,7 +259,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
             </>
           )}
           {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} />}
-          {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} />}
+          {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} onError={falla} />}
           {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Todavía no hay organizaciones. Cree la primera con el botón + del menú.' : 'Todavía no tiene acceso a ninguna organización.'}</div>}
         </div>
       </main>
@@ -350,6 +352,60 @@ const PanelResumen: React.FC<{
   );
 };
 
+// ───────────────────────────── Buscador de hoteles en HS Suite ─────────────────────────────
+const BuscadorHoteles: React.FC<{
+  onElegir: (h: HotelSuite) => void; textoBoton?: string; vinculados?: Set<string>; onCadena?: (cadena: string) => void; placeholder?: string;
+}> = ({ onElegir, textoBoton = 'Añadir', vinculados, onCadena, placeholder = 'Nombre, cadena, municipio, CIF o código' }) => {
+  const [texto, setTexto] = useState('');
+  const [lista, setLista] = useState<HotelSuite[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [aviso, setAviso] = useState('');
+  useEffect(() => {
+    const q = texto.trim();
+    if (q.length < 2) { setLista(null); setAviso(''); return; }
+    setBuscando(true);
+    const t = setTimeout(async () => {
+      try { setLista(await huellaService.buscarHoteles({ texto: q })); setAviso(''); } catch (e) { setLista(null); setAviso(e instanceof Error ? e.message : String(e)); } finally { setBuscando(false); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [texto]);
+  const cadenas = useMemo(() => {
+    const m = new Map<string, number>();
+    (lista ?? []).forEach((h) => { if (h.cadena_hotelera) m.set(h.cadena_hotelera, (m.get(h.cadena_hotelera) ?? 0) + 1); });
+    return [...m.entries()].filter(([, n]) => n >= 2);
+  }, [lista]);
+  return (
+    <div>
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <input className={`${input} pl-9`} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={placeholder} aria-label="Buscar hotel en HS Suite" />
+        {buscando && <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-500" />}
+      </div>
+      {aviso && <p className="text-xs text-red-700 mt-2">{aviso}</p>}
+      {lista && lista.length === 0 && !buscando && <p className="text-xs text-slate-600 mt-2">No hay hoteles que coincidan en HS Suite.</p>}
+      {onCadena && cadenas.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-2">{cadenas.map(([c, n]) => <button key={c} className={btnS} onClick={() => onCadena(c)}><Plus size={13} /> Añadir todos los de «{c}» ({n}+)</button>)}</div>
+      )}
+      {lista && lista.length > 0 && (
+        <ul className="mt-2 divide-y divide-slate-100 border border-slate-200 rounded-xl max-h-64 overflow-auto bg-white">
+          {lista.map((h) => {
+            const ya = vinculados?.has(h.id);
+            return (
+              <li key={h.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-800 truncate">{h.nombre_hotel}{h.activo === false && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-600">Baja</span>}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{[h.cadena_hotelera, h.municipio, h.isla, h.cif, h.codigo_hotel].filter(Boolean).join(' · ')}</p>
+                </div>
+                <button className={btnS} disabled={!!ya} onClick={() => onElegir(h)}>{ya ? 'Ya añadido' : textoBoton}</button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
+
 // ───────────────────────────── Formularios de organización y centro ─────────────────────────────
 const Modal: React.FC<{ titulo: string; onCerrar: () => void; children: React.ReactNode }> = ({ titulo, onCerrar, children }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-label={titulo}>
@@ -368,12 +424,20 @@ const Campo: React.FC<{ etiqueta: string; children: React.ReactNode; ancho?: boo
 );
 
 const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }) => Promise<void>; onCerrar: () => void }> = ({ org, usuario, onGuardar, onCerrar }) => {
+  const [cadenaSuite, setCadenaSuite] = useState<string | null>(org?.suite_cadena ?? null);
   const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: org?.criterio_consolidacion ?? 'control', consultor: org?.consultor_email ?? usuario });
   const [guardando, setGuardando] = useState(false);
   const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
-  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null }); onCerrar(); } finally { setGuardando(false); } };
+  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }); onCerrar(); } finally { setGuardando(false); } };
   return (
     <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar}>
+      {!org && (
+        <div className="mb-4 rounded-xl p-3" style={{ background: '#F4F7FA' }}>
+          <p className="text-xs font-semibold text-slate-700 mb-2">Rellenar desde HS Suite (opcional)</p>
+          <BuscadorHoteles textoBoton="Usar" placeholder="Busque la cadena, el titular o un hotel"
+            onElegir={(h) => { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '' })); setCadenaSuite(o.suite_cadena); }} />
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Campo etiqueta="Nombre (empresa o grupo) *" ancho><input className={input} value={v.nombre} onChange={f('nombre')} autoFocus /></Campo>
         <Campo etiqueta="CIF"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
@@ -393,15 +457,31 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuarda
   );
 };
 
-const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => Promise<void>; onCerrar: () => void }> = ({ centro, onGuardar, onCerrar }) => {
+const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ centro, onGuardar, onCerrar, onError }) => {
+  const [nota, setNota] = useState('');
   const [v, setV] = useState({ nombre: centro.nombre, direccion: centro.direccion ?? '', municipio: centro.municipio ?? '', isla: centro.isla ?? 'Mallorca', balear: centro.en_baleares, unidades: centro.unidades_alojamiento != null ? String(centro.unidades_alojamiento) : '' });
   const [guardando, setGuardando] = useState(false);
+  const actualizarDesdeSuite = async () => {
+    try {
+      const [h] = await huellaService.buscarHoteles({ id: centro.suite_hotel_id! });
+      if (!h) { setNota('El hotel ya no existe en HS Suite.'); return; }
+      const c = centroDesdeHotel(h);
+      setV({ nombre: c.nombre, direccion: c.direccion ?? '', municipio: c.municipio ?? '', isla: c.isla ?? 'Mallorca', balear: c.en_baleares, unidades: c.unidades_alojamiento != null ? String(c.unidades_alojamiento) : '' });
+      setNota('Datos actualizados desde HS Suite: revíselos y pulse Guardar.');
+    } catch (e) { onError?.(e); }
+  };
   const guardar = async () => {
     setGuardando(true);
     try { await onGuardar({ nombre: v.nombre.trim(), direccion: v.direccion.trim() || null, municipio: v.municipio.trim() || null, isla: v.balear ? v.isla : null, en_baleares: v.balear, unidades_alojamiento: v.unidades === '' ? null : Math.max(0, Math.round(Number(v.unidades))) }); onCerrar(); } finally { setGuardando(false); }
   };
   return (
     <Modal titulo="Editar centro de trabajo" onCerrar={onCerrar}>
+      {centro.suite_hotel_id && (
+        <div className="mb-4 rounded-xl p-3 flex flex-wrap items-center gap-3" style={{ background: '#F4F7FA' }}>
+          <p className="text-xs text-slate-700 flex-1 min-w-[200px]">Vinculado a HS Suite{centro.suite_codigo ? ` (${centro.suite_codigo})` : ''}.{nota && <span className="block text-green-700 font-semibold mt-0.5">{nota}</span>}</p>
+          <button className={btnS} onClick={actualizarDesdeSuite}><Search size={13} /> Actualizar desde HS Suite</button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Campo etiqueta="Nombre *" ancho><input className={input} value={v.nombre} onChange={(e) => setV({ ...v, nombre: e.target.value })} autoFocus /></Campo>
         <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={(e) => setV({ ...v, direccion: e.target.value })} /></Campo>
@@ -464,10 +544,30 @@ const PanelCentros: React.FC<{
     const base = invCentros.find((x) => x.centro_id === c.id) ?? { inventario_id: inv.id, centro_id: c.id, indice_actividad: 0 };
     try { await huellaService.guardarInventarioCentro({ ...base, ...cambios }); onGuardado(); } catch (e) { falla(e); }
   };
+  const vinculados = useMemo(() => new Set(centros.map((c) => c.suite_hotel_id).filter(Boolean) as string[]), [centros]);
+  const desdeSuite = async (h: HotelSuite) => {
+    try { const c = await huellaService.crearCentro({ organizacion_id: orgId, ...centroDesdeHotel(h), suite_actualizado: new Date().toISOString() }); setCentros([...centros, c]); } catch (e) { falla(e); }
+  };
+  const cadenaDesdeSuite = async (cadena: string) => {
+    try {
+      const todos = await huellaService.buscarHoteles({ cadena, limite: 200 });
+      const nuevos = todos.filter((h) => h.activo !== false && !vinculados.has(h.id));
+      if (nuevos.length === 0) { falla(`No hay hoteles activos nuevos de «${cadena}» por añadir.`); return; }
+      if (!confirm(`Se añadirán ${nuevos.length} hoteles activos de «${cadena}» como centros de trabajo. ¿Continuar?`)) return;
+      const creados: Centro[] = [];
+      for (const h of nuevos) { creados.push(await huellaService.crearCentro({ organizacion_id: orgId, ...centroDesdeHotel(h), suite_actualizado: new Date().toISOString() })); }
+      setCentros([...centros, ...creados]);
+    } catch (e) { falla(e); }
+  };
   return (
     <div className="space-y-4">
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Centros de trabajo</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-1">Añadir desde HS Suite</h2>
+        <p className="text-xs text-slate-600 mb-3">Busque el hotel en su base de clientes: se rellenan nombre, dirección, municipio, isla y unidades. También puede añadir de golpe todos los hoteles de una cadena.</p>
+        <BuscadorHoteles vinculados={vinculados} onElegir={desdeSuite} onCadena={cadenaDesdeSuite} />
+      </div>
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Añadir a mano</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
           <label className="md:col-span-2 text-xs font-semibold text-slate-600">Nombre<input className={`${input} mt-1`} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Hotel / sede" /></label>
           <label className="text-xs font-semibold text-slate-600">Municipio<input className={`${input} mt-1`} value={municipio} onChange={(e) => setMunicipio(e.target.value)} /></label>
@@ -489,7 +589,7 @@ const PanelCentros: React.FC<{
               <li key={c.id} className="py-2 flex items-center gap-3">
                 <Building2 size={16} className="text-slate-500" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800">{c.nombre}</p>
+                  <p className="text-sm font-semibold text-slate-800">{c.nombre}{c.suite_hotel_id && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">HS Suite</span>}</p>
                   <p className="text-[11px] text-slate-500 truncate">{[c.direccion, c.municipio, c.en_baleares ? c.isla : 'Fuera de Baleares', c.unidades_alojamiento != null ? `${c.unidades_alojamiento} unidades` : null].filter(Boolean).join(' · ') || 'Sin más datos'}</p>
                 </div>
                 <button className={btnS} onClick={() => onEditar(c)}><Pencil size={13} /> Editar</button>

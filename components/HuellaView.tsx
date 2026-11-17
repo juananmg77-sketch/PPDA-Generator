@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye } from 'lucide-react';
 import { huellaService, Actividad, Centro, Documento, Inventario, InventarioCentro, Organizacion } from '../services/huellaService';
-import { construirConjunto } from '../huella/factores';
+import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, ratio } from '../huella/motor';
 import { proponerActividad, validarExtraccion, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
@@ -54,7 +54,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
   const [invCentros, setInvCentros] = useState<InventarioCentro[]>([]);
   const [docs, setDocs] = useState<Documento[]>([]);
   const [actividad, setActividad] = useState<Actividad[]>([]);
-  const [factores, setFactores] = useState<ConjuntoFactores | null>(null);
+  const [elegido, setElegido] = useState<ConjuntoElegido | null>(null);
+  const factores = elegido?.conjunto ?? null;
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
 
@@ -80,14 +81,26 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
   }, [invId]);
   useEffect(() => { recargarInv(); }, [recargarInv]);
 
-  // Factores del año del inventario (se cargan bajo demanda para no pesar en el resto de la app)
+  // Factores del año del inventario: los fijados en el inventario o, si no hay, la edición más reciente que cubra el año.
+  // Se cargan bajo demanda para no pesar en el resto de la app.
   useEffect(() => {
-    setFactores(null);
+    setElegido(null);
     if (!inv) return;
-    import('../huella/datos/factores-calculadora-2024.1.json')
-      .then((m) => setFactores(construirConjunto((m.default ?? m) as never, { anioInventario: inv.anio })))
-      .catch((e) => falla(e));
-  }, [inv?.anio]);
+    const fijada = inv.conjunto_factores?.version?.replace('calculadora-', '');
+    cargarConjunto(inv.anio, fijada).then((c) => {
+      // Si hay un conjunto ya fijado (con sus ajustes), manda ese: es el que debe reproducirse.
+      setElegido(inv.conjunto_factores ? { ...c, conjunto: inv.conjunto_factores } : c);
+    }).catch((e) => falla(e));
+  }, [inv?.id, inv?.anio, inv?.conjunto_factores]);
+
+  const elegirVersion = async (v: string) => {
+    if (!inv) return;
+    try {
+      const c = await cargarConjunto(inv.anio, v);
+      const actualizado = await huellaService.guardarFactores(inv.id, c.conjunto);
+      setInvs((l) => l.map((i) => (i.id === inv.id ? { ...i, conjunto_factores: actualizado.conjunto_factores ?? c.conjunto } : i)));
+    } catch (e) { falla(e); }
+  };
 
   const nuevaOrg = async () => {
     const nombre = prompt('Nombre de la organización (empresa o grupo hotelero):')?.trim();
@@ -146,6 +159,10 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
           </label>
         </div>
 
+        {inv && elegido && (
+          <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />
+        )}
+
         {org && (
           <>
             <nav className="flex gap-1 border-b border-slate-300" role="tablist">
@@ -172,6 +189,38 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
         )}
         {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>Todavía no hay organizaciones. Cree la primera con «Nueva».</div>}
       </main>
+    </div>
+  );
+};
+
+// ───────────────────────────── Versión de factores ─────────────────────────────
+const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abierto: boolean; onElegir: (v: string) => void }> = ({ inv, elegido, abierto, onElegir }) => {
+  const fijada = !!inv.conjunto_factores;
+  const actual = elegido.conjunto.version.replace('calculadora-', '');
+  const comparaciones = (Object.keys(elegido.alternativas) as string[]).map((id) => ({ id, dif: diferencias(elegido.conjunto, elegido.alternativas[id]) }));
+  const etiqueta = (id: string) => VERSIONES.find((v) => v.id === id)?.etiqueta ?? id;
+  return (
+    <div className={`${card} space-y-2`}>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs font-semibold text-slate-600 min-w-[260px]">Factores de emisión del inventario {inv.anio}
+          <select className={`${input} mt-1`} value={actual} disabled={!abierto || elegido.disponibles.length < 2 && fijada} onChange={(e) => onElegir(e.target.value)} aria-label="Versión de factores">
+            {elegido.disponibles.map((id) => <option key={id} value={id}>{etiqueta(id)}</option>)}
+          </select>
+        </label>
+        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${fijada ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{fijada ? 'Fijada en el inventario' : 'Propuesta por defecto: confírmela para fijarla'}</span>
+        {!fijada && abierto && <button className={btnP} onClick={() => onElegir(actual)}>Fijar esta versión</button>}
+      </div>
+      {comparaciones.map(({ id, dif }) => {
+        const hay = dif.mix || dif.gwp || dif.pca || dif.combustibles.length;
+        return (
+          <p key={id} className={`text-xs rounded-lg px-3 py-2 ${hay ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-600'}`}>
+            {hay
+              ? <>Frente a la {etiqueta(id)}: {dif.combustibles.length} factores de combustible distintos{dif.combustibles[0] ? ` (p. ej. ${dif.combustibles[0].clave}: ${dif.combustibles[0].a} frente a ${dif.combustibles[0].b} kg CO₂/ud)` : ''}{dif.mix ? `, mix eléctrico ${dif.mix[0]} frente a ${dif.mix[1]}` : ''}{dif.gwp ? ', potenciales de calentamiento distintos' : ''}{dif.pca ? `, ${dif.pca} PCA de refrigerantes distintos` : ''}. Compruebe con el documento oficial que corresponde a su inventario.</>
+              : <>Idéntica a la {etiqueta(id)} para el año {inv.anio}.</>}
+          </p>
+        );
+      })}
+      {elegido.disponibles.length === 1 && <p className="text-[11px] text-slate-500">Solo una edición cubre el año {inv.anio}.</p>}
     </div>
   );
 };
@@ -251,7 +300,7 @@ const PanelFacturas: React.FC<{
       let doc: Documento | null = null;
       try {
         doc = await huellaService.subirDocumento(file, org.id, inv.id, centroId);
-        const r = await huellaService.leerFactura(file, inv.anio);
+        const r = await huellaService.leerFactura(file, inv.anio, inv.conjunto_factores?.version?.replace('calculadora-', ''));
         const e = r.extraccion;
         doc = await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
         setRevisando(doc.id);

@@ -1,12 +1,10 @@
 // Función de servidor: lee una factura con IA y devuelve una PROPUESTA validada (nunca guarda nada).
 // Variables de entorno en Netlify (nunca en el código): ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY.
 import Anthropic from '@anthropic-ai/sdk';
-import { construirConjunto } from '../../huella/factores.ts';
+import { cargarConjunto } from '../../huella/catalogo.ts';
 import { ESQUEMA_EXTRACCION, INSTRUCCIONES, LIMITES, leerFactura, validarEntrada } from '../../huella/lectura.ts';
 import type { EntradaLectura, LlamarModelo } from '../../huella/lectura.ts';
 import type { ExtraccionFactura } from '../../huella/extraccion.ts';
-import type { DatosCalculadora } from '../../huella/tipos.ts';
-import datos2024 from '../../huella/datos/factores-calculadora-2024.1.json' with { type: 'json' };
 
 const json = (cuerpo: unknown, status = 200) =>
   new Response(JSON.stringify(cuerpo), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
@@ -56,7 +54,7 @@ export default async (req: Request): Promise<Response> => {
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura de facturas no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
 
-  let cuerpo: { anioInventario?: number; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; existentes?: never };
+  let cuerpo: { anioInventario?: number; version?: string; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; existentes?: never };
   try {
     cuerpo = await req.json();
   } catch {
@@ -70,7 +68,7 @@ export default async (req: Request): Promise<Response> => {
   if (problema) return json({ error: problema }, 400);
 
   try {
-    const factores = construirConjunto(datos2024 as unknown as DatosCalculadora, { anioInventario: anio });
+    const { conjunto: factores } = await cargarConjunto(anio, cuerpo.version);
     const cliente = new Anthropic({ maxRetries: 1, timeout: 60_000 });
     const resultado = await leerFactura(crearLlamada(cliente), entrada, { anioInventario: anio, factores });
     return json(resultado);

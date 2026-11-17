@@ -1,11 +1,11 @@
 // Acceso a los datos de Huella de carbono (tablas hc_*, con RLS) y a la función de lectura de facturas.
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
-import type { Categoria, OrigenElectricidad } from '../huella/tipos';
+import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
 
 export interface Organizacion { id: string; nombre: string; cif?: string | null; consultor_email?: string | null }
 export interface Centro { id: string; organizacion_id: string; nombre: string; municipio?: string | null; isla?: string | null; en_baleares: boolean }
-export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string }
+export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
@@ -43,6 +43,10 @@ export const huellaService = {
     const { data: u } = await supabase.auth.getUser();
     return ok<Inventario>(await supabase.from('hc_inventarios').insert({ organizacion_id: org, anio, created_by: u?.user?.id }).select().single());
   },
+  /** Fija el conjunto de factores (versión y valores) de un inventario en borrador. */
+  async guardarFactores(inv: string, conjunto: ConjuntoFactores) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ conjunto_factores: conjunto }).eq('id', inv).select().single());
+  },
   async inventarioCentros(inv: string) { return ok<InventarioCentro[]>(await supabase.from('hc_inventario_centros').select('*').eq('inventario_id', inv)); },
   async guardarInventarioCentro(x: InventarioCentro) {
     return ok<InventarioCentro>(await supabase.from('hc_inventario_centros').upsert(x, { onConflict: 'inventario_id,centro_id' }).select().single());
@@ -75,7 +79,7 @@ export const huellaService = {
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */
-  async leerFactura(file: File, anioInventario: number): Promise<ResultadoLecturaApi> {
+  async leerFactura(file: File, anioInventario: number, version?: string): Promise<ResultadoLecturaApi> {
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
@@ -88,7 +92,7 @@ export const huellaService = {
     const resp = await fetch('/api/leer-factura', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ anioInventario, base64, mediaType: file.type }),
+      body: JSON.stringify({ anioInventario, version, base64, mediaType: file.type }),
     });
     const cuerpo = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);

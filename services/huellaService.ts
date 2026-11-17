@@ -5,7 +5,15 @@ import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/
 
 export interface Organizacion { id: string; nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null }
 export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null }
-export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null }
+export interface CierreDatos {
+  analisisVariacion?: string;
+  /** Resultados fijados al cerrar (para reproducir y detectar cambios posteriores). */
+  resumen?: { kgCO2eAlcance1: number; kgCO2eAlcance2: number; kgCO2eTotal: number; indiceActividad: number; factores: string; lineas: number; fecha: string };
+  reaperturas?: Array<{ fecha: string; usuario: string; motivo: string }>;
+}
+export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string }
+export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
+export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
@@ -53,6 +61,24 @@ export const huellaService = {
   async guardarFactores(inv: string, conjunto: ConjuntoFactores) {
     return ok<Inventario>(await supabase.from('hc_inventarios').update({ conjunto_factores: conjunto }).eq('id', inv).select().single());
   },
+  async guardarCierre(inv: string, cierre: CierreDatos) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ cierre }).eq('id', inv).select().single());
+  },
+  /** Cierra el inventario fijando el conjunto de factores y el resumen; desde ese momento la base impide modificar sus datos. */
+  async cerrarInventario(inv: string, conjunto: ConjuntoFactores, cierre: CierreDatos) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ estado: 'cerrado', conjunto_factores: conjunto, cierre }).eq('id', inv).select().single());
+  },
+  /** Reabre un inventario cerrado; la causa queda en `cierre.reaperturas` y la base lo anota en la auditoría. */
+  async reabrirInventario(inv: string, cierre: CierreDatos) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ estado: 'borrador', cierre }).eq('id', inv).select().single());
+  },
+  async exclusiones(inv: string) { return ok<Exclusion[]>(await supabase.from('hc_exclusiones').select('*').eq('inventario_id', inv).order('created_at')); },
+  async crearExclusion(x: Omit<Exclusion, 'id'>) { return ok<Exclusion>(await supabase.from('hc_exclusiones').insert(x).select().single()); },
+  async borrarExclusion(id: string) { ok(await supabase.from('hc_exclusiones').delete().eq('id', id)); },
+  async noConformidades(inv: string) { return ok<NoConformidad[]>(await supabase.from('hc_no_conformidades').select('*').eq('inventario_id', inv).order('created_at')); },
+  async crearNoConformidad(x: Omit<NoConformidad, 'id' | 'fecha'>) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').insert(x).select().single()); },
+  async cerrarNoConformidad(id: string) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').update({ cerrada_en: new Date().toISOString().slice(0, 10) }).eq('id', id).select().single()); },
+  async borrarNoConformidad(id: string) { ok(await supabase.from('hc_no_conformidades').delete().eq('id', id)); },
   async inventarioCentros(inv: string) { return ok<InventarioCentro[]>(await supabase.from('hc_inventario_centros').select('*').eq('inventario_id', inv)); },
   async guardarInventarioCentro(x: InventarioCentro) {
     return ok<InventarioCentro>(await supabase.from('hc_inventario_centros').upsert(x, { onConflict: 'inventario_id,centro_id' }).select().single());

@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
-import { huellaService, Actividad, Centro, Documento, Inventario, InventarioCentro, Organizacion } from '../services/huellaService';
+import { evaluarCierre } from '../huella/cierre';
+import { huellaService, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
-import { proponerActividad, validarExtraccion, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
+import { proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
-type Pestana = 'centros' | 'facturas' | 'actividad' | 'resultados';
+type Pestana = 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre';
 
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n: number, d = 0) => n.toLocaleString('es-ES', { maximumFractionDigits: d });
@@ -124,7 +125,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
 
   const pestanas: Array<[Pestana, string, React.ReactNode]> = [
     ['centros', 'Centros', <Building2 size={15} key="c" />], ['facturas', 'Facturas', <FileText size={15} key="f" />],
-    ['actividad', 'Actividad', <ListChecks size={15} key="a" />], ['resultados', 'Resultados', <BarChart3 size={15} key="r" />],
+    ['actividad', 'Actividad', <ListChecks size={15} key="a" />], ['resultados', 'Resultados', <BarChart3 size={15} key="r" />], ['cierre', 'Cierre', <Lock size={15} key="k" />],
   ];
 
   return (
@@ -193,6 +194,10 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
             )}
             {tab === 'actividad' && inv && (
               <PanelActividad inv={inv} abierto={!!abierto} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
+            )}
+            {tab === 'cierre' && inv && (
+              <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
             )}
             {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
           </>
@@ -843,19 +848,214 @@ const GraficoActividad: React.FC<{
   );
 };
 
+/** Calcula el inventario a partir de los datos confirmados; los que no tienen factor se devuelven aparte (nunca se asume cero). */
+function calcularActividad(actividad: Actividad[], centros: Centro[], factores: ConjuntoFactores) {
+  const nombre = (id: string) => centros.find((c) => c.id === id)?.nombre ?? id;
+  const lineas: LineaActividad[] = []; const fallos: string[] = [];
+  for (const a of actividad.filter((x) => x.estado === 'confirmada')) {
+    lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, evidencia: a.documento_id ?? undefined, contador: a.contador ?? undefined,
+      reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined });
+  }
+  const validas = lineas.filter((l) => { try { calcularInventario([l], factores); return true; } catch (e) { fallos.push(`${l.centro} · ${l.fuente || 'electricidad'}: ${e instanceof Error ? e.message : e}`); return false; } });
+  return { ...calcularInventario(validas, factores), fallos, lineas: validas.length };
+}
+
+// ───────────────────────────── Cierre del inventario ─────────────────────────────
+const PanelCierre: React.FC<{
+  inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
+}> = ({ inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
+  const abierto = inv.estado === 'borrador';
+  const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
+  const [ncs, setNcs] = useState<NoConformidad[]>([]);
+  const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
+  const [analisis, setAnalisis] = useState(inv.cierre?.analisisVariacion ?? '');
+  const [fx, setFx] = useState({ fuente: '', porcentaje: '', justificacion: '' });
+  const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
+  const [reabrir, setReabrir] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const [trabajando, setTrabajando] = useState(false);
+
+  useEffect(() => { setAnalisis(inv.cierre?.analisisVariacion ?? ''); }, [inv.id, inv.cierre?.analisisVariacion]);
+  useEffect(() => {
+    Promise.all([huellaService.exclusiones(inv.id), huellaService.noConformidades(inv.id)]).then(([e, n]) => { setExclusiones(e); setNcs(n); }).catch(falla);
+  }, [inv.id]); // eslint-disable-line
+
+  // Totales del año anterior (con los factores con que se cerró o, si no, la edición propuesta para ese año)
+  useEffect(() => {
+    setPrevio(undefined);
+    const prev = invs.find((i) => i.anio === inv.anio - 1);
+    if (!prev) { setPrevio(null); return; }
+    (async () => {
+      try {
+        const [act, conj] = await Promise.all([huellaService.actividad(prev.id), prev.conjunto_factores ? Promise.resolve(prev.conjunto_factores) : cargarConjunto(prev.anio).then((c) => c.conjunto)]);
+        const t = calcularActividad(act, centros, conj).totales;
+        setPrevio({ a1: t.kgCO2eAlcance1, a2: t.kgCO2eAlcance2, total: t.kgCO2eTotal, anio: prev.anio });
+      } catch { setPrevio(null); }
+    })();
+  }, [inv.id, invs.length]); // eslint-disable-line
+
+  const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
+  const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
+  const variaciones = previo && calculo ? [
+    { nombre: 'Alcance 1', actual: calculo.totales.kgCO2eAlcance1, anterior: previo.a1 },
+    { nombre: 'Alcance 2', actual: calculo.totales.kgCO2eAlcance2, anterior: previo.a2 },
+    { nombre: 'Total', actual: calculo.totales.kgCO2eTotal, anterior: previo.total },
+  ] : undefined;
+
+  const evaluacion = useMemo(() => {
+    if (!factores || !calculo || previo === undefined) return null;
+    return evaluarCierre({
+      anio: inv.anio,
+      docs: docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta })),
+      actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
+      actividadManual: actividad.filter((a) => !a.documento_id).length,
+      fallosCalculo: calculo.fallos.length,
+      centrosSinIndice: centros.filter((c) => !(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad > 0)).map((c) => c.nombre),
+      factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
+      variaciones, analisisVariacion: analisis,
+      exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
+    });
+  }, [factores, calculo, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
+
+  const guardarAnalisis = async () => {
+    if (!abierto || analisis === (inv.cierre?.analisisVariacion ?? '')) return;
+    try { onInventario(await huellaService.guardarCierre(inv.id, { ...(inv.cierre ?? {}), analisisVariacion: analisis })); } catch (e) { falla(e); }
+  };
+  const cerrar = async () => {
+    if (!factores || !calculo || !evaluacion?.puedeCerrar) return;
+    if (!confirm(`Va a cerrar el inventario ${inv.anio}. Se fijarán los factores (${factores.id}) y los resultados, y no podrá modificarse ningún dato sin reabrirlo con su causa. ¿Continuar?`)) return;
+    setTrabajando(true);
+    try {
+      const resumen = { kgCO2eAlcance1: calculo.totales.kgCO2eAlcance1, kgCO2eAlcance2: calculo.totales.kgCO2eAlcance2, kgCO2eTotal: calculo.totales.kgCO2eTotal, indiceActividad: indice, factores: factores.id, lineas: calculo.lineas, fecha: new Date().toISOString() };
+      onInventario(await huellaService.cerrarInventario(inv.id, factores, { ...(inv.cierre ?? {}), analisisVariacion: analisis, resumen }));
+    } catch (e) { falla(e); } finally { setTrabajando(false); }
+  };
+  const reabrirInv = async () => {
+    setTrabajando(true);
+    try {
+      const reaperturas = [...(inv.cierre?.reaperturas ?? []), { fecha: new Date().toISOString(), usuario, motivo: motivo.trim() }];
+      onInventario(await huellaService.reabrirInventario(inv.id, { ...(inv.cierre ?? {}), reaperturas }));
+      setReabrir(false); setMotivo('');
+    } catch (e) { falla(e); } finally { setTrabajando(false); }
+  };
+  const anadirExclusion = async () => {
+    try {
+      const x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente.trim(), porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', porcentaje: '', justificacion: '' });
+    } catch (e) { falla(e); }
+  };
+  const anadirNc = async () => {
+    try {
+      const x = await huellaService.crearNoConformidad({ inventario_id: inv.id, descripcion: nc.descripcion.trim(), medida: nc.medida.trim() || null, responsable: nc.responsable.trim() || null });
+      setNcs((l) => [...l, x]); setNc({ descripcion: '', medida: '', responsable: '' });
+    } catch (e) { falla(e); }
+  };
+
+  const icono = (n: string) => n === 'error' ? <XCircle size={15} className="text-red-600 shrink-0 mt-0.5" /> : n === 'aviso' ? <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" /> : n === 'ok' ? <CheckCircle2 size={15} className="text-green-600 shrink-0 mt-0.5" /> : <Eye size={15} className="text-slate-500 shrink-0 mt-0.5" />;
+  const cerrado = !abierto;
+  const r = inv.cierre?.resumen;
+
+  return (
+    <div className="space-y-4">
+      {cerrado && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-sm text-green-900">
+          <p className="font-bold flex items-center gap-2"><Lock size={15} /> Inventario {inv.anio} {inv.estado}{inv.cerrado_en ? ` el ${new Date(inv.cerrado_en).toLocaleDateString('es-ES')}` : ''}</p>
+          {r && <p className="text-xs mt-1">Resultados fijados: Alcance 1 {t(r.kgCO2eAlcance1)} · Alcance 2 {t(r.kgCO2eAlcance2)} · Total {t(r.kgCO2eTotal)} t CO₂e · {r.lineas} líneas · factores {r.factores}.</p>}
+          {inv.estado === 'cerrado' && <button className={`${btnS} mt-3`} onClick={() => setReabrir(true)}><Unlock size={14} /> Reabrir con registro de la causa</button>}
+        </div>
+      )}
+      {(inv.cierre?.reaperturas?.length ?? 0) > 0 && (
+        <div className={card}>
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Reaperturas</h3>
+          <ul className="text-xs text-slate-700 space-y-1">{inv.cierre!.reaperturas!.map((x, i) => <li key={i}>{new Date(x.fecha).toLocaleString('es-ES')} · {x.usuario}: {x.motivo}</li>)}</ul>
+        </div>
+      )}
+
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Lista de comprobación previa al cierre</h2>
+        {!evaluacion ? <p className="text-sm text-slate-600"><Loader2 size={14} className="inline animate-spin mr-2" />Calculando…</p> : (
+          <>
+            <ul className="space-y-1.5">{evaluacion.items.map((i, k) => <li key={k} className="flex items-start gap-2 text-xs text-slate-800">{icono(i.nivel)}<span>{i.mensaje}</span></li>)}</ul>
+            {abierto && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button className={btnP} onClick={cerrar} disabled={!evaluacion.puedeCerrar || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} Cerrar inventario {inv.anio}</button>
+                {!evaluacion.puedeCerrar && <span className="text-xs text-red-700">Resuelva los errores para poder cerrar.</span>}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {previo && variaciones && (
+        <div className={card}>
+          <h2 className="text-sm font-bold text-slate-800 mb-2">Comparación con {previo.anio}</h2>
+          <table className="w-full text-sm mb-3"><thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-1.5">Magnitud</th><th className="text-right">{previo.anio} (t CO₂e)</th><th className="text-right">{inv.anio} (t CO₂e)</th><th className="text-right">Variación</th></tr></thead>
+            <tbody>{variaciones.map((v) => { const x = variacionAnual(v.actual, v.anterior); return (
+              <tr key={v.nombre} className="border-b border-slate-100"><td className="py-1.5">{v.nombre}</td><td className="text-right tabular-nums">{t(v.anterior)}</td><td className="text-right tabular-nums">{t(v.actual)}</td>
+                <td className={`text-right tabular-nums font-semibold ${x.analizar ? 'text-red-700' : 'text-slate-700'}`}>{x.variacion === null ? '—' : `${x.variacion > 0 ? '+' : ''}${(x.variacion * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })} %`}</td></tr>); })}</tbody></table>
+          <label className="text-xs font-semibold text-slate-700">Análisis de variaciones (obligatorio si alguna supera el 20 %)
+            <textarea className={`${input} mt-1`} rows={3} value={analisis} disabled={!abierto} onChange={(e) => setAnalisis(e.target.value)} onBlur={guardarAnalisis} placeholder="Causa de las variaciones: apertura o cierre de instalaciones, cambios de ocupación, de combustible, del factor de emisión…" />
+          </label>
+        </div>
+      )}
+
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-1">Fuentes excluidas</h2>
+        <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del 3 % y el conjunto como máximo el 5 % de las emisiones (ISO 14064-1, 9.3.1 i).</p>
+        {exclusiones.length > 0 && (
+          <ul className="divide-y divide-slate-100 mb-3">{exclusiones.map((x) => (
+            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p></div>
+              {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar exclusión" onClick={async () => { try { await huellaService.borrarExclusion(x.id); setExclusiones((l) => l.filter((y) => y.id !== x.id)); } catch (e) { falla(e); } }}><Trash2 size={14} /></button>}</li>
+          ))}</ul>
+        )}
+        {abierto && (
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Fuente<input className={`${input} mt-1`} value={fx.fuente} onChange={(e) => setFx({ ...fx, fuente: e.target.value })} placeholder="Ej.: extintores de CO₂" /></label>
+            <label className="text-xs font-semibold text-slate-700">% estimado<input type="number" min={0} step="any" className={`${input} mt-1`} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Justificación<input className={`${input} mt-1`} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></label>
+            <button className={btnP} onClick={anadirExclusion} disabled={!fx.fuente.trim() || !fx.justificacion.trim()}><Plus size={14} /> Añadir</button>
+          </div>
+        )}
+      </div>
+
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-1">Registro de no conformidades</h2>
+        <p className="text-xs text-slate-600 mb-3">Incidencias detectadas en la revisión interna y la medida adoptada. El verificador las examina.</p>
+        {ncs.length > 0 && (
+          <ul className="divide-y divide-slate-100 mb-3">{ncs.map((x) => (
+            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.fecha} · {x.descripcion}</p><p className="text-slate-600">{[x.medida && `Medida: ${x.medida}`, x.responsable && `Responsable: ${x.responsable}`, x.cerrada_en && `Cerrada el ${x.cerrada_en}`].filter(Boolean).join(' · ')}</p></div>
+              {abierto && !x.cerrada_en && <button className={btnS} onClick={async () => { try { const u = await huellaService.cerrarNoConformidad(x.id); setNcs((l) => l.map((y) => (y.id === u.id ? u : y))); } catch (e) { falla(e); } }}>Cerrar</button>}</li>
+          ))}</ul>
+        )}
+        {abierto && (
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Descripción<input className={`${input} mt-1`} value={nc.descripcion} onChange={(e) => setNc({ ...nc, descripcion: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Medida adoptada<input className={`${input} mt-1`} value={nc.medida} onChange={(e) => setNc({ ...nc, medida: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700">Responsable<input className={`${input} mt-1`} value={nc.responsable} onChange={(e) => setNc({ ...nc, responsable: e.target.value })} /></label>
+            <button className={btnP} onClick={anadirNc} disabled={!nc.descripcion.trim()}><Plus size={14} /> Añadir</button>
+          </div>
+        )}
+      </div>
+
+      {reabrir && (
+        <Modal titulo={`Reabrir el inventario ${inv.anio}`} onCerrar={() => setReabrir(false)}>
+          <p className="text-xs text-slate-700 mb-3">Al reabrirlo podrá modificar datos. La causa queda registrada junto con la fecha y el usuario, y la base anota el cambio en la auditoría. Deberá volver a cerrarlo.</p>
+          <textarea className={input} rows={4} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Causa de la reapertura (mínimo 10 caracteres)" autoFocus />
+          <div className="flex justify-end gap-2 mt-4">
+            <button className={btnS} onClick={() => setReabrir(false)}>Cancelar</button>
+            <button className={btnP} onClick={reabrirInv} disabled={motivo.trim().length < 10 || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />} Reabrir</button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
 // ───────────────────────────── Resultados ─────────────────────────────
 const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; factores: ConjuntoFactores | null }> = ({ inv, centros, invCentros, actividad, factores }) => {
-  const calculo = useMemo(() => {
-    if (!factores) return null;
-    const nombre = (id: string) => centros.find((c) => c.id === id)?.nombre ?? id;
-    const lineas: LineaActividad[] = []; const fallos: string[] = [];
-    for (const a of actividad.filter((x) => x.estado === 'confirmada')) {
-      lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, evidencia: a.documento_id ?? undefined, contador: a.contador ?? undefined,
-        reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined });
-    }
-    const validas = lineas.filter((l) => { try { calcularInventario([l], factores); return true; } catch (e) { fallos.push(`${l.centro} · ${l.fuente || 'electricidad'}: ${e instanceof Error ? e.message : e}`); return false; } });
-    return { ...calcularInventario(validas, factores), fallos };
-  }, [factores, actividad, centros]);
+  const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
 
   if (!factores || !calculo) return <div className={`${card} text-sm text-slate-600`}><Loader2 className="inline animate-spin mr-2" size={14} />Cargando factores de emisión…</div>;
   const { totales, resultados, fallos } = calculo;

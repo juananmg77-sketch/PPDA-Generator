@@ -368,3 +368,6 @@ grant execute on function public.hc_rol(), public.hc_es_admin(), public.hc_es_ge
 
 -- 2026-11-17 · APLICADO como migración «huella_actividad_contador»: punto de suministro de cada dato (separar contadores con periodos solapados).
 alter table public.hc_actividad add column if not exists contador text;
+
+-- 2026-11-17 · APLICADO como migración «huella_inventario_cierre»: datos del cierre (análisis de variaciones, resumen fijado y reaperturas con su causa).
+alter table public.hc_inventarios add column if not exists cierre jsonb;

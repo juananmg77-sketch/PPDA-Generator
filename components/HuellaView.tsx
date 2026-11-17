@@ -1310,9 +1310,10 @@ const PanelInforme: React.FC<{
       {inv.estado === 'cerrado' && (
         <div className={card}>
           <h2 className="text-sm font-bold text-slate-800 mb-1">Registrar la verificación</h2>
-          <p className="text-xs text-slate-600 mb-3">Cuando la entidad acreditada (ISO 14064-3) emita su informe, anote sus datos. El inventario pasa a «verificado» y el informe los recoge en el apartado 11.</p>
+          <p className="text-xs text-slate-600 mb-3">La entidad verificadora varía según el cliente: elija SGS o AENOR de la lista o escriba otra. Cuando emita su informe de verificación (ISO 14064-3), anote sus datos. El inventario pasa a «verificado» y el informe los recoge en el apartado 11.</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
-            <label className="text-xs font-semibold text-slate-700">Entidad verificadora<input className={`${input} mt-1`} value={ver.entidad ?? ''} onChange={(e) => setVer({ ...ver, entidad: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700">Entidad verificadora<input className={`${input} mt-1`} list="entidades-verificadoras" placeholder="SGS, AENOR u otra" value={ver.entidad ?? ''} onChange={(e) => setVer({ ...ver, entidad: e.target.value })} />
+              <datalist id="entidades-verificadoras"><option value="SGS" /><option value="AENOR" /></datalist></label>
             <label className="text-xs font-semibold text-slate-700">Nivel de aseguramiento<select className={`${input} mt-1`} value={ver.nivel} onChange={(e) => setVer({ ...ver, nivel: e.target.value })}><option>Limitado</option><option>Razonable</option></select></label>
             <label className="text-xs font-semibold text-slate-700">Fecha<input type="date" className={`${input} mt-1`} value={ver.fecha ?? ''} onChange={(e) => setVer({ ...ver, fecha: e.target.value })} /></label>
             <label className="text-xs font-semibold text-slate-700">Referencia del informe<input className={`${input} mt-1`} value={ver.referencia ?? ''} onChange={(e) => setVer({ ...ver, referencia: e.target.value })} /></label>

@@ -17,7 +17,7 @@ export const LIMITES = {
 export const ESQUEMA_EXTRACCION = {
   type: 'object',
   properties: {
-    tipo: { type: 'string', enum: ['electricidad', 'gas_natural', 'gasoleo', 'glp', 'combustible_vehiculo', 'refrigerante', 'otro'] },
+    tipo: { type: 'string', enum: ['electricidad', 'gas_natural', 'gasoleo', 'glp', 'combustible_vehiculo', 'refrigerante', 'otro'], description: 'electricidad; gas_natural (contador de red); glp = butano, propano o GLP (bombonas, botellas, granel, depósito); gasoleo = gasóleo de calefacción o usos fijos; combustible_vehiculo = carburante de vehículos; refrigerante = recarga de gases fluorados; otro solo si no encaja' },
     proveedor: { type: 'string' },
     contador: { type: 'string', description: 'Punto de suministro: CUPS (luz o gas), nº de contador o de instalación, tal como figura. VARIOS si la factura agrupa varios.' },
     periodoDesde: { type: 'string', description: 'AAAA-MM-DD, inicio del periodo facturado' },
@@ -54,6 +54,7 @@ const INSTRUCCIONES_BASE = [
   'Gas natural: indica la unidad exacta (kWh PCS, kWh PCI, kWh o m3) tal como aparezca; no conviertas. Si el consumo está en m3, copia en factorConversion el factor kWh/m3 de la factura si figura.',
   'Electricidad: garantiaOrigen = renovable_balear solo si la factura acredita garantía de origen renovable de Baleares; renovable_otra si acredita otra; no si indica mix de red; desconocida si no consta.',
   'contador: copia el CUPS (electricidad y gas) o el número de contador/instalación exactamente como figura; no lo inventes. Si la factura agrupa varios suministros, pon VARIOS y confianza baja.',
+  'Butano, propano o GLP (bombonas, botellas, granel): tipo = glp, producto = Butano o Propano, cantidad en kg si la factura da los kg totales; si solo da el número de bombonas, cantidad = ese número, unidad = bombonas y en producto añade el peso (p. ej. «Butano 12,5 kg»).',
   'Fechas en formato AAAA-MM-DD. confianza baja (<0,8) si el documento es ilegible, está incompleto o dudas de la cantidad o del periodo.',
 ].join('\n');
 

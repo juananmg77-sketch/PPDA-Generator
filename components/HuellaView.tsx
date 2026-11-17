@@ -12,6 +12,7 @@ import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreD
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { aplicarGas, modoAutomatico, resolverGas } from '../huella/gas';
+import { aplicarEnvases, esEnvase, fuenteGlp, KG_BOMBONA_BUTANO } from '../huella/glp';
 import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
@@ -22,7 +23,7 @@ export type RolHuella = 'consultor' | 'cliente';
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n: number, d = 0) => n.toLocaleString('es-ES', { maximumFractionDigits: d });
 const TIPOS: Record<TipoFactura, string> = {
-  electricidad: 'Electricidad', gas_natural: 'Gas natural', gasoleo: 'Gasóleo', glp: 'GLP (propano/butano)',
+  electricidad: 'Electricidad', gas_natural: 'Gas natural', gasoleo: 'Gasóleo', glp: 'Butano / propano (GLP)',
   combustible_vehiculo: 'Combustible de vehículos', refrigerante: 'Recarga de refrigerante', otro: 'Otro',
 };
 const CATEGORIAS: Record<Categoria, string> = {
@@ -49,10 +50,13 @@ function opcionesFuente(f: ConjuntoFactores | null, cat: Categoria): string[] {
 function fuentePorDefecto(e: ExtraccionFactura, f: ConjuntoFactores | null): string {
   if (e.tipo === 'gas_natural') return 'Gas natural (kWhPCS)*';
   if (e.tipo === 'refrigerante') return e.producto && f?.pcaRefrigerantes[e.producto] !== undefined ? e.producto : '';
+  if (e.tipo === 'glp') { const k = fuenteGlp(e.producto, e.unidad); if (k && f?.combustibles[k]) return k; }
   if (e.tipo === 'electricidad' || !e.producto) return '';
-  const p = e.producto.trim().toLowerCase();
+  const sa = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const p = sa(e.producto);
   const cat: Categoria = e.tipo === 'combustible_vehiculo' ? 'combustion_movil' : 'combustion_fija';
-  return opcionesFuente(f, cat).find((k) => k.toLowerCase().startsWith(p)) ?? '';
+  const claves = opcionesFuente(f, cat);
+  return claves.find((k) => sa(k).startsWith(p)) ?? claves.find((k) => sa(k).includes(p)) ?? '';
 }
 
 const Segmentos: React.FC<{ valor: string; opciones: Array<[string, string]>; onCambio: (v: string) => void; etiqueta: string }> = ({ valor, opciones, onCambio, etiqueta }) => (
@@ -873,7 +877,7 @@ const PanelCentros: React.FC<{
 // ───────────────────────────── Facturas y revisión ─────────────────────────────
 const TIPOS_SUBIDA: Array<[TipoFactura | '', string]> = [
   ['', 'Detectar automáticamente'], ['electricidad', 'Electricidad'], ['gas_natural', 'Gas natural'], ['gasoleo', 'Gasóleo (calefacción)'],
-  ['glp', 'GLP (propano/butano)'], ['combustible_vehiculo', 'Combustible de vehículos'], ['refrigerante', 'Recarga de refrigerante'],
+  ['glp', 'Butano / propano (GLP)'], ['combustible_vehiculo', 'Combustible de vehículos'], ['refrigerante', 'Recarga de refrigerante'],
 ];
 
 const UN_MES = NOMBRES_MES;
@@ -1187,7 +1191,12 @@ const Revision: React.FC<{
   const [modoGas, setModoGas] = useState<ModoGas>(() => modoAutomatico(doc.extraccion!));
   const [pcsM3, setPcsM3] = useState(() => (doc.extraccion!.factorConversion ? String(doc.extraccion!.factorConversion).replace('.', ',') : ''));
   // Para gas natural, la lectura efectiva está ya convertida a kWh PCS según lo que confirma la persona que revisa
-  const efectiva = useMemo(() => (e.tipo === 'gas_natural' ? aplicarGas(e, modoGas, Number(pcsM3.replace(',', '.')) || undefined) : e), [e, modoGas, pcsM3]);
+  const [kgEnvase, setKgEnvase] = useState(() => (/butano/i.test(doc.extraccion!.producto ?? '') ? String(KG_BOMBONA_BUTANO).replace('.', ',') : ''));
+  const efectiva = useMemo(() => (
+    e.tipo === 'gas_natural' ? aplicarGas(e, modoGas, Number(pcsM3.replace(',', '.')) || undefined)
+    : e.tipo === 'glp' ? aplicarEnvases(e, Number(kgEnvase.replace(',', '.')) || undefined)
+    : e
+  ), [e, modoGas, pcsM3, kgEnvase]);
   useEffect(() => { if (!fuente) setFuente(fuentePorDefecto(e, factores)); }, [factores]); // eslint-disable-line
   const incidencias = useMemo(() => (factores ? validarExtraccion(efectiva, { anioInventario: inv.anio, centro: doc.centro_id ?? undefined, factores, existentes }) : []), [efectiva, factores, inv.anio, existentes]);
   const errores = incidencias.filter((i) => i.gravedad === 'error');
@@ -1249,6 +1258,15 @@ const Revision: React.FC<{
             )}
           </div>
           {efectiva.unidad === 'kWh PCS' && modoGas && <p className="mt-2"><strong>Se calculará con {efectiva.cantidad?.toLocaleString('es-ES', { maximumFractionDigits: 2 })} kWh PCS.</strong> {efectiva.nota}</p>}
+        </div>
+      )}
+      {e.tipo === 'glp' && esEnvase(e.unidad) && (
+        <div className="mt-3 rounded-lg px-3 py-3 bg-blue-50 text-blue-900 text-xs">
+          <p className="font-semibold mb-2">Butano / propano en envases: la calculadora necesita kg</p>
+          <label className="font-semibold">Kg por {e.unidad ?? 'envase'}
+            <input className={`${input} mt-1 w-40`} inputMode="decimal" value={kgEnvase} onChange={(ev) => setKgEnvase(ev.target.value)} placeholder="Ej.: 12,5" aria-label="Kg por envase" />
+          </label>
+          {efectiva.unidad === 'kg' && <p className="mt-2"><strong>Se calculará con {efectiva.cantidad?.toLocaleString('es-ES', { maximumFractionDigits: 2 })} kg.</strong> {efectiva.nota}</p>}
         </div>
       )}
       {asignacion.motivo && (

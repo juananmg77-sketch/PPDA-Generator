@@ -1,6 +1,7 @@
 // Validación de la lectura de facturas y propuesta de líneas de actividad.
 // La lectura automática (IA) solo PROPONE datos; todo pasa por estas comprobaciones y por una revisión humana obligatoria.
 import type { ConjuntoFactores, LineaActividad } from './tipos.ts';
+import { esEnvase, fuenteGlp } from './glp.ts';
 
 export type TipoFactura = 'electricidad' | 'gas_natural' | 'gasoleo' | 'glp' | 'combustible_vehiculo' | 'refrigerante' | 'otro';
 
@@ -50,6 +51,13 @@ const UNIDAD_ESPERADA: Record<TipoFactura, string[]> = {
 };
 
 const norm = (s?: string) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+/** Sinónimos habituales de las unidades: kilos → kg, litros → l. */
+export function normalizarUnidad(u?: string): string {
+  const x = norm(u).replace(/\./g, '');
+  if (['kg', 'kgs', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(x)) return 'kg';
+  if (['l', 'lt', 'lts', 'litro', 'litros'].includes(x)) return 'l';
+  return x;
+}
 const fecha = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00Z') : null);
 
 /**
@@ -131,9 +139,11 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
   if (!e.unidad && !cero) add('error', 'unidad', 'Falta la unidad de la cantidad.');
 
   // Unidad esperada según el tipo (el gas natural exige kWh PCS; con PCI o m3 hay que convertir con el dato de la factura)
-  const u = norm(e.unidad);
+  const u = normalizarUnidad(e.unidad);
   const esperadas = UNIDAD_ESPERADA[e.tipo];
-  if (u && esperadas.length && !esperadas.includes(u) && !cero) {
+  if (e.tipo === 'glp' && esEnvase(e.unidad) && !cero) {
+    add('error', 'unidad_glp', `La factura da el butano o propano en «${e.unidad}»: indique los kg por envase en «Butano / propano en envases» y se convertirá a kg.`);
+  } else if (u && esperadas.length && !esperadas.includes(u) && !cero) {
     if (e.tipo === 'gas_natural' && (u === 'kwh' || u === 'kwh pci' || u === 'm3' || u === 'm³')) {
       add('error', 'unidad_gas', `La calculadora oficial usa kWh PCS y la factura indica «${e.unidad}»: en «Unidad del gas natural» elija si son PCS, PCI o m³ y se convertirá.`);
     } else {
@@ -157,7 +167,10 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
 
   // Producto con factor
   if (e.producto && ['gasoleo', 'glp', 'combustible_vehiculo', 'gas_natural'].includes(e.tipo)) {
-    const encontrado = Object.keys(c.factores.combustibles).some((k) => norm(k).startsWith(norm(e.producto)));
+    const sa = (x?: string) => (x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    // «Butano» está en «Gas butano (kg)» y «Gasóleo C» en «Gasóleo C (l)»: se busca el nombre dentro de la clave, sin acentos
+    const encontrado = Object.keys(c.factores.combustibles).some((k) => sa(k).includes(sa(e.producto)))
+      || (e.tipo === 'glp' && !!c.factores.combustibles[fuenteGlp(e.producto, e.unidad)]);
     if (!encontrado) add('aviso', 'producto_sin_factor', `No hay un factor claro para «${e.producto}» en el conjunto ${c.factores.id}: elija el combustible de la lista.`);
   }
   if (e.tipo === 'refrigerante' && e.producto && !(e.producto in c.factores.pcaRefrigerantes)) {

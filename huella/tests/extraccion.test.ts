@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { construirConjunto } from '../factores.ts';
-import { asignarContador, evaluarExclusiones, normalizarContador, proponerActividad, validarExtraccion, variacionAnual } from '../extraccion.ts';
+import { normalizarUnidad, asignarContador, evaluarExclusiones, normalizarContador, proponerActividad, validarExtraccion, variacionAnual } from '../extraccion.ts';
 import type { ContextoValidacion, ExtraccionFactura } from '../extraccion.ts';
 import type { DatosCalculadora } from '../tipos.ts';
 
@@ -148,4 +148,14 @@ test('consumo cero: se puede validar aunque falte la unidad o sea de otro tipo; 
   assert.deepEqual(codigos(gas), ['cantidad_cero']);
   assert.ok(codigos({ ...gas, cantidad: 5 }).includes('unidad_gas')); // con consumo sí exige aclarar la unidad
   assert.ok(codigos({ ...luz, cantidad: undefined }).includes('cantidad')); // faltar la cantidad sigue siendo un error
+});
+
+test('butano y propano: kilos y litros se aceptan; los envases piden convertir a kg', () => {
+  const glp: ExtraccionFactura = { tipo: 'glp', proveedor: 'Repsol', producto: 'Butano', periodoDesde: '2024-02-01', periodoHasta: '2024-02-28', cantidad: 250, unidad: 'kilos', confianza: 0.9 };
+  assert.deepEqual(codigos(glp), []);
+  assert.deepEqual(codigos({ ...glp, unidad: 'Kg.' }), []);
+  assert.deepEqual(codigos({ ...glp, unidad: 'litros' }), []);
+  assert.ok(codigos({ ...glp, unidad: 'bombonas', cantidad: 20 }).includes('unidad_glp'));
+  assert.ok(!codigos({ ...glp, unidad: 'bombonas', cantidad: 0 }).includes('unidad_glp'));
+  assert.equal(normalizarUnidad('Kilogramos'), 'kg');
 });

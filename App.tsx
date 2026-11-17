@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { AppState, initialHotelData, initialSocietyData, DiagnosisItem, Objective } from './types';
 import { INITIAL_OBJECTIVES, INITIAL_DEPARTMENTS, INITIAL_DIAGNOSIS, INITIAL_MEASUREMENT_CONFIG, GOOGLE_SCRIPT_URL } from './constants';
 import { planService } from './services/planService';
@@ -14,6 +14,7 @@ import { VersionHistory } from './components/VersionHistory';
 import { RegistrosView } from './components/RegistrosView';
 import { pesajesService } from './services/pesajesService';
 import { LoginView } from './components/Login';
+const HuellaView = React.lazy(() => import('./components/HuellaView'));
 import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users, Briefcase, KeyRound, Eye, EyeOff, FileSpreadsheet, Building2, ScanSearch, Target, Scale, FileText, History, MapPin, CheckSquare, Salad, Recycle, Cloud } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
 import { ClientDashboard } from './components/ClientDashboard';
@@ -133,7 +134,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('consultor');
   const [currentUserHotel, setCurrentUserHotel] = useState<string>('');
-  const [view, setView] = useState<'dashboard' | 'wizard' | 'users' | 'registros'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'wizard' | 'users' | 'registros' | 'huella'>('dashboard');
 
   // Estado para la vista de registros
   const [registrosPlanId,   setRegistrosPlanId]   = useState<string>('');
@@ -815,6 +816,15 @@ const App: React.FC = () => {
     );
   }
 
+  // RENDER: HUELLA DE CARBONO (solo usuarios internos: llegan aquí admin y consultor)
+  if (view === 'huella') {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-600 text-sm">Cargando…</div>}>
+        <HuellaView onBack={() => setView('dashboard')} currentUser={currentUser || ''} />
+      </Suspense>
+    );
+  }
+
   // RENDER: USER MANAGEMENT VIEW (admin only)
   if (view === 'users') {
     return <UserManagement onBack={() => setView('dashboard')} />;
@@ -895,13 +905,16 @@ const App: React.FC = () => {
                   <p className="text-[11px] text-slate-500 mt-2 leading-snug">Ley 3/2022 Illes Balears · Ley 7/2022</p>
                   <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
                 </div>
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
-                  <div className="w-11 h-11 rounded-xl bg-cyan-100 flex items-center justify-center mb-3"><Cloud size={22} className="text-cyan-700" /></div>
-                  <h3 className="text-sm font-bold text-slate-800">Huella de carbono</h3>
+                <button
+                  onClick={() => setView('huella')}
+                  className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-left hover:border-brand-500 hover:shadow-lg transition-all"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-cyan-100 flex items-center justify-center mb-3 group-hover:bg-cyan-200 transition-colors"><Cloud size={22} className="text-cyan-700" /></div>
+                  <h3 className="text-sm font-bold text-slate-800 group-hover:text-brand-700 transition-colors">Huella de carbono</h3>
                   <p className="text-xs text-slate-500 mt-0.5">Registro balear · Cat. 1 y 2</p>
                   <p className="text-[11px] text-slate-500 mt-2 leading-snug">Decreto 48/2021 · Ley 10/2019 · Ley 7/2021</p>
-                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
-                </div>
+                  <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Abrir inventario <ChevronRight size={11} /></span>
+                </button>
               </div>
             </div>
           </main>

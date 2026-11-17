@@ -10,6 +10,8 @@ Código puro (sin dependencias, sin acceso a datos): recibe líneas de actividad
 | `motor.ts` | Cálculo: combustión (fija y móvil), emisiones fugitivas, electricidad con los dos métodos (ubicación y mercado) y totales |
 | `datos/factores-calculadora-*.json` | Factores oficiales extraídos de las calculadoras 2023.2 y 2024.1 (hoja oculta «Dades») |
 | `scripts/extraer_factores.py` | Genera esos JSON desde el Excel de la calculadora |
+| `extraccion.ts` | Validación de la **lectura de facturas** (unidades, periodos, duplicados, solapes, PCS/PCI), propuesta de líneas de actividad en borrador, variación anual (>20 %) y criterio de exclusión (<3 % y ≤5 %) |
+| `sql/` | Esquema de la base (tablas `hc_*`, RLS, auditoría, bloqueo de inventarios cerrados, carpeta privada de facturas) |
 | `tests/` | Pruebas unitarias y **prueba de aceptación** con el informe de ejemplo (inventario 2022) |
 
 ## Reglas

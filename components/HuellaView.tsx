@@ -145,6 +145,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     try { const i = await huellaService.crearInventario(orgId, a); setInvs([i, ...invs]); setInvId(i.id); } catch (e) { falla(e); }
   };
 
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const pendientes = docs.filter((d) => d.estado === 'leido').length;
   const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; solo?: 'consultor'; badge?: number }> = [
     { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
@@ -188,22 +189,9 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
         </div>
         <p className="px-4 pb-3 text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'rgba(0,9,61,.6)' }}>Huella de carbono</p>
 
-        <div className="mx-3 mb-3 rounded-xl p-2.5 space-y-2" style={{ background: 'rgba(0,9,61,0.06)' }}>
-          {orgs.length > 1 ? (
-            <div className="flex gap-1.5">
-              <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organización">
-                {orgs.length === 0 && <option value="">Sin organizaciones</option>}
-                {orgs.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-              </select>
-            </div>
-          ) : <p className="text-sm font-bold px-1">{org?.nombre ?? '—'}</p>}
-          <div className="flex gap-1.5">
-            <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={invId} onChange={(e) => setInvId(e.target.value)} disabled={!orgId} aria-label="Inventario">
-              {invs.length === 0 && <option value="">Sin inventarios</option>}
-              {invs.map((i) => <option key={i.id} value={i.id}>Año {i.anio} · {i.estado}</option>)}
-            </select>
-          </div>
-        </div>
+        <button onClick={volverABiblioteca} className="mx-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/70 transition-colors" style={{ background: 'rgba(0,9,61,.06)', color: '#00093D' }}>
+          <Database size={14} /> Biblioteca de cálculos
+        </button>
 
         <nav className="flex md:flex-col gap-0.5 px-2 pb-3 overflow-x-auto md:overflow-visible" role="tablist" aria-label="Secciones">
           {visibles.map((n) => (
@@ -223,6 +211,22 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
 
       <main className="flex-1 min-w-0 p-4 md:p-8">
         <div className="max-w-5xl space-y-4">
+          {org && (
+            <div className={`${card} flex flex-wrap items-center gap-3`} aria-label="Sociedad y cálculo abiertos">
+              <div className="w-11 h-11 rounded-lg bg-green-100 text-green-800 flex items-center justify-center text-lg font-bold shrink-0">{org.nombre.trim().charAt(0).toUpperCase()}</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{org.suite_cadena && norm(org.suite_cadena) === norm(org.nombre) ? 'Cadena' : 'Sociedad'}</p>
+                <p className="text-lg font-extrabold text-slate-900 truncate" title={org.nombre}>{org.nombre}</p>
+                <p className="text-xs text-slate-600 truncate">{centros.length === 1 ? `Hotel: ${centros[0].nombre}` : `${centros.length} centro${centros.length === 1 ? '' : 's'} de trabajo`}{org.suite_cadena && norm(org.suite_cadena) !== norm(org.nombre) ? ` · ${org.suite_cadena}` : ''}</p>
+              </div>
+              {inv && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800">Cálculo {inv.anio}</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${(ESTADO_CALCULO[inv.estado] ?? ESTADO_CALCULO.borrador).chip}`}>{(ESTADO_CALCULO[inv.estado] ?? ESTADO_CALCULO.borrador).texto}</span>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1>
             <p className="text-sm text-slate-600">{titulos[tab][1]}</p>
@@ -771,13 +775,14 @@ const PanelCentros: React.FC<{
   const [nombre, setNombre] = useState(''); const [municipio, setMunicipio] = useState(''); const [isla, setIsla] = useState('Mallorca'); const [balear, setBalear] = useState(true);
   const crear = async () => {
     if (!nombre.trim()) return;
-    try { const c = await huellaService.crearCentro({ organizacion_id: orgId, nombre: nombre.trim(), municipio, isla: balear ? isla : undefined, en_baleares: balear }); setCentros([...centros, c]); setNombre(''); setMunicipio(''); } catch (e) { falla(e); }
+    try { const c = await huellaService.crearCentro({ organizacion_id: orgId, nombre: nombre.trim(), municipio, isla: balear ? isla : undefined, en_baleares: balear }); setCentros([...centros, c]); setNombre(''); setMunicipio(''); setAnadir(null); } catch (e) { falla(e); }
   };
   const guardar = async (c: Centro, cambios: Partial<InventarioCentro>) => {
     if (!inv) return;
     const base = invCentros.find((x) => x.centro_id === c.id) ?? { inventario_id: inv.id, centro_id: c.id, indice_actividad: 0 };
     try { await huellaService.guardarInventarioCentro({ ...base, ...cambios }); onGuardado(); } catch (e) { falla(e); }
   };
+  const [anadir, setAnadir] = useState<null | 'suite' | 'mano'>(null);
   const vinculados = useMemo(() => new Set(centros.map((c) => c.suite_hotel_id).filter(Boolean) as string[]), [centros]);
   const desdeSuite = async (h: HotelSuite) => {
     try { const c = await huellaService.crearCentro({ organizacion_id: orgId, ...centroDesdeHotel(h), suite_actualizado: new Date().toISOString() }); setCentros([...centros, c]); } catch (e) { falla(e); }
@@ -795,25 +800,35 @@ const PanelCentros: React.FC<{
   };
   return (
     <div className="space-y-4">
-      <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-1">Añadir desde HS Suite</h2>
-        <p className="text-xs text-slate-600 mb-3">Busque el hotel en su base de clientes: se rellenan nombre, dirección, municipio, isla y unidades. También puede añadir de golpe todos los hoteles de una cadena.</p>
-        <BuscadorHoteles vinculados={vinculados} onElegir={desdeSuite} onCadena={cadenaDesdeSuite} />
+      <div className={`${card} flex flex-wrap items-center gap-3`}>
+        <div className="flex-1 min-w-[200px]">
+          <h2 className="text-sm font-bold text-slate-800">Centros de trabajo</h2>
+          <p className="text-xs text-slate-600">{centros.length === 0 ? 'Todavía no hay centros: añada el primero desde HS Suite.' : `${centros.length} centro${centros.length === 1 ? '' : 's'} registrado${centros.length === 1 ? '' : 's'}.`}</p>
+        </div>
+        <button className={btnP} onClick={() => setAnadir('suite')}><Search size={14} /> Añadir desde HS Suite</button>
+        <button className={btnS} onClick={() => setAnadir('mano')}><Plus size={14} /> Añadir a mano</button>
       </div>
-      <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Añadir a mano</h2>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-          <label className="md:col-span-2 text-xs font-semibold text-slate-600">Nombre<input className={`${input} mt-1`} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Hotel / sede" /></label>
-          <label className="text-xs font-semibold text-slate-600">Municipio<input className={`${input} mt-1`} value={municipio} onChange={(e) => setMunicipio(e.target.value)} /></label>
-          <label className="text-xs font-semibold text-slate-600">Isla
-            <select className={`${input} mt-1`} value={isla} onChange={(e) => setIsla(e.target.value)} disabled={!balear}>{['Mallorca', 'Menorca', 'Ibiza', 'Formentera'].map((i) => <option key={i}>{i}</option>)}</select>
-          </label>
-          <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-slate-700"><input type="checkbox" checked={balear} onChange={(e) => setBalear(e.target.checked)} /> En Baleares</label>
+      {anadir === 'suite' && (
+        <Modal titulo="Añadir desde HS Suite" onCerrar={() => setAnadir(null)}>
+          <p className="text-xs text-slate-600 mb-3">Busque el hotel en su base de clientes: se rellenan nombre, dirección, municipio, isla y unidades. También puede añadir de golpe todos los hoteles de una cadena.</p>
+          <BuscadorHoteles vinculados={vinculados} onElegir={desdeSuite} onCadena={cadenaDesdeSuite} />
+          <div className="flex justify-end mt-4"><button className={btnP} onClick={() => setAnadir(null)}>Listo</button></div>
+        </Modal>
+      )}
+      {anadir === 'mano' && (
+        <Modal titulo="Añadir un centro a mano" onCerrar={() => setAnadir(null)}>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Nombre *" ancho><input className={input} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Hotel / sede" autoFocus /></Campo>
+            <Campo etiqueta="Municipio"><input className={input} value={municipio} onChange={(e) => setMunicipio(e.target.value)} /></Campo>
+            <Campo etiqueta="Isla"><select className={input} value={isla} onChange={(e) => setIsla(e.target.value)} disabled={!balear}>{['Mallorca', 'Menorca', 'Ibiza', 'Formentera'].map((i) => <option key={i}>{i}</option>)}</select></Campo>
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 col-span-2"><input type="checkbox" checked={balear} onChange={(e) => setBalear(e.target.checked)} /> Centro en Baleares</label>
+          </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <button className={btnS} onClick={() => setAnadir(null)}>Cancelar</button>
             <button className={btnP} onClick={crear} disabled={!nombre.trim()}><Plus size={14} /> Añadir</button>
           </div>
-        </div>
-      </div>
+        </Modal>
+      )}
 
       {centros.length > 0 && (
         <div className={card}>
@@ -1195,14 +1210,14 @@ const Revision: React.FC<{
 const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Centro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onCambio: () => void; falla: (e: unknown) => void }> = ({ inv, abierto, centros, actividad, factores, onCambio, falla }) => {
   const [centro, setCentro] = useState(''); const [cat, setCat] = useState<Categoria>('combustion_fija'); const [fuente, setFuente] = useState('');
   const [cantidad, setCantidad] = useState(''); const [origen, setOrigen] = useState<OrigenElectricidad>('red'); const [nota, setNota] = useState(''); const [contador, setContador] = useState('');
-  const [fCentro, setFCentro] = useState(''); const [fFuente, setFFuente] = useState(''); const [fContador, setFContador] = useState(''); const [metrica, setMetrica] = useState<'co2e' | 'consumo'>('co2e');
+  const [formAbierto, setFormAbierto] = useState(false); const [fCentro, setFCentro] = useState(''); const [fFuente, setFFuente] = useState(''); const [fContador, setFContador] = useState(''); const [metrica, setMetrica] = useState<'co2e' | 'consumo'>('co2e');
   useEffect(() => { if (!centro && centros[0]) setCentro(centros[0].id); }, [centros, centro]);
   const opciones = opcionesFuente(factores, cat);
   const valido = centro && Number(cantidad) >= 0 && cantidad !== '' && (cat === 'electricidad' || fuente) && nota.trim().length > 3;
   const anadir = async () => {
     try {
       await huellaService.crearActividad({ inventario_id: inv.id, centro_id: centro, categoria: cat, fuente: cat === 'electricidad' ? '' : fuente, cantidad: Number(cantidad), origen_electricidad: cat === 'electricidad' ? origen : null, reparto_proporcion: 1, estado: 'confirmada', notas: nota.trim(), contador: contador.trim() || null });
-      setCantidad(''); setNota(''); onCambio();
+      setCantidad(''); setNota(''); setFormAbierto(false); onCambio();
     } catch (e) { falla(e); }
   };
   const nombreCentro = (id: string) => centros.find((c) => c.id === id)?.nombre ?? '—';
@@ -1214,10 +1229,10 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
     <div className="space-y-4">
       <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={filtradas} fuentesDisp={fuentesDisp} contadoresDisp={contadoresDisp}
         fCentro={fCentro} setFCentro={setFCentro} fFuente={fFuente} setFFuente={setFFuente} fContador={fContador} setFContador={setFContador} metrica={metrica} setMetrica={setMetrica} />
-      {abierto && (<div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-1">Añadir dato a mano</h2>
-        <p className="text-xs text-slate-600 mb-3">Para datos sin factura legible (p. ej. un contador). Es obligatorio indicar el origen del dato: queda como evidencia para el verificador.</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {formAbierto && abierto && (
+        <Modal titulo="Añadir dato a mano" onCerrar={() => setFormAbierto(false)}>
+          <p className="text-xs text-slate-600 mb-3">Para datos sin factura legible (p. ej. un contador). Es obligatorio indicar el origen del dato: queda como evidencia para el verificador.</p>
+        <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-slate-600">Centro<select className={`${input} mt-1`} value={centro} onChange={(e) => setCentro(e.target.value)}>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
           <label className="text-xs font-semibold text-slate-600">Categoría<select className={`${input} mt-1`} value={cat} onChange={(e) => { setCat(e.target.value as Categoria); setFuente(''); }}>{Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
           {cat === 'electricidad'
@@ -1226,11 +1241,18 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
           <label className="text-xs font-semibold text-slate-600">Cantidad ({cat === 'electricidad' ? 'kWh' : cat === 'fugitiva' ? 'kg' : (factores?.unidades[fuente] ?? 'unidad del factor')})<input type="number" min={0} step="any" className={`${input} mt-1`} value={cantidad} onChange={(e) => setCantidad(e.target.value)} /></label>
           <label className="text-xs font-semibold text-slate-600">Contador / CUPS (opcional)<input className={`${input} mt-1`} value={contador} onChange={(e) => setContador(e.target.value)} /></label>
           <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-3">Origen del dato (obligatorio)<input className={`${input} mt-1`} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej.: lectura de contador del 31/12, albarán 123…" /></label>
-          <div className="flex items-end"><button className={btnP} onClick={anadir} disabled={!abierto || !valido}><Plus size={14} /> Añadir</button></div>
-        </div>
-      </div>)}
+                  </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <button className={btnS} onClick={() => setFormAbierto(false)}>Cancelar</button>
+            <button className={btnP} onClick={anadir} disabled={!abierto || !valido}><Plus size={14} /> Añadir</button>
+          </div>
+        </Modal>
+      )}
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Datos de actividad confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
+        <div className="flex items-center gap-3 mb-3">
+          <h2 className="flex-1 text-sm font-bold text-slate-800">Datos de actividad confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
+          {abierto && <button className={btnS} onClick={() => setFormAbierto(true)}><Plus size={14} /> Añadir dato a mano</button>}
+        </div>
         {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos. Suba facturas o añada un dato a mano.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1365,6 +1387,8 @@ const PanelCierre: React.FC<{
   const [fx, setFx] = useState({ fuente: '', porcentaje: '', justificacion: '' });
   const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
   const [reabrir, setReabrir] = useState(false);
+  const [modalEx, setModalEx] = useState(false);
+  const [modalNc, setModalNc] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [trabajando, setTrabajando] = useState(false);
 
@@ -1435,13 +1459,13 @@ const PanelCierre: React.FC<{
   const anadirExclusion = async () => {
     try {
       const x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente.trim(), porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
-      setExclusiones((l) => [...l, x]); setFx({ fuente: '', porcentaje: '', justificacion: '' });
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', porcentaje: '', justificacion: '' }); setModalEx(false);
     } catch (e) { falla(e); }
   };
   const anadirNc = async () => {
     try {
       const x = await huellaService.crearNoConformidad({ inventario_id: inv.id, descripcion: nc.descripcion.trim(), medida: nc.medida.trim() || null, responsable: nc.responsable.trim() || null });
-      setNcs((l) => [...l, x]); setNc({ descripcion: '', medida: '', responsable: '' });
+      setNcs((l) => [...l, x]); setNc({ descripcion: '', medida: '', responsable: '' }); setModalNc(false);
     } catch (e) { falla(e); }
   };
 
@@ -1494,7 +1518,7 @@ const PanelCierre: React.FC<{
       )}
 
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-1">Fuentes excluidas</h2>
+        <div className="flex items-center gap-3 mb-1"><h2 className="flex-1 text-sm font-bold text-slate-800">Fuentes excluidas</h2>{abierto && <button className={btnS} onClick={() => setModalEx(true)}><Plus size={14} /> Añadir exclusión</button>}</div>
         <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del 3 % y el conjunto como máximo el 5 % de las emisiones (ISO 14064-1, 9.3.1 i).</p>
         {exclusiones.length > 0 && (
           <ul className="divide-y divide-slate-100 mb-3">{exclusiones.map((x) => (
@@ -1502,18 +1526,10 @@ const PanelCierre: React.FC<{
               {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar exclusión" onClick={async () => { try { await huellaService.borrarExclusion(x.id); setExclusiones((l) => l.filter((y) => y.id !== x.id)); } catch (e) { falla(e); } }}><Trash2 size={14} /></button>}</li>
           ))}</ul>
         )}
-        {abierto && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
-            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Fuente<input className={`${input} mt-1`} value={fx.fuente} onChange={(e) => setFx({ ...fx, fuente: e.target.value })} placeholder="Ej.: extintores de CO₂" /></label>
-            <label className="text-xs font-semibold text-slate-700">% estimado<input type="number" min={0} step="any" className={`${input} mt-1`} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></label>
-            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Justificación<input className={`${input} mt-1`} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></label>
-            <button className={btnP} onClick={anadirExclusion} disabled={!fx.fuente.trim() || !fx.justificacion.trim()}><Plus size={14} /> Añadir</button>
-          </div>
-        )}
       </div>
 
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-1">Registro de no conformidades</h2>
+        <div className="flex items-center gap-3 mb-1"><h2 className="flex-1 text-sm font-bold text-slate-800">Registro de no conformidades</h2>{abierto && <button className={btnS} onClick={() => setModalNc(true)}><Plus size={14} /> Añadir no conformidad</button>}</div>
         <p className="text-xs text-slate-600 mb-3">Incidencias detectadas en la revisión interna y la medida adoptada. El verificador las examina.</p>
         {ncs.length > 0 && (
           <ul className="divide-y divide-slate-100 mb-3">{ncs.map((x) => (
@@ -1521,15 +1537,28 @@ const PanelCierre: React.FC<{
               {abierto && !x.cerrada_en && <button className={btnS} onClick={async () => { try { const u = await huellaService.cerrarNoConformidad(x.id); setNcs((l) => l.map((y) => (y.id === u.id ? u : y))); } catch (e) { falla(e); } }}>Cerrar</button>}</li>
           ))}</ul>
         )}
-        {abierto && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
-            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Descripción<input className={`${input} mt-1`} value={nc.descripcion} onChange={(e) => setNc({ ...nc, descripcion: e.target.value })} /></label>
-            <label className="text-xs font-semibold text-slate-700 md:col-span-2">Medida adoptada<input className={`${input} mt-1`} value={nc.medida} onChange={(e) => setNc({ ...nc, medida: e.target.value })} /></label>
-            <label className="text-xs font-semibold text-slate-700">Responsable<input className={`${input} mt-1`} value={nc.responsable} onChange={(e) => setNc({ ...nc, responsable: e.target.value })} /></label>
-            <button className={btnP} onClick={anadirNc} disabled={!nc.descripcion.trim()}><Plus size={14} /> Añadir</button>
-          </div>
-        )}
       </div>
+
+      {modalEx && abierto && (
+        <Modal titulo="Añadir una fuente excluida" onCerrar={() => setModalEx(false)}>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Fuente *" ancho><input className={input} value={fx.fuente} onChange={(e) => setFx({ ...fx, fuente: e.target.value })} placeholder="Ej.: extintores de CO₂" autoFocus /></Campo>
+            <Campo etiqueta="% estimado de las emisiones"><input type="number" min={0} step="any" className={input} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></Campo>
+            <Campo etiqueta="Justificación *" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
+          </div>
+          <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalEx(false)}>Cancelar</button><button className={btnP} onClick={anadirExclusion} disabled={!fx.fuente.trim() || !fx.justificacion.trim()}><Plus size={14} /> Añadir</button></div>
+        </Modal>
+      )}
+      {modalNc && abierto && (
+        <Modal titulo="Añadir una no conformidad" onCerrar={() => setModalNc(false)}>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Descripción *" ancho><input className={input} value={nc.descripcion} onChange={(e) => setNc({ ...nc, descripcion: e.target.value })} autoFocus /></Campo>
+            <Campo etiqueta="Medida adoptada" ancho><input className={input} value={nc.medida} onChange={(e) => setNc({ ...nc, medida: e.target.value })} /></Campo>
+            <Campo etiqueta="Responsable"><input className={input} value={nc.responsable} onChange={(e) => setNc({ ...nc, responsable: e.target.value })} /></Campo>
+          </div>
+          <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalNc(false)}>Cancelar</button><button className={btnP} onClick={anadirNc} disabled={!nc.descripcion.trim()}><Plus size={14} /> Añadir</button></div>
+        </Modal>
+      )}
 
       {reabrir && (
         <Modal titulo={`Reabrir el inventario ${inv.anio}`} onCerrar={() => setReabrir(false)}>
@@ -1571,6 +1600,7 @@ const PanelInforme: React.FC<{
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
   const [trabajando, setTrabajando] = useState('');
   const [ver, setVer] = useState<Verificacion>({ nivel: 'Limitado' });
+  const [modalVer, setModalVer] = useState(false);
   const marco = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -1628,6 +1658,7 @@ const PanelInforme: React.FC<{
             <p className="text-sm font-bold text-slate-900">{modelo.meta.subtitulo}</p>
             <span className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-1 rounded-full ${inv.estado === 'verificado' ? 'bg-green-100 text-green-800' : cerrado ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>{modelo.meta.estado}</span>
           </div>
+          {inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
           <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
           <button className={btnP} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
           <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador</button>
@@ -1641,19 +1672,21 @@ const PanelInforme: React.FC<{
         </div>
       )}
 
-      {inv.estado === 'cerrado' && (
-        <div className={card}>
-          <h2 className="text-sm font-bold text-slate-800 mb-1">Registrar la verificación</h2>
+      {modalVer && inv.estado === 'cerrado' && (
+        <Modal titulo="Registrar la verificación" onCerrar={() => setModalVer(false)}>
           <p className="text-xs text-slate-600 mb-3">La entidad verificadora varía según el cliente: elija SGS o AENOR de la lista o escriba otra. Cuando emita su informe de verificación (ISO 14064-3), anote sus datos. El inventario pasa a «verificado» y el informe los recoge en el apartado 11.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+          <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-semibold text-slate-700">Entidad verificadora<input className={`${input} mt-1`} list="entidades-verificadoras" placeholder="SGS, AENOR u otra" value={ver.entidad ?? ''} onChange={(e) => setVer({ ...ver, entidad: e.target.value })} />
               <datalist id="entidades-verificadoras"><option value="SGS" /><option value="AENOR" /></datalist></label>
             <label className="text-xs font-semibold text-slate-700">Nivel de aseguramiento<select className={`${input} mt-1`} value={ver.nivel} onChange={(e) => setVer({ ...ver, nivel: e.target.value })}><option>Limitado</option><option>Razonable</option></select></label>
             <label className="text-xs font-semibold text-slate-700">Fecha<input type="date" className={`${input} mt-1`} value={ver.fecha ?? ''} onChange={(e) => setVer({ ...ver, fecha: e.target.value })} /></label>
             <label className="text-xs font-semibold text-slate-700">Referencia del informe<input className={`${input} mt-1`} value={ver.referencia ?? ''} onChange={(e) => setVer({ ...ver, referencia: e.target.value })} /></label>
           </div>
-          <button className={`${btnP} mt-3`} onClick={marcarVerificado} disabled={!ver.entidad?.trim() || !ver.fecha || trabajando === 'ver'}><CheckCircle2 size={15} /> Marcar como verificado</button>
-        </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <button className={btnS} onClick={() => setModalVer(false)}>Cancelar</button>
+            <button className={btnP} onClick={marcarVerificado} disabled={!ver.entidad?.trim() || !ver.fecha || trabajando === 'ver'}><CheckCircle2 size={15} /> Marcar como verificado</button>
+          </div>
+        </Modal>
       )}
 
       <div className={card}>

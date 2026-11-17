@@ -1003,6 +1003,20 @@ const PanelFacturas: React.FC<{
   const seleccionadasListas = listas.filter((d) => sel.has(d.id));
   const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
 
+  const puedeEliminar = rol === 'consultor' && abierto;
+  const eliminar = async (lista: Documento[], que: string) => {
+    if (!lista.length) return;
+    const conDato = lista.filter((d) => d.estado === 'revisado').length;
+    if (!confirm(`Va a eliminar ${que}${conDato ? ` y ${conDato} dato(s) de actividad que generaron` : ''}. Después podrá volver a subirlas si procede. ¿Continuar?`)) return;
+    setCargando(true);
+    const fallos: string[] = [];
+    for (const d of lista) { try { await huellaService.borrarDocumento(d); } catch (x) { fallos.push(`${d.nombre_archivo}: ${x instanceof Error ? x.message : x}`); } }
+    setSel(new Set()); setCargando(false); onCambio();
+    if (fallos.length) falla(`No se pudieron eliminar ${fallos.length} factura(s):\n${fallos.join('\n')}`);
+  };
+  const Papelera: React.FC<{ onClick: () => void; titulo: string }> = ({ onClick, titulo }) => (
+    <button className="p-1.5 text-slate-500 hover:text-red-600 disabled:opacity-40" aria-label={titulo} title={titulo} disabled={cargando} onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); onClick(); }}><Trash2 size={14} /></button>
+  );
   const confirmarSeleccion = async () => {
     if (!seleccionadasListas.length) return;
     if (!confirm(`Va a confirmar ${seleccionadasListas.length} facturas como datos de actividad. ¿Ha comprobado sus valores contra las facturas?`)) return;
@@ -1075,7 +1089,7 @@ const PanelFacturas: React.FC<{
               <tbody>
                 {gruposPend.map((g) => (
                   <React.Fragment key={`${g.tipo}|${g.contador}`}>
-                    <tr className="bg-slate-100"><td colSpan={8} className="px-2 py-1.5"><CabeceraGrupo g={g} anio={inv.anio} /></td></tr>
+                    <tr className="bg-slate-100"><td colSpan={8} className="px-2 py-1.5"><div className="flex items-center gap-2"><div className="flex-1"><CabeceraGrupo g={g} anio={inv.anio} /></div>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</div></td></tr>
                 {g.items.map((d) => {
                   const ev = evaluadas.get(d.id); const e = d.extraccion!;
                   return (
@@ -1090,6 +1104,7 @@ const PanelFacturas: React.FC<{
                         <td className="text-right whitespace-nowrap">
                           <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
                           <button className={btnS} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>
+                          {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
                         </td>
                       </tr>
                       {revisando === d.id && (
@@ -1112,7 +1127,7 @@ const PanelFacturas: React.FC<{
           <div className="space-y-3">
             {gruposTodas.map((g) => (
               <details key={`${g.tipo}|${g.contador}`} open className="border border-slate-200 rounded-xl">
-                <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl"><span className="inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span></summary>
+                <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl flex items-center gap-2"><span className="flex-1 inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</summary>
                 <ul className="divide-y divide-slate-100 px-3">
                   {[...g.items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (
                     <li key={d.id} className="py-2 flex flex-wrap items-center gap-3">
@@ -1123,6 +1138,7 @@ const PanelFacturas: React.FC<{
                       </div>
                       <Estado e={d.estado} />
                       <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
+                      {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
                     </li>
                   ))}
                 </ul>

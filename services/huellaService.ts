@@ -138,6 +138,12 @@ export const huellaService = {
     return r.data.signedUrl;
   },
 
+  /** Elimina una factura con el dato de actividad que generó (si no, quedaría un dato sin evidencia) y su archivo; se puede volver a subir. */
+  async borrarDocumento(d: { id: string; archivo_path: string }) {
+    ok(await supabase.from('hc_actividad').delete().eq('documento_id', d.id));
+    ok(await supabase.from('hc_documentos').delete().eq('id', d.id));
+    try { await supabase.storage.from('hc-facturas').remove([d.archivo_path]); } catch { /* el archivo huérfano no impide seguir */ }
+  },
   async actividad(inv: string) { return ok<Actividad[]>(await supabase.from('hc_actividad').select('*').eq('inventario_id', inv).order('created_at')); },
   async crearActividad(a: Omit<Actividad, 'id'>) {
     const { data: u } = await supabase.auth.getUser();

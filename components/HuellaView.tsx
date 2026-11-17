@@ -887,7 +887,7 @@ const tipoDoc = (d: Documento) => (d.extraccion?.tipo ?? d.tipo) as string;
 const contadorDoc = (d: Documento) => d.extraccion?.contador;
 
 /** Cabecera de un grupo de facturas: tipo y CUPS (cuando procede), nº, consumo total y meses cubiertos del año. */
-const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Documento[] }; anio: number }> = ({ g, anio }) => {
+const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Documento[] }; anio: number; soloTipo?: boolean }> = ({ g, anio, soloTipo }) => {
   const validas = g.items.filter((d) => d.estado !== 'rechazado');
   const cubiertos = new Set<number>(validas.flatMap((d) => mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, anio)));
   const unidad = validas.find((d) => d.extraccion?.unidad)?.extraccion?.unidad ?? '';
@@ -895,7 +895,7 @@ const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Docu
   const conCups = g.tipo !== 'refrigerante' && g.contador !== 'sin contador';
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      <span className="text-xs font-bold text-slate-800">{TIPOS[g.tipo as TipoFactura] ?? g.tipo}{conCups ? ` · ${g.contador}` : g.tipo !== 'refrigerante' ? ' · sin contador identificado' : ''}</span>
+      <span className="text-xs font-bold text-slate-800">{TIPOS[g.tipo as TipoFactura] ?? g.tipo}{soloTipo ? '' : conCups ? ` · ${g.contador}` : g.tipo !== 'refrigerante' ? ' · sin contador identificado' : ''}</span>
       <span className="text-[11px] text-slate-600">{g.items.length} factura{g.items.length === 1 ? '' : 's'}{total ? ` · ${num(total, 0)} ${unidad}` : ''}</span>
       {g.tipo !== 'refrigerante' && <Meses cubiertos={cubiertos} />}
     </div>
@@ -987,11 +987,33 @@ const PanelFacturas: React.FC<{
   const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, contadorDoc), [docs]); // eslint-disable-line
   const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido'), [docs]);
   const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, contadorDoc), [docsArchivo]);
+  // Paquetes por tipología (electricidad, gas natural…), cada uno con sus contadores dentro
+  const paquetes = useMemo(() => {
+    const m = new Map<string, { tipo: string; items: Documento[]; subgrupos: typeof gruposTodas }>();
+    for (const g of gruposTodas) { const x = m.get(g.tipo) ?? { tipo: g.tipo, items: [], subgrupos: [] }; x.items.push(...g.items); x.subgrupos.push(g); m.set(g.tipo, x); }
+    return [...m.values()].sort((a, b) => b.items.length - a.items.length);
+  }, [gruposTodas]);
   const listas = pendientes.filter((d) => evaluadas.get(d.id)?.listo);
   const seleccionadasListas = listas.filter((d) => sel.has(d.id));
   const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
 
   const puedeEliminar = rol === 'consultor' && abierto;
+  const listaFacturas = (items: Documento[]) => (
+    <ul className="divide-y divide-slate-100">
+      {[...items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (
+        <li key={d.id} className="py-2 flex flex-wrap items-center gap-3">
+          <FileText size={15} className="text-slate-500" />
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
+            <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}{d.extraccion?.cantidad !== undefined ? ` · ${num(d.extraccion.cantidad, 0)} ${d.extraccion.unidad ?? ''}` : ''}</p>
+          </div>
+          <Estado e={d.estado} />
+          <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
+          {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
+        </li>
+      ))}
+    </ul>
+  );
   const eliminar = async (lista: Documento[], que: string) => {
     if (!lista.length) return;
     const conDato = lista.filter((d) => d.estado === 'revisado').length;
@@ -1096,7 +1118,7 @@ const PanelFacturas: React.FC<{
                         <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500" title={ev?.asignacion.motivo}>{ev?.e.contador ? `Contador: ${ev.e.contador}${ev.asignacion.contador ? ' (asignado)' : ''}` : ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador'}</span></td>
                         <td className="pr-3 whitespace-nowrap">{e.periodoDesde ?? '?'} → {e.periodoHasta ?? '?'}</td>
                         <td className="pr-3 text-right tabular-nums" title={ev?.e.nota}>{ev?.e.cantidad !== undefined ? num(ev.e.cantidad, 2) : '—'} {ev?.e.unidad ?? ''}{ev?.e.nota && ev.e.cantidad !== e.cantidad ? <span className="block text-[10px] text-slate-500">convertido</span> : null}</td>
-                        <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
+                        <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.e.cantidad === 0 ? <span className="text-amber-700 font-semibold">Consumo cero · validar</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
                         <td className="text-right whitespace-nowrap">
                           <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
                           <button className={btnS} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>
@@ -1122,23 +1144,23 @@ const PanelFacturas: React.FC<{
         <h2 className="text-sm font-bold text-slate-800 mb-3">Facturas confirmadas del cálculo {inv.anio} ({docsArchivo.length})</h2>
         {docsArchivo.length === 0 ? <p className="text-sm text-slate-600">{docs.length === 0 ? 'Aún no hay facturas.' : 'Todavía no hay facturas confirmadas: revise las pendientes de arriba.'}</p> : (
           <div className="space-y-3">
-            {gruposTodas.map((g) => (
-              <details key={`${g.tipo}|${g.contador}`} className="border border-slate-200 rounded-xl">
-                <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl flex items-center gap-2"><span className="flex-1 inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</summary>
-                <ul className="divide-y divide-slate-100 px-3">
-                  {[...g.items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (
-                    <li key={d.id} className="py-2 flex flex-wrap items-center gap-3">
-                      <FileText size={15} className="text-slate-500" />
-                      <div className="flex-1 min-w-[200px]">
-                        <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
-                        <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}{d.extraccion?.cantidad !== undefined ? ` · ${num(d.extraccion.cantidad, 0)} ${d.extraccion.unidad ?? ''}` : ''}</p>
-                      </div>
-                      <Estado e={d.estado} />
-                      <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
-                      {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
-                    </li>
+            {paquetes.map((pq) => (
+              <details key={pq.tipo} className="border border-slate-300 rounded-xl bg-white" open={paquetes.length === 1}>
+                <summary className="cursor-pointer px-4 py-3 rounded-xl flex items-center gap-3 hover:bg-slate-50">
+                  <span className="w-9 h-9 rounded-lg bg-green-100 text-green-800 flex items-center justify-center shrink-0"><FileText size={17} /></span>
+                  <span className="flex-1 min-w-0"><CabeceraGrupo g={{ tipo: pq.tipo, contador: 'sin contador', items: pq.items }} anio={inv.anio} soloTipo /></span>
+                  {puedeEliminar && <Papelera titulo={`Eliminar todas las facturas de ${TIPOS[pq.tipo as TipoFactura] ?? pq.tipo}`} onClick={() => eliminar(pq.items, `las ${pq.items.length} facturas de ${TIPOS[pq.tipo as TipoFactura] ?? pq.tipo}`)} />}
+                </summary>
+                <div className="px-3 pb-3 space-y-2">
+                  {pq.subgrupos.map((g) => (
+                    pq.subgrupos.length === 1 && g.contador === 'sin contador' ? <div key={g.contador}>{listaFacturas(g.items)}</div> : (
+                      <details key={g.contador} className="border border-slate-200 rounded-xl">
+                        <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl flex items-center gap-2"><span className="flex-1 inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</summary>
+                        <div className="px-3">{listaFacturas(g.items)}</div>
+                      </details>
+                    )
                   ))}
-                </ul>
+                </div>
               </details>
             ))}
           </div>

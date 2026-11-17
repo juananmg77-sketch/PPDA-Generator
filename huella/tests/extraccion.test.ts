@@ -141,3 +141,11 @@ test('los contadores pertenecen a un centro: no se mezclan facturas de otro cent
   assert.deepEqual(codigos(luz, { ...ctx, centro: 'C1', existentes }), []);
   assert.ok(codigos({ ...luz, contador: 'ES0021000000000001AA' }, { ...ctx, centro: 'C2', existentes }).includes('mismo_periodo'));
 });
+
+test('consumo cero: se puede validar aunque falte la unidad o sea de otro tipo; solo avisa', () => {
+  assert.deepEqual(codigos({ ...luz, cantidad: 0, unidad: undefined }), ['cantidad_cero']);
+  const gas: ExtraccionFactura = { tipo: 'gas_natural', proveedor: 'G', periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', cantidad: 0, unidad: 'm3', confianza: 0.9 };
+  assert.deepEqual(codigos(gas), ['cantidad_cero']);
+  assert.ok(codigos({ ...gas, cantidad: 5 }).includes('unidad_gas')); // con consumo sí exige aclarar la unidad
+  assert.ok(codigos({ ...luz, cantidad: undefined }).includes('cantidad')); // faltar la cantidad sigue siendo un error
+});

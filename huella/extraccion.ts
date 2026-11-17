@@ -125,13 +125,15 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
 
   if (e.tipo === 'otro') add('aviso', 'tipo_otro', 'La factura no se ha clasificado en un tipo con factor de emisión: hay que decidir cómo se trata o excluirla con justificación.');
   if (typeof e.cantidad !== 'number' || !(e.cantidad >= 0)) add('error', 'cantidad', 'Falta una cantidad válida (no negativa).');
-  if (e.cantidad === 0) add('aviso', 'cantidad_cero', 'La cantidad es cero: confirme que no es un error de lectura.');
-  if (!e.unidad) add('error', 'unidad', 'Falta la unidad de la cantidad.');
+  // Un consumo cero es válido (p. ej. temporada cerrada): se puede confirmar y la unidad deja de importar
+  const cero = e.cantidad === 0;
+  if (cero) add('aviso', 'cantidad_cero', 'Consumo cero en el periodo: confirme que la factura no tiene consumo (p. ej. temporada cerrada) y que no es un error de lectura.');
+  if (!e.unidad && !cero) add('error', 'unidad', 'Falta la unidad de la cantidad.');
 
   // Unidad esperada según el tipo (el gas natural exige kWh PCS; con PCI o m3 hay que convertir con el dato de la factura)
   const u = norm(e.unidad);
   const esperadas = UNIDAD_ESPERADA[e.tipo];
-  if (u && esperadas.length && !esperadas.includes(u)) {
+  if (u && esperadas.length && !esperadas.includes(u) && !cero) {
     if (e.tipo === 'gas_natural' && (u === 'kwh' || u === 'kwh pci' || u === 'm3' || u === 'm³')) {
       add('error', 'unidad_gas', `La calculadora oficial usa kWh PCS y la factura indica «${e.unidad}»: en «Unidad del gas natural» elija si son PCS, PCI o m³ y se convertirá.`);
     } else {

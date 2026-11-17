@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, Leaf, ChevronRight } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
-import { evaluarCierre } from '../huella/cierre';
+import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { huellaService, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
-type Pestana = 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre';
+type Pestana = 'resumen' | 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre' | 'ajustes';
+export type RolHuella = 'consultor' | 'cliente';
 
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n: number, d = 0) => n.toLocaleString('es-ES', { maximumFractionDigits: d });
@@ -47,12 +48,13 @@ function fuentePorDefecto(e: ExtraccionFactura, f: ConjuntoFactores | null): str
   return opcionesFuente(f, cat).find((k) => k.toLowerCase().startsWith(p)) ?? '';
 }
 
-export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> = ({ onBack, currentUser }) => {
+export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol?: RolHuella }> = ({ onBack, currentUser, rol = 'consultor' }) => {
+  const esConsultor = rol === 'consultor';
   const [orgs, setOrgs] = useState<Organizacion[]>([]);
   const [orgId, setOrgId] = useState('');
   const [invs, setInvs] = useState<Inventario[]>([]);
   const [invId, setInvId] = useState('');
-  const [tab, setTab] = useState<Pestana>('centros');
+  const [tab, setTab] = useState<Pestana>('resumen');
   const [centros, setCentros] = useState<Centro[]>([]);
   const [invCentros, setInvCentros] = useState<InventarioCentro[]>([]);
   const [docs, setDocs] = useState<Documento[]>([]);
@@ -123,89 +125,206 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
     try { const i = await huellaService.crearInventario(orgId, a); setInvs([i, ...invs]); setInvId(i.id); } catch (e) { falla(e); }
   };
 
-  const pestanas: Array<[Pestana, string, React.ReactNode]> = [
-    ['centros', 'Centros', <Building2 size={15} key="c" />], ['facturas', 'Facturas', <FileText size={15} key="f" />],
-    ['actividad', 'Actividad', <ListChecks size={15} key="a" />], ['resultados', 'Resultados', <BarChart3 size={15} key="r" />], ['cierre', 'Cierre', <Lock size={15} key="k" />],
+  const pendientes = docs.filter((d) => d.estado === 'leido').length;
+  const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; solo?: 'consultor'; badge?: number }> = [
+    { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
+    { k: 'centros', nombre: 'Centros', icono: <Building2 size={17} />, solo: 'consultor' },
+    { k: 'facturas', nombre: esConsultor ? 'Facturas' : 'Mis facturas', icono: <FileText size={17} />, badge: esConsultor ? pendientes : 0 },
+    { k: 'actividad', nombre: 'Consumos', icono: <ListChecks size={17} /> },
+    { k: 'resultados', nombre: 'Resultados', icono: <BarChart3 size={17} /> },
+    { k: 'cierre', nombre: 'Cierre', icono: <Lock size={17} />, solo: 'consultor' },
+    { k: 'ajustes', nombre: 'Ajustes', icono: <Settings size={17} />, solo: 'consultor' },
   ];
+  const visibles = nav.filter((n) => !n.solo || esConsultor);
+  const titulos: Record<Pestana, [string, string]> = {
+    resumen: [esConsultor ? 'Resumen del inventario' : 'Su huella de carbono', esConsultor ? 'Dónde estás y qué falta para cerrar.' : 'Suba sus facturas y consulte sus resultados.'],
+    centros: ['Centros de trabajo', 'Datos de cada centro, su periodo operativo y estancias.'],
+    facturas: [esConsultor ? 'Facturas' : 'Mis facturas', 'Suba un bloque completo; se leen solas y usted las revisa.'],
+    actividad: ['Consumos', 'Evolución mensual y datos de actividad confirmados.'],
+    resultados: ['Resultados', 'Huella del inventario según el Registro balear.'],
+    cierre: ['Cierre del inventario', 'Comprobaciones, variaciones y cierre con registro.'],
+    ajustes: ['Ajustes técnicos', 'Factores de emisión y datos de la organización.'],
+  };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900">
-      <header className="bg-header shadow-lg">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center gap-4">
-          <button onClick={onBack} className="p-1.5 text-header-muted hover:text-white hover:bg-header-light rounded-lg" title="Volver"><ArrowLeft size={18} /></button>
-          <div>
-            <h1 className="text-lg font-bold text-white leading-none">Huella de carbono</h1>
-            <p className="text-[11px] text-header-muted mt-1">Inventario Categorías 1 y 2 · Registro balear (Decreto 48/2021) · ISO 14064-1</p>
+    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-900" style={{ background: '#F3F5F9' }}>
+      <aside className="md:w-60 flex-shrink-0 text-white flex flex-col" style={{ background: '#00093D' }}>
+        <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+          <button onClick={onBack} className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10" title="Volver al inicio" aria-label="Volver al inicio"><ArrowLeft size={17} /></button>
+          <div className="leading-tight">
+            <p className="text-sm font-bold flex items-center gap-1.5"><Leaf size={15} style={{ color: '#77D464' }} /> HS GREEN</p>
+            <p className="text-[10px] text-white/60">Huella de carbono</p>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-6 space-y-4">
-        {error && (
-          <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{error}</span>
-            <button onClick={() => setError('')} className="text-red-600" aria-label="Cerrar"><XCircle size={16} /></button>
-          </div>
-        )}
-
-        <div className={`${card} flex flex-wrap items-end gap-4`}>
-          <label className="flex-1 min-w-[220px] text-xs font-semibold text-slate-600">Organización
-            <div className="flex gap-2 mt-1">
-              <select className={input} value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organización">
+        <div className="mx-3 mb-3 rounded-xl p-2.5 space-y-2" style={{ background: 'rgba(255,255,255,0.10)' }}>
+          {esConsultor || orgs.length > 1 ? (
+            <div className="flex gap-1.5">
+              <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organización">
                 {orgs.length === 0 && <option value="">Sin organizaciones</option>}
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
               </select>
-              <button className={btnS} onClick={() => setModalOrg('editar')} disabled={!org} title="Editar organización"><Pencil size={14} /> Editar</button>
-              <button className={btnS} onClick={() => setModalOrg('nueva')}><Plus size={14} /> Nueva</button>
+              {esConsultor && <button className="px-2 rounded-lg bg-white/15 hover:bg-white/25" onClick={() => setModalOrg('nueva')} title="Nueva organización" aria-label="Nueva organización"><Plus size={14} /></button>}
             </div>
-          </label>
-          <label className="w-56 text-xs font-semibold text-slate-600">Inventario (año)
-            <div className="flex gap-2 mt-1">
-              <select className={input} value={invId} onChange={(e) => setInvId(e.target.value)} disabled={!orgId} aria-label="Inventario">
-                {invs.length === 0 && <option value="">Sin inventarios</option>}
-                {invs.map((i) => <option key={i.id} value={i.id}>{i.anio} · {i.estado}</option>)}
-              </select>
-              <button className={btnS} onClick={nuevoInv} disabled={!orgId}><Plus size={14} /></button>
-            </div>
-          </label>
+          ) : <p className="text-sm font-bold px-1">{org?.nombre ?? '—'}</p>}
+          <div className="flex gap-1.5">
+            <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={invId} onChange={(e) => setInvId(e.target.value)} disabled={!orgId} aria-label="Inventario">
+              {invs.length === 0 && <option value="">Sin inventarios</option>}
+              {invs.map((i) => <option key={i.id} value={i.id}>Año {i.anio} · {i.estado}</option>)}
+            </select>
+            {esConsultor && <button className="px-2 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-40" onClick={nuevoInv} disabled={!orgId} title="Nuevo inventario" aria-label="Nuevo inventario"><Plus size={14} /></button>}
+          </div>
         </div>
 
-        {inv && elegido && (
-          <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />
-        )}
+        <nav className="flex md:flex-col gap-0.5 px-2 pb-3 overflow-x-auto md:overflow-visible" role="tablist" aria-label="Secciones">
+          {visibles.map((n) => (
+            <button key={n.k} role="tab" aria-selected={tab === n.k} onClick={() => setTab(n.k)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors ${tab === n.k ? 'text-white font-semibold' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}
+              style={tab === n.k ? { background: '#0002C9' } : undefined}>
+              {n.icono} <span>{n.nombre}</span>
+              {!!n.badge && <span className="ml-auto text-[10px] font-bold px-1.5 rounded-full text-white" style={{ background: '#F9416D' }}>{n.badge}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="hidden md:block mt-auto px-4 py-3 text-[11px] text-white/55 border-t border-white/10">{currentUser}</div>
+      </aside>
 
-        {org && (
-          <>
-            <nav className="flex gap-1 border-b border-slate-300" role="tablist">
-              {pestanas.map(([k, nombre, icono]) => (
-                <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px ${tab === k ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
-                  {icono} {nombre}
-                </button>
-              ))}
-            </nav>
+      <main className="flex-1 min-w-0 p-4 md:p-8">
+        <div className="max-w-5xl space-y-4">
+          <div>
+            <h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1>
+            <p className="text-sm text-slate-600">{titulos[tab][1]}</p>
+          </div>
+          {error && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{error}</span>
+              <button onClick={() => setError('')} className="text-red-600" aria-label="Cerrar"><XCircle size={16} /></button>
+            </div>
+          )}
 
-            {tab === 'centros' && (
-              <PanelCentros orgId={orgId} onEditar={setCentroEditar} centros={centros} setCentros={setCentros} inv={inv} invCentros={invCentros} abierto={!!abierto} onGuardado={recargarInv} falla={falla} />
-            )}
-            {tab !== 'centros' && !inv && <div className={`${card} text-sm text-slate-600`}>Cree un inventario (año) para continuar.</div>}
-            {tab === 'facturas' && inv && (
-              <PanelFacturas org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
-            )}
-            {tab === 'actividad' && inv && (
-              <PanelActividad inv={inv} abierto={!!abierto} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
-            )}
-            {tab === 'cierre' && inv && (
-              <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
-                onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
-            )}
-            {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
-          </>
-        )}
-        {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} />}
-        {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} />}
-        {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>Todavía no hay organizaciones. Cree la primera con «Nueva».</div>}
+          {org && (
+            <>
+              {tab === 'centros' && esConsultor && (
+                <PanelCentros orgId={orgId} onEditar={setCentroEditar} centros={centros} setCentros={setCentros} inv={inv} invCentros={invCentros} abierto={!!abierto} onGuardado={recargarInv} falla={falla} />
+              )}
+              {tab !== 'centros' && !inv && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Cree un inventario (año) con el botón + del menú para continuar.' : 'Todavía no hay un inventario abierto. Su consultor lo creará.'}</div>}
+              {tab === 'resumen' && inv && (
+                <PanelResumen rol={rol} inv={inv} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} ir={setTab} />
+              )}
+              {tab === 'facturas' && inv && (
+                <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
+              )}
+              {tab === 'actividad' && inv && (
+                <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
+              )}
+              {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
+              {tab === 'cierre' && inv && esConsultor && (
+                <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                  onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
+              )}
+              {tab === 'ajustes' && esConsultor && (
+                <div className="space-y-4">
+                  {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />}
+                  <div className={card}>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1"><h2 className="text-sm font-bold text-slate-800">Organización</h2><p className="text-xs text-slate-600">{org.nombre}{org.cif ? ` · ${org.cif}` : ''}</p></div>
+                      <button className={btnS} onClick={() => setModalOrg('editar')}><Pencil size={14} /> Editar datos</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} />}
+          {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} />}
+          {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Todavía no hay organizaciones. Cree la primera con el botón + del menú.' : 'Todavía no tiene acceso a ninguna organización.'}</div>}
+        </div>
       </main>
+    </div>
+  );
+};
+
+// ───────────────────────────── Resumen (pantalla de inicio) ─────────────────────────────
+const PanelResumen: React.FC<{
+  rol: RolHuella; inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null; ir: (t: Pestana) => void;
+}> = ({ rol, inv, centros, invCentros, docs, actividad, factores, ir }) => {
+  const esConsultor = rol === 'consultor';
+  const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
+  const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
+  const porRevisar = docs.filter((d) => d.estado === 'leido').length;
+  const sinLeer = docs.filter((d) => d.estado === 'subido').length;
+  const huecos = huecosMensuales(docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta })), inv.anio);
+  const sinIndice = centros.filter((c) => !(Number(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad) > 0));
+  const confirmadas = actividad.filter((a) => a.estado === 'confirmada').length;
+  const cerrado = inv.estado !== 'borrador';
+
+  type Paso = { nombre: string; estado: 'ok' | 'ahora' | 'espera' };
+  const pasos: Paso[] = esConsultor ? [
+    { nombre: 'Centros', estado: centros.length > 0 ? 'ok' : 'ahora' },
+    { nombre: 'Facturas', estado: docs.length > 0 && sinLeer === 0 ? 'ok' : centros.length > 0 ? 'ahora' : 'espera' },
+    { nombre: 'Revisión', estado: confirmadas > 0 && porRevisar === 0 ? 'ok' : docs.length > 0 ? 'ahora' : 'espera' },
+    { nombre: 'Resultados', estado: confirmadas > 0 ? 'ok' : 'espera' },
+    { nombre: 'Cierre', estado: cerrado ? 'ok' : confirmadas > 0 && porRevisar === 0 ? 'ahora' : 'espera' },
+  ] : [
+    { nombre: 'Subir facturas', estado: docs.length > 0 ? 'ok' : 'ahora' },
+    { nombre: 'Revisión por su consultor', estado: confirmadas > 0 && porRevisar === 0 ? 'ok' : docs.length > 0 ? 'ahora' : 'espera' },
+    { nombre: 'Resultados', estado: confirmadas > 0 ? 'ok' : 'espera' },
+  ];
+
+  const pendientes: Array<{ icono: React.ReactNode; texto: string; boton: string; destino: Pestana; nivel: 'aviso' | 'ok' }> = [];
+  if (esConsultor && centros.length === 0) pendientes.push({ icono: <Building2 size={18} />, texto: 'Añada el primer centro de trabajo.', boton: 'Añadir', destino: 'centros', nivel: 'aviso' });
+  if (docs.length === 0 && (centros.length > 0 || !esConsultor)) pendientes.push({ icono: <Upload size={18} />, texto: 'Todavía no hay facturas: suba las del año.', boton: 'Subir', destino: 'facturas', nivel: 'aviso' });
+  if (sinLeer > 0) pendientes.push({ icono: <Loader2 size={18} />, texto: `${sinLeer} factura(s) subidas sin leer.`, boton: 'Ver', destino: 'facturas', nivel: 'aviso' });
+  if (porRevisar > 0) pendientes.push({ icono: <AlertTriangle size={18} />, texto: esConsultor ? `${porRevisar} factura(s) esperan su revisión.` : `${porRevisar} factura(s) en revisión por su consultor.`, boton: esConsultor ? 'Revisar' : 'Ver', destino: 'facturas', nivel: 'aviso' });
+  for (const h of huecos.slice(0, 3)) pendientes.push({ icono: <FileText size={18} />, texto: `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, boton: 'Subir', destino: 'facturas', nivel: 'aviso' });
+  if (esConsultor && sinIndice.length > 0 && confirmadas > 0) pendientes.push({ icono: <Building2 size={18} />, texto: `Indique las estancias de: ${sinIndice.map((c) => c.nombre).join(', ')}.`, boton: 'Indicar', destino: 'centros', nivel: 'aviso' });
+  if (esConsultor && !inv.conjunto_factores && confirmadas > 0) pendientes.push({ icono: <Settings size={18} />, texto: 'Confirme la versión de factores de emisión del inventario.', boton: 'Revisar', destino: 'ajustes', nivel: 'aviso' });
+  if (esConsultor && !cerrado && confirmadas > 0 && porRevisar === 0 && pendientes.length === 0) pendientes.push({ icono: <Lock size={18} />, texto: 'Todo está al día: puede pasar a las comprobaciones de cierre.', boton: 'Cierre', destino: 'cierre', nivel: 'ok' });
+  if (cerrado) pendientes.push({ icono: <Lock size={18} />, texto: `Inventario ${inv.estado}. Sus datos están bloqueados.`, boton: 'Ver', destino: esConsultor ? 'cierre' : 'resultados', nivel: 'ok' });
+
+  const kpi = (titulo: string, valor: string, sub: string) => (
+    <div className={card}><p className="text-xs font-semibold text-slate-600">{titulo}</p><p className="text-3xl font-extrabold text-header mt-1 tabular-nums">{valor}</p><p className="text-[11px] text-slate-500">{sub}</p></div>
+  );
+  return (
+    <div className="space-y-4">
+      <div className={`${card} flex gap-2`} aria-label="Progreso">
+        {pasos.map((p, i) => (
+          <div key={p.nombre} className="flex-1 text-center">
+            <div className={`w-8 h-8 mx-auto rounded-full flex items-center justify-center text-sm font-bold border ${p.estado === 'ok' ? 'text-white border-transparent' : p.estado === 'ahora' ? 'text-white border-transparent' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
+              style={p.estado === 'ok' ? { background: '#00BF46' } : p.estado === 'ahora' ? { background: '#0002C9' } : undefined}>
+              {p.estado === 'ok' ? <CheckCircle2 size={16} /> : i + 1}
+            </div>
+            <p className={`text-[11px] mt-1 ${p.estado === 'ahora' ? 'font-bold text-slate-900' : 'text-slate-600'}`}>{p.nombre}</p>
+          </div>
+        ))}
+      </div>
+
+      {calculo && confirmadas > 0 ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {kpi('Total', t(calculo.totales.kgCO2eTotal), 't CO₂e')}
+          {kpi('Emisiones directas', t(calculo.totales.kgCO2eAlcance1), 't CO₂e · Alcance 1')}
+          {kpi('Electricidad', t(calculo.totales.kgCO2eAlcance2), 't CO₂e · Alcance 2')}
+          {kpi('Por estancia', indice > 0 ? (ratio(calculo.totales.kgCO2eTotal, indice) * 1000).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—', indice > 0 ? 'kg CO₂e por estancia' : 'Falta indicar las estancias')}
+        </div>
+      ) : <div className={`${card} text-sm text-slate-600`}>Los resultados aparecerán aquí en cuanto haya facturas revisadas.</div>}
+
+      <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={actividad} fuentesDisp={[]} contadoresDisp={[]}
+        fCentro="" setFCentro={() => {}} fFuente="" setFFuente={() => {}} fContador="" setFContador={() => {}} metrica="co2e" setMetrica={() => {}} compacto />
+
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-1">{esConsultor ? 'Pendiente de ti' : 'Qué falta'}</h2>
+        {pendientes.length === 0 ? <p className="text-sm text-slate-600 py-2">No hay nada pendiente.</p> : (
+          <ul className="divide-y divide-slate-100">
+            {pendientes.map((x, k) => (
+              <li key={k} className="flex items-center gap-3 py-2.5 text-sm">
+                <span className={x.nivel === 'ok' ? 'text-green-700' : 'text-amber-600'}>{x.icono}</span>
+                <span className="flex-1 text-slate-800">{x.texto}</span>
+                <button className={btnS} onClick={() => ir(x.destino)}>{x.boton} <ChevronRight size={13} /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 };
@@ -452,9 +571,9 @@ async function confirmarDocumento(d: Documento, e: ExtraccionFactura, fuente: st
 }
 
 const PanelFacturas: React.FC<{
-  org: Organizacion; inv: Inventario; abierto: boolean; centros: Centro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  rol: RolHuella; org: Organizacion; inv: Inventario; abierto: boolean; centros: Centro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   onCambio: () => void; falla: (e: unknown) => void; cargando: boolean; setCargando: (b: boolean) => void; currentUser: string;
-}> = ({ org, inv, abierto, centros, docs, factores, onCambio, falla, cargando, setCargando }) => {
+}> = ({ rol, org, inv, abierto, centros, docs, factores, onCambio, falla, cargando, setCargando }) => {
   const [centroId, setCentroId] = useState('');
   const [tipo, setTipo] = useState<TipoFactura | ''>('');
   const [revisando, setRevisando] = useState<string | null>(null);
@@ -561,7 +680,10 @@ const PanelFacturas: React.FC<{
         )}
       </div>
 
-      {pendientes.length > 0 && (
+      {pendientes.length > 0 && rol === 'cliente' && (
+        <div className={`${card} text-sm text-slate-700`}><Eye size={15} className="inline mr-2 text-slate-500" />{pendientes.length} factura(s) pendientes de revisión por su consultor.</div>
+      )}
+      {pendientes.length > 0 && rol === 'consultor' && (
         <div className={card}>
           <div className="flex flex-wrap items-center gap-3 mb-3">
             <h2 className="text-sm font-bold text-slate-800 flex-1">Pendientes de revisar ({pendientes.length})</h2>
@@ -737,7 +859,7 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
     <div className="space-y-4">
       <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={filtradas} fuentesDisp={fuentesDisp} contadoresDisp={contadoresDisp}
         fCentro={fCentro} setFCentro={setFCentro} fFuente={fFuente} setFFuente={setFFuente} fContador={fContador} setFContador={setFContador} metrica={metrica} setMetrica={setMetrica} />
-      <div className={card}>
+      {abierto && (<div className={card}>
         <h2 className="text-sm font-bold text-slate-800 mb-1">Añadir dato a mano</h2>
         <p className="text-xs text-slate-600 mb-3">Para datos sin factura legible (p. ej. un contador). Es obligatorio indicar el origen del dato: queda como evidencia para el verificador.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -751,7 +873,7 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
           <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-3">Origen del dato (obligatorio)<input className={`${input} mt-1`} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej.: lectura de contador del 31/12, albarán 123…" /></label>
           <div className="flex items-end"><button className={btnP} onClick={anadir} disabled={!abierto || !valido}><Plus size={14} /> Añadir</button></div>
         </div>
-      </div>
+      </div>)}
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800 mb-3">Datos de actividad confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
         {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos. Suba facturas o añada un dato a mano.</p> : (
@@ -784,8 +906,8 @@ const COLORES = ['#00BF46', '#022ADA', '#EA980F', '#24CBF5', '#C234D6', '#F9416D
 const GraficoActividad: React.FC<{
   inv: Inventario; factores: ConjuntoFactores | null; centros: Centro[]; actividad: Actividad[]; filtradas: Actividad[]; fuentesDisp: string[]; contadoresDisp: string[];
   fCentro: string; setFCentro: (v: string) => void; fFuente: string; setFFuente: (v: string) => void; fContador: string; setFContador: (v: string) => void;
-  metrica: 'co2e' | 'consumo'; setMetrica: (m: 'co2e' | 'consumo') => void;
-}> = ({ inv, factores, centros, actividad, filtradas, fuentesDisp, contadoresDisp, fCentro, setFCentro, fFuente, setFFuente, fContador, setFContador, metrica, setMetrica }) => {
+  metrica: 'co2e' | 'consumo'; setMetrica: (m: 'co2e' | 'consumo') => void; compacto?: boolean;
+}> = ({ inv, factores, centros, actividad, filtradas, fuentesDisp, contadoresDisp, fCentro, setFCentro, fFuente, setFFuente, fContador, setFContador, metrica, setMetrica, compacto }) => {
   const consumoPosible = !!fFuente; // el consumo solo tiene sentido en una única unidad
   const m = consumoPosible ? metrica : 'co2e';
   const unidad = fFuente === 'Electricidad' ? 'kWh' : factores?.unidades[fFuente] ?? (factores?.pcaRefrigerantes[fFuente] !== undefined ? 'kg' : 'unidad del factor');
@@ -819,6 +941,7 @@ const GraficoActividad: React.FC<{
     <div className={card}>
       <div className="flex flex-wrap items-end gap-3 mb-3">
         <h2 className="text-sm font-bold text-slate-800 flex-1 min-w-[180px]">Evolución mensual · {inv.anio}</h2>
+        {!compacto && (<>
         <label className="text-[11px] font-semibold text-slate-600">Centro
           <select className={`${input} mt-1`} value={fCentro} onChange={(e) => setFCentro(e.target.value)} aria-label="Filtrar por centro"><option value="">Todos</option>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
         </label>
@@ -834,6 +957,7 @@ const GraficoActividad: React.FC<{
           <button className={`px-3 py-2 ${m === 'co2e' ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'}`} onClick={() => setMetrica('co2e')}>t CO₂e</button>
           <button className={`px-3 py-2 ${m === 'consumo' ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'} disabled:opacity-40`} disabled={!consumoPosible} onClick={() => setMetrica('consumo')} title={consumoPosible ? '' : 'Elija una fuente para ver su consumo en su unidad'}>Consumo{consumoPosible ? ` (${unidad})` : ''}</button>
         </div>
+        </>)}
       </div>
       {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos de actividad para representar.</p>
         : !hayDatos ? <p className="text-sm text-slate-600">No hay datos con periodo para estos filtros.</p> : (

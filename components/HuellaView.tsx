@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
@@ -8,7 +8,7 @@ import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
-import { huellaService, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
+import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
@@ -60,6 +60,10 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const [invs, setInvs] = useState<Inventario[]>([]);
   const [invId, setInvId] = useState('');
   const [tab, setTab] = useState<Pestana>('resumen');
+  const [vista, setVista] = useState<'biblioteca' | 'calculo'>('biblioteca');
+  const [biblio, setBiblio] = useState<FilaBiblioteca[] | null>(null);
+  const [nuevoCalculo, setNuevoCalculo] = useState(false);
+  const [invInicial, setInvInicial] = useState('');
   const [centros, setCentros] = useState<Centro[]>([]);
   const [invCentros, setInvCentros] = useState<InventarioCentro[]>([]);
   const [docs, setDocs] = useState<Documento[]>([]);
@@ -71,16 +75,19 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const [modalOrg, setModalOrg] = useState<'nueva' | 'editar' | null>(null);
   const [centroEditar, setCentroEditar] = useState<Centro | null>(null);
 
-  const org = orgs.find((o) => o.id === orgId);
+  const org = orgs.find((o) => o.id === orgId) ?? biblio?.find((f) => f.organizacion.id === orgId)?.organizacion;
   const inv = invs.find((i) => i.id === invId);
   const abierto = inv?.estado === 'borrador';
   const falla = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
-  useEffect(() => { huellaService.organizaciones().then((o) => { setOrgs(o); if (o[0]) setOrgId(o[0].id); }).catch(falla); }, []);
+  const cargarBiblioteca = useCallback(() => { huellaService.biblioteca().then(setBiblio).catch(falla); huellaService.organizaciones().then(setOrgs).catch(falla); }, []); // eslint-disable-line
+  useEffect(() => { cargarBiblioteca(); }, [cargarBiblioteca]);
+  const abrir = (oId: string, iId: string) => { setInvInicial(iId); setOrgId(oId); if (oId === orgId) setInvId(iId); setTab('resumen'); setVista('calculo'); };
+  const volverABiblioteca = () => { setVista('biblioteca'); cargarBiblioteca(); };
   useEffect(() => {
     setInvs([]); setInvId(''); setCentros([]);
     if (!orgId) return;
-    huellaService.inventarios(orgId).then((i) => { setInvs(i); if (i[0]) setInvId(i[0].id); }).catch(falla);
+    huellaService.inventarios(orgId).then((i) => { setInvs(i); setInvId(i.find((x) => x.id === invInicial)?.id ?? i[0]?.id ?? ''); }).catch(falla);
     huellaService.centros(orgId).then(setCentros).catch(falla);
   }, [orgId]);
 
@@ -161,23 +168,33 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     ajustes: ['Ajustes técnicos', 'Factores de emisión y datos de la organización.'],
   };
 
+  if (vista === 'biblioteca') {
+    return (
+      <div className="min-h-screen bg-slate-100 font-sans">
+        {error && <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] max-w-xl flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm shadow-lg" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{error}</span><button onClick={() => setError('')} aria-label="Cerrar"><XCircle size={16} /></button></div>}
+        <BibliotecaHuella filas={biblio} esConsultor={esConsultor} onAbrir={abrir} onNuevo={() => setNuevoCalculo(true)} onCerrar={onBack}
+          onBorrar={async (f) => { try { await huellaService.borrarInventario(f.inventario.id); cargarBiblioteca(); } catch (e) { falla(e); } }} />
+        {nuevoCalculo && <NuevoCalculo orgs={orgs} usuario={currentUser} onCerrar={() => setNuevoCalculo(false)} falla={falla} onCreado={(oId, iId) => { setNuevoCalculo(false); cargarBiblioteca(); abrir(oId, iId); }} />}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
       <aside className="md:w-60 flex-shrink-0 flex flex-col md:border-r border-white/70" style={{ background: 'rgba(255,255,255,.66)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', backdropFilter: 'blur(14px) saturate(1.2)', color: '#00093D' }}>
         <div className="flex items-center gap-2 px-3 pt-4 pb-2">
-          <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-white/70" style={{ color: '#00093D' }} title="Volver al inicio" aria-label="Volver al inicio"><ArrowLeft size={17} /></button>
+          <button onClick={volverABiblioteca} className="p-1.5 rounded-lg hover:bg-white/70" style={{ color: '#00093D' }} title="Volver a la biblioteca de cálculos" aria-label="Volver a la biblioteca de cálculos"><ArrowLeft size={17} /></button>
           <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-10 w-auto object-contain" />
         </div>
         <p className="px-4 pb-3 text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'rgba(0,9,61,.6)' }}>Huella de carbono</p>
 
         <div className="mx-3 mb-3 rounded-xl p-2.5 space-y-2" style={{ background: 'rgba(0,9,61,0.06)' }}>
-          {esConsultor || orgs.length > 1 ? (
+          {orgs.length > 1 ? (
             <div className="flex gap-1.5">
               <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organización">
                 {orgs.length === 0 && <option value="">Sin organizaciones</option>}
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
               </select>
-              {esConsultor && <button className="px-2 rounded-lg hover:bg-white/70" style={{ background: 'rgba(0,9,61,.10)', color: '#00093D' }} onClick={() => setModalOrg('nueva')} title="Nueva organización" aria-label="Nueva organización"><Plus size={14} /></button>}
             </div>
           ) : <p className="text-sm font-bold px-1">{org?.nombre ?? '—'}</p>}
           <div className="flex gap-1.5">
@@ -185,7 +202,6 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {invs.length === 0 && <option value="">Sin inventarios</option>}
               {invs.map((i) => <option key={i.id} value={i.id}>Año {i.anio} · {i.estado}</option>)}
             </select>
-            {esConsultor && <button className="px-2 rounded-lg hover:bg-white/70 disabled:opacity-40" style={{ background: 'rgba(0,9,61,.10)', color: '#00093D' }} onClick={nuevoInv} disabled={!orgId} title="Nuevo inventario" aria-label="Nuevo inventario"><Plus size={14} /></button>}
           </div>
         </div>
 
@@ -272,6 +288,190 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
         </div>
       </main>
     </div>
+  );
+};
+
+// ───────────────────────────── Biblioteca de cálculos (pantalla de inicio) ─────────────────────────────
+const ESTADO_CALCULO: Record<string, { texto: string; chip: string; avatar: string }> = {
+  borrador: { texto: 'Borrador', chip: 'bg-amber-100 text-amber-800', avatar: 'bg-green-100 text-green-800' },
+  revision: { texto: 'En revisión', chip: 'bg-blue-100 text-blue-800', avatar: 'bg-blue-100 text-blue-800' },
+  cerrado: { texto: 'Cerrado', chip: 'bg-slate-200 text-slate-700', avatar: 'bg-slate-200 text-slate-700' },
+  verificado: { texto: 'Verificado', chip: 'bg-green-100 text-green-800', avatar: 'bg-blue-100 text-blue-800' },
+};
+const corto = (email?: string | null) => (email ? email.split('@')[0] : '—');
+const fechaCorta = (iso?: string) => (iso ? new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—');
+
+const BibliotecaHuella: React.FC<{
+  filas: FilaBiblioteca[] | null; esConsultor: boolean; onAbrir: (orgId: string, invId: string) => void; onNuevo: () => void; onCerrar: () => void; onBorrar: (f: FilaBiblioteca) => void;
+}> = ({ filas, esConsultor, onAbrir, onNuevo, onCerrar, onBorrar }) => {
+  const [q, setQ] = useState('');
+  const [consultor, setConsultor] = useState('');
+  const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const consultores = useMemo(() => Array.from(new Set((filas ?? []).map((f) => corto(f.organizacion.consultor_email)).filter((c) => c !== '—'))).sort(), [filas]);
+  const visibles = (filas ?? []).filter((f) => {
+    const t = norm(`${f.organizacion.nombre} ${f.organizacion.suite_cadena ?? ''} ${f.organizacion.cif ?? ''} ${f.inventario.anio}`);
+    return (!q.trim() || q.trim().split(/\s+/).every((w) => t.includes(norm(w)))) && (!consultor || corto(f.organizacion.consultor_email) === consultor);
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4">
+      <div className="no-glass bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden border border-slate-200" role="dialog" aria-label="Biblioteca de cálculos de huella">
+        <div className="bg-header px-6 py-4 flex items-center justify-between flex-shrink-0" style={{ background: '#00093D' }}>
+          <div className="flex items-center gap-3">
+            <Database size={20} className="text-white/70" />
+            <div>
+              <h3 className="text-base font-semibold text-white leading-none">Biblioteca de cálculos de huella</h3>
+              <p className="text-xs text-white/60 mt-0.5">{filas === null ? 'Cargando…' : `${filas.length} cálculo${filas.length === 1 ? '' : 's'} disponible${filas.length === 1 ? '' : 's'}`}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {esConsultor && <button onClick={onNuevo} className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg transition-colors"><Plus size={14} /> Nuevo cálculo</button>}
+            <button onClick={onCerrar} className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded-lg transition-colors" aria-label="Cerrar la biblioteca"><X size={18} /></button>
+          </div>
+        </div>
+
+        <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3 flex-shrink-0">
+          <div className="flex-1 relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input className={`${input} pl-9`} placeholder="Buscar por organización, cadena, CIF o año…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar cálculos" />
+          </div>
+          <select className={`${input.replace('w-full', '')} w-52 shrink-0`} value={consultor} onChange={(e) => setConsultor(e.target.value)} aria-label="Filtrar por consultor"><option value="">Todos los consultores</option>{consultores.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+        </div>
+
+        <div className="grid grid-cols-[1fr_130px_90px_80px] gap-2 px-6 py-2 text-[11px] font-bold tracking-wide text-slate-600 border-b border-slate-200 bg-slate-50 flex-shrink-0">
+          <span>CÁLCULO</span><span>CONSULTOR</span><span>MODIFICADO</span><span className="text-right">ACCIONES</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {filas === null ? <p className="p-10 text-center text-sm text-slate-500"><Loader2 size={16} className="inline animate-spin mr-2" />Cargando cálculos…</p>
+            : visibles.length === 0 ? (
+              <div className="p-12 text-center text-slate-500">
+                <Database size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-semibold text-slate-700">{filas.length === 0 ? 'Todavía no hay cálculos' : 'Ningún cálculo coincide con la búsqueda'}</p>
+                {filas.length === 0 && esConsultor && <p className="text-xs mt-1">Empiece con «Nuevo cálculo»: busque la cadena o el hotel en HS Suite y elija el año.</p>}
+              </div>
+            ) : visibles.map((f) => {
+              const e = ESTADO_CALCULO[f.inventario.estado] ?? ESTADO_CALCULO.borrador;
+              return (
+                <div key={f.inventario.id} className="grid grid-cols-[1fr_130px_90px_80px] gap-2 items-center px-6 py-3 border-b border-slate-100 hover:bg-green-50/60 cursor-pointer" onClick={() => onAbrir(f.organizacion.id, f.inventario.id)}
+                  role="button" tabIndex={0} onKeyDown={(ev) => { if (ev.key === 'Enter') onAbrir(f.organizacion.id, f.inventario.id); }}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold shrink-0 ${e.avatar}`}>{f.organizacion.nombre.trim().charAt(0).toUpperCase()}</div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate">{f.organizacion.nombre}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{f.inventario.anio}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${e.chip}`}>{e.texto}</span>
+                        <span className="text-[11px] text-slate-500 truncate">{f.centros} centro{f.centros === 1 ? '' : 's'}{f.organizacion.suite_cadena ? ` · ${f.organizacion.suite_cadena}` : ''}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-sm text-slate-700 truncate">{corto(f.organizacion.consultor_email)}</span>
+                  <span className="text-sm text-slate-700 tabular-nums">{fechaCorta(f.inventario.updated_at)}</span>
+                  <div className="flex items-center justify-end gap-1" onClick={(ev) => ev.stopPropagation()}>
+                    {esConsultor && f.inventario.estado === 'borrador' && (
+                      <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label={`Eliminar el cálculo ${f.organizacion.nombre} ${f.inventario.anio}`}
+                        onClick={() => { if (confirm(`Va a eliminar el cálculo ${f.inventario.anio} de «${f.organizacion.nombre}» con todas sus facturas y datos. No se puede deshacer. ¿Continuar?`)) onBorrar(f); }}><Trash2 size={16} /></button>
+                    )}
+                    <button className="p-1.5 text-slate-600 hover:text-slate-900" aria-label="Abrir el cálculo" onClick={() => onAbrir(f.organizacion.id, f.inventario.id)}><ChevronRight size={18} /></button>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+        <div className="px-6 py-2.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-600 flex-shrink-0">{filas?.length ?? 0} cálculos en la biblioteca · Haga clic en un cálculo para abrirlo</div>
+      </div>
+    </div>
+  );
+};
+
+// ───────────────────────────── Asistente «Nuevo cálculo» ─────────────────────────────
+const NuevoCalculo: React.FC<{
+  orgs: Organizacion[]; usuario: string; onCerrar: () => void; falla: (e: unknown) => void; onCreado: (orgId: string, invId: string) => void;
+}> = ({ orgs, usuario, onCerrar, falla, onCreado }) => {
+  const anioDefecto = new Date().getFullYear() - 2; // el Registro balear declara el año N-2
+  const [hoteles, setHoteles] = useState<HotelSuite[]>([]);
+  const [orgSel, setOrgSel] = useState('nueva');
+  const [nombre, setNombre] = useState('');
+  const [anio, setAnio] = useState(anioDefecto);
+  const [creando, setCreando] = useState(false);
+  const cadena = useMemo(() => { const c = new Set(hoteles.map((h) => h.cadena_hotelera).filter(Boolean)); return c.size === 1 ? [...c][0] : null; }, [hoteles]);
+  const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+  // Al elegir hoteles se propone el nombre y, si ya existe una organización de esa cadena o con ese nombre, se sugiere usarla.
+  const proponer = (lista: HotelSuite[]) => {
+    if (lista.length === 0) return;
+    const o = organizacionDesdeHotel(lista[0]);
+    setNombre((n) => n || o.nombre);
+    const existente = orgs.find((x) => (o.suite_cadena && x.suite_cadena === o.suite_cadena) || norm(x.nombre) === norm(o.nombre));
+    if (existente) setOrgSel((s) => (s === 'nueva' ? existente.id : s));
+  };
+  const crear = async () => {
+    setCreando(true);
+    try {
+      let orgId = orgSel;
+      if (orgSel === 'nueva') {
+        const base = hoteles[0] ? organizacionDesdeHotel(hoteles[0]) : null;
+        const o = await huellaService.crearOrganizacion({ nombre: nombre.trim(), cif: base?.cif ?? null, direccion: hoteles.length === 1 ? base?.direccion ?? null : null, consultor_email: usuario, suite_cadena: cadena ?? base?.suite_cadena ?? null });
+        orgId = o.id;
+      }
+      // Centros: solo los hoteles que aún no están en la organización
+      const existentes = new Set((await huellaService.centros(orgId)).map((c) => c.suite_hotel_id).filter(Boolean) as string[]);
+      const fallos: string[] = [];
+      for (const h of hoteles.filter((x) => !existentes.has(x.id))) {
+        try { await huellaService.crearCentro({ organizacion_id: orgId, ...centroDesdeHotel(h), suite_actualizado: new Date().toISOString() }); } catch (e) { fallos.push(`${h.nombre_hotel}: ${e instanceof Error ? e.message : e}`); }
+      }
+      // Inventario del año: si ya existe se abre el existente
+      const invs = await huellaService.inventarios(orgId);
+      const inv = invs.find((i) => i.anio === anio) ?? await huellaService.crearInventario(orgId, anio);
+      if (fallos.length) falla(`No se pudieron añadir ${fallos.length} centro(s):\n${fallos.join('\n')}`);
+      onCreado(orgId, inv.id);
+    } catch (e) { falla(e); setCreando(false); }
+  };
+  const valido = (orgSel !== 'nueva' || nombre.trim().length > 1) && anio >= 2007 && anio <= 2100;
+  const existeAnio = orgSel !== 'nueva' ? 'Si el año ya tiene cálculo, se abrirá el existente.' : '';
+  return (
+    <Modal titulo="Nuevo cálculo de huella" onCerrar={onCerrar}>
+      <div className="space-y-4">
+        <div className="rounded-xl p-3" style={{ background: '#F4F7FA' }}>
+          <p className="text-xs font-semibold text-slate-700 mb-1">1. Elija la cadena o los hoteles en HS Suite</p>
+          <p className="text-[11px] text-slate-600 mb-2">Cada hotel pasa a ser un centro de trabajo con su dirección, municipio, isla y unidades.</p>
+          <BuscadorHoteles textoBoton="Añadir" placeholder="Busque el hotel, la cadena o el titular" vinculados={new Set(hoteles.map((h) => h.id))}
+            onElegir={(h) => { const l = hoteles.some((x) => x.id === h.id) ? hoteles : [...hoteles, h]; setHoteles(l); proponer(l); }}
+            onCadena={async (c) => {
+              try {
+                const todos = (await huellaService.buscarHoteles({ cadena: c, limite: 200 })).filter((h) => h.activo !== false);
+                const l = [...hoteles, ...todos.filter((h) => !hoteles.some((x) => x.id === h.id))]; setHoteles(l); proponer(l);
+              } catch (e) { falla(e); }
+            }} />
+          {hoteles.length > 0 && (
+            <ul className="mt-3 divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-36 overflow-auto">
+              {hoteles.map((h) => (
+                <li key={h.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
+                  <Building2 size={13} className="text-slate-500" />
+                  <span className="flex-1 min-w-0 truncate"><strong>{h.nombre_hotel}</strong> · {[h.municipio, h.isla].filter(Boolean).join(' · ')}</span>
+                  <button className="p-1 text-slate-500 hover:text-red-600" aria-label={`Quitar ${h.nombre_hotel}`} onClick={() => setHoteles((l) => l.filter((x) => x.id !== h.id))}><XCircle size={14} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Campo etiqueta="2. Organización" ancho>
+            <select className={input} value={orgSel} onChange={(e) => setOrgSel(e.target.value)} aria-label="Organización del cálculo">
+              <option value="nueva">Crear una organización nueva</option>
+              {orgs.map((o) => <option key={o.id} value={o.id}>Usar «{o.nombre}»</option>)}
+            </select>
+          </Campo>
+          {orgSel === 'nueva' && <Campo etiqueta="Nombre de la organización *" ancho><input className={input} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Cadena, titular o nombre del hotel" /></Campo>}
+          <Campo etiqueta="3. Año del cálculo"><input type="number" min={2007} max={2100} className={input} value={anio} onChange={(e) => setAnio(Number(e.target.value))} aria-label="Año del cálculo" /></Campo>
+          <p className="text-[11px] text-slate-500 self-end pb-2">{existeAnio || 'El Registro balear declara el año N-2.'}</p>
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button className={btnS} onClick={onCerrar}>Cancelar</button>
+        <button className={btnP} onClick={crear} disabled={!valido || creando}>{creando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Crear y abrir</button>
+      </div>
+    </Modal>
   );
 };
 

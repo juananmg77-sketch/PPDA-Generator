@@ -12,10 +12,11 @@ export interface CierreDatos {
   resumen?: { kgCO2eAlcance1: number; kgCO2eAlcance2: number; kgCO2eTotal: number; indiceActividad: number; factores: string; lineas: number; fecha: string };
   reaperturas?: Array<{ fecha: string; usuario: string; motivo: string }>;
 }
+export interface FilaBiblioteca { inventario: Inventario; organizacion: Organizacion; centros: number }
 export interface Verificacion { entidad?: string; nivel?: string; fecha?: string; referencia?: string }
 export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
-export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null }
+export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
@@ -54,6 +55,21 @@ export const huellaService = {
     if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
     return (cuerpo.hoteles ?? []) as HotelSuite[];
   },
+  /** Todos los cálculos (inventarios) visibles para el usuario, con su organización y nº de centros, para la pantalla de inicio. */
+  async biblioteca(): Promise<FilaBiblioteca[]> {
+    const [inv, orgs, cen] = await Promise.all([
+      ok<Inventario[]>(await supabase.from('hc_inventarios').select('*')),
+      ok<Organizacion[]>(await supabase.from('hc_organizaciones').select('*')),
+      ok<Array<{ organizacion_id: string }>>(await supabase.from('hc_centros').select('organizacion_id')),
+    ]);
+    const nCentros = new Map<string, number>();
+    cen.forEach((c) => nCentros.set(c.organizacion_id, (nCentros.get(c.organizacion_id) ?? 0) + 1));
+    const porId = new Map(orgs.map((o) => [o.id, o]));
+    return inv.filter((i) => porId.has(i.organizacion_id)).map((i) => ({ inventario: i, organizacion: porId.get(i.organizacion_id)!, centros: nCentros.get(i.organizacion_id) ?? 0 }))
+      .sort((a, b) => String(b.inventario.updated_at ?? '').localeCompare(String(a.inventario.updated_at ?? '')));
+  },
+  /** Elimina un inventario en borrador con todos sus datos (la base impide borrar los cerrados). */
+  async borrarInventario(id: string) { ok(await supabase.from('hc_inventarios').delete().eq('id', id)); },
   async actualizarOrganizacion(id: string, c: Partial<Omit<Organizacion, 'id'>>) {
     return ok<Organizacion>(await supabase.from('hc_organizaciones').update(c).eq('id', id).select().single());
   },

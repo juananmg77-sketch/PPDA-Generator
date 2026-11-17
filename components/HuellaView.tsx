@@ -805,29 +805,34 @@ const PanelCentros: React.FC<{
       <div className={`${card} flex flex-wrap items-center gap-3`}>
         <div className="flex-1 min-w-[200px]">
           <h2 className="text-sm font-bold text-slate-800">Centros de trabajo</h2>
-          <p className="text-xs text-slate-600">{centros.length === 0 ? 'Todavía no hay centros: añada el primero desde HS Suite.' : `${centros.length} centro${centros.length === 1 ? '' : 's'} registrado${centros.length === 1 ? '' : 's'}.`}</p>
+          <p className="text-xs text-slate-600">{centros.length === 0 ? 'Todavía no hay centros: añada el primero.' : `${centros.length} centro${centros.length === 1 ? '' : 's'} registrado${centros.length === 1 ? '' : 's'}.`}</p>
         </div>
-        <button className={btnP} onClick={() => setAnadir('suite')}><Search size={14} /> Añadir desde HS Suite</button>
-        <button className={btnS} onClick={() => setAnadir('mano')}><Plus size={14} /> Añadir a mano</button>
+        <button className={btnP} onClick={() => setAnadir('suite')}><Plus size={14} /> Añadir centro</button>
       </div>
       {anadir === 'suite' && (
-        <Modal titulo="Añadir desde HS Suite" onCerrar={() => setAnadir(null)}>
-          <p className="text-xs text-slate-600 mb-3">Busque el hotel en su base de clientes: se rellenan nombre, dirección, municipio, isla y unidades. También puede añadir de golpe todos los hoteles de una cadena.</p>
+        <Modal titulo="Añadir centro de trabajo" onCerrar={() => setAnadir(null)}>
+          <p className="text-xs text-slate-600 mb-3">Elija el hotel en HS Suite: se rellenan nombre, dirección, municipio, isla y unidades. También puede añadir de golpe todos los hoteles de una cadena.</p>
           <BuscadorHoteles vinculados={vinculados} onElegir={desdeSuite} onCadena={cadenaDesdeSuite} />
-          <div className="flex justify-end mt-4"><button className={btnP} onClick={() => setAnadir(null)}>Listo</button></div>
+          <div className="flex items-center justify-between mt-4">
+            <button className="text-xs font-semibold text-slate-600 underline hover:text-slate-900" onClick={() => setAnadir('mano')}>¿No está en HS Suite? Añadir a mano</button>
+            <button className={btnP} onClick={() => setAnadir(null)}>Listo</button>
+          </div>
         </Modal>
       )}
       {anadir === 'mano' && (
-        <Modal titulo="Añadir un centro a mano" onCerrar={() => setAnadir(null)}>
+        <Modal titulo="Añadir centro de trabajo a mano" onCerrar={() => setAnadir(null)}>
           <div className="grid grid-cols-2 gap-3">
             <Campo etiqueta="Nombre *" ancho><input className={input} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Hotel / sede" autoFocus /></Campo>
             <Campo etiqueta="Municipio"><input className={input} value={municipio} onChange={(e) => setMunicipio(e.target.value)} /></Campo>
             <Campo etiqueta="Isla"><select className={input} value={isla} onChange={(e) => setIsla(e.target.value)} disabled={!balear}>{['Mallorca', 'Menorca', 'Ibiza', 'Formentera'].map((i) => <option key={i}>{i}</option>)}</select></Campo>
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 col-span-2"><input type="checkbox" checked={balear} onChange={(e) => setBalear(e.target.checked)} /> Centro en Baleares</label>
           </div>
-          <div className="flex justify-end gap-2 mt-5">
-            <button className={btnS} onClick={() => setAnadir(null)}>Cancelar</button>
-            <button className={btnP} onClick={crear} disabled={!nombre.trim()}><Plus size={14} /> Añadir</button>
+          <div className="flex items-center justify-between mt-5">
+            <button className="text-xs font-semibold text-slate-600 underline hover:text-slate-900" onClick={() => setAnadir('suite')}>Volver a buscar en HS Suite</button>
+            <div className="flex gap-2">
+              <button className={btnS} onClick={() => setAnadir(null)}>Cancelar</button>
+              <button className={btnP} onClick={crear} disabled={!nombre.trim()}><Plus size={14} /> Añadir</button>
+            </div>
           </div>
         </Modal>
       )}

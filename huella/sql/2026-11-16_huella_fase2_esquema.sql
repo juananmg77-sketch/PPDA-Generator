@@ -365,3 +365,6 @@ revoke all on function public.hc_rol(), public.hc_es_admin(), public.hc_es_gesto
   public.hc_org_de_inventario(uuid), public.hc_inventario_abierto(uuid) from public, anon;
 grant execute on function public.hc_rol(), public.hc_es_admin(), public.hc_es_gestor(uuid), public.hc_puede_org(uuid),
   public.hc_org_de_inventario(uuid), public.hc_inventario_abierto(uuid) to authenticated;
+
+-- 2026-11-17 · APLICADO como migración «huella_actividad_contador»: punto de suministro de cada dato (separar contadores con periodos solapados).
+alter table public.hc_actividad add column if not exists contador text;

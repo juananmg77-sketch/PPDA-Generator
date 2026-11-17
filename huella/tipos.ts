@@ -54,6 +54,8 @@ export interface LineaActividad {
   origenElectricidad?: OrigenElectricidad;
   /** Referencia a la factura o evidencia de la que sale el dato (trazabilidad para el verificador). */
   evidencia?: string;
+  /** Punto de suministro (CUPS, nº de contador) del que sale el dato, si se conoce. */
+  contador?: string;
   /** Si se aplica un reparto (p. ej. 85/15) se guarda aquí la proporción y su justificación. */
   reparto?: { proporcion: number; justificacion: string };
 }

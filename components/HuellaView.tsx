@@ -285,75 +285,199 @@ const PanelCentros: React.FC<{
 };
 
 // ───────────────────────────── Facturas y revisión ─────────────────────────────
+const TIPOS_SUBIDA: Array<[TipoFactura | '', string]> = [
+  ['', 'Detectar automáticamente'], ['electricidad', 'Electricidad'], ['gas_natural', 'Gas natural'], ['gasoleo', 'Gasóleo (calefacción)'],
+  ['glp', 'GLP (propano/butano)'], ['combustible_vehiculo', 'Combustible de vehículos'], ['refrigerante', 'Recarga de refrigerante'],
+];
+const MAX_BYTES = 5 * 1024 * 1024;
+const PARALELO = 3;
+
+interface Tarea { id: number; nombre: string; estado: 'espera' | 'subiendo' | 'leyendo' | 'listo' | 'error'; msg?: string }
+
+/** Evalúa una factura leída: datos propuestos, fuente del factor e incidencias (sirve para la revisión individual y en bloque). */
+function evaluarDoc(d: Documento, factores: ConjuntoFactores | null, anio: number, otras: Documento[]) {
+  const e = d.extraccion as ExtraccionFactura;
+  const existentes = otras.filter((x) => x.id !== d.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion)
+    .map((x) => ({ id: x.id.slice(0, 8), proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo }));
+  const incidencias = factores ? validarExtraccion(e, { anioInventario: anio, factores, existentes }) : [];
+  const fuente = fuentePorDefecto(e, factores);
+  const errores = incidencias.filter((i) => i.gravedad === 'error').length;
+  const sinFuente = e.tipo !== 'electricidad' && !fuente;
+  return { e, incidencias, fuente, errores, avisos: incidencias.length - errores, sinFuente, listo: !!factores && errores === 0 && !sinFuente && e.tipo !== 'otro' };
+}
+
+/** Crea la línea de actividad confirmada y marca la factura como revisada (misma lógica para una o varias). */
+async function confirmarDocumento(d: Documento, e: ExtraccionFactura, fuente: string, inv: Inventario) {
+  const l = proponerActividad(e, { id: 'x', centro: d.centro_id ?? '', documentoId: d.id, fuenteFactor: fuente });
+  await huellaService.crearActividad({
+    inventario_id: inv.id, centro_id: d.centro_id!, documento_id: d.id, categoria: l.categoria, fuente: l.categoria === 'electricidad' ? '' : fuente || l.fuente,
+    cantidad: e.cantidad ?? 0, unidad: e.unidad ?? null, origen_electricidad: l.origenElectricidad ?? null, contador: e.contador?.trim() || null,
+    periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null, reparto_proporcion: 1, estado: 'confirmada',
+  });
+  await huellaService.actualizarDocumento(d.id, { estado: 'revisado', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null, revisado_en: new Date().toISOString() });
+}
+
 const PanelFacturas: React.FC<{
   org: Organizacion; inv: Inventario; abierto: boolean; centros: Centro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   onCambio: () => void; falla: (e: unknown) => void; cargando: boolean; setCargando: (b: boolean) => void; currentUser: string;
 }> = ({ org, inv, abierto, centros, docs, factores, onCambio, falla, cargando, setCargando }) => {
   const [centroId, setCentroId] = useState('');
+  const [tipo, setTipo] = useState<TipoFactura | ''>('');
   const [revisando, setRevisando] = useState<string | null>(null);
+  const [tareas, setTareas] = useState<Tarea[]>([]);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [arrastrando, setArrastrando] = useState(false);
   useEffect(() => { if (!centroId && centros[0]) setCentroId(centros[0].id); }, [centros, centroId]);
 
-  const subir = async (files: FileList | null) => {
-    if (!files?.length || !centroId) return;
-    setCargando(true);
-    for (const file of Array.from(files)) {
-      let doc: Documento | null = null;
-      try {
-        doc = await huellaService.subirDocumento(file, org.id, inv.id, centroId);
-        const r = await huellaService.leerFactura(file, inv.anio, inv.conjunto_factores?.version?.replace('calculadora-', ''));
-        const e = r.extraccion;
-        doc = await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
-        setRevisando(doc.id);
-      } catch (e) {
-        falla(doc ? `La factura «${file.name}» se ha guardado pero no se pudo leer automáticamente: ${e instanceof Error ? e.message : e}. Puede introducir los datos a mano en la pestaña Actividad.` : e);
+  const version = inv.conjunto_factores?.version?.replace('calculadora-', '');
+  const cambiar = (id: number, c: Partial<Tarea>) => setTareas((t) => t.map((x) => (x.id === id ? { ...x, ...c } : x)));
+
+  // Sube y lee varias facturas a la vez (hasta PARALELO en paralelo); un fallo no detiene al resto.
+  const subir = async (lista: File[]) => {
+    if (!lista.length || !centroId || !abierto) return;
+    const base = Date.now();
+    const nuevas: Tarea[] = lista.map((f, i) => ({ id: base + i, nombre: f.name, estado: 'espera' }));
+    setTareas(nuevas); setCargando(true);
+    let siguiente = 0;
+    const trabajador = async () => {
+      while (siguiente < lista.length) {
+        const i = siguiente++; const file = lista[i]; const id = nuevas[i].id;
+        if (file.size > MAX_BYTES) { cambiar(id, { estado: 'error', msg: 'Supera 5 MB' }); continue; }
+        if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) { cambiar(id, { estado: 'error', msg: 'Formato no admitido' }); continue; }
+        let doc: Documento | null = null;
+        try {
+          cambiar(id, { estado: 'subiendo' });
+          doc = await huellaService.subirDocumento(file, org.id, inv.id, centroId, tipo || undefined);
+          cambiar(id, { estado: 'leyendo' });
+          const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined);
+          const e = r.extraccion;
+          await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
+          cambiar(id, { estado: 'listo' });
+        } catch (x) {
+          cambiar(id, { estado: 'error', msg: doc ? `Guardada, pero no se pudo leer: ${x instanceof Error ? x.message : x}` : x instanceof Error ? x.message : String(x) });
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALELO, lista.length) }, trabajador));
     setCargando(false);
     onCambio();
   };
 
   const nombreCentro = (id: string | null) => centros.find((c) => c.id === id)?.nombre ?? '—';
-  const existentes = docs.filter((d) => d.estado === 'revisado' && d.extraccion).map((d) => ({ id: d.id.slice(0, 8), proveedor: d.extraccion?.proveedor, periodoDesde: d.extraccion?.periodoDesde, periodoHasta: d.extraccion?.periodoHasta, cantidad: d.extraccion?.cantidad, tipo: d.extraccion!.tipo }));
+  const pendientes = docs.filter((d) => d.estado === 'leido' && d.extraccion);
+  const evaluadas = useMemo(() => new Map(pendientes.map((d) => [d.id, evaluarDoc(d, factores, inv.anio, docs)])), [docs, factores, inv.anio]); // eslint-disable-line
+  const listas = pendientes.filter((d) => evaluadas.get(d.id)?.listo);
+  const seleccionadasListas = listas.filter((d) => sel.has(d.id));
+  const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
+
+  const confirmarSeleccion = async () => {
+    if (!seleccionadasListas.length) return;
+    if (!confirm(`Va a confirmar ${seleccionadasListas.length} facturas como datos de actividad. ¿Ha comprobado sus valores contra las facturas?`)) return;
+    setCargando(true);
+    const fallos: string[] = [];
+    for (const d of seleccionadasListas) {
+      try { const ev = evaluadas.get(d.id)!; await confirmarDocumento(d, ev.e, ev.fuente, inv); } catch (x) { fallos.push(`${d.nombre_archivo}: ${x instanceof Error ? x.message : x}`); }
+    }
+    setSel(new Set()); setCargando(false); onCambio();
+    if (fallos.length) falla(`No se pudieron confirmar ${fallos.length} facturas:\n${fallos.join('\n')}`);
+  };
+  const alternar = (id: string) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
     <div className="space-y-4">
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800 mb-1">Subir facturas</h2>
-        <p className="text-xs text-slate-600 mb-3">PDF, JPG o PNG (máx. 5 MB). La lectura es automática pero solo una <strong>propuesta</strong>: nada cuenta hasta que usted lo revisa y confirma.</p>
+        <p className="text-xs text-slate-600 mb-3">Puede subir un bloque completo (PDF, JPG o PNG, máx. 5 MB cada una). La lectura es automática pero solo una <strong>propuesta</strong>: nada cuenta hasta que usted lo revisa y confirma.</p>
         {centros.length === 0 ? <p className="text-sm text-slate-600">Primero añada un centro en la pestaña Centros.</p> : (
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="text-xs font-semibold text-slate-600 min-w-[200px]">Centro de la factura
-              <select className={`${input} mt-1`} value={centroId} onChange={(e) => setCentroId(e.target.value)}>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+          <>
+            <div className="flex flex-wrap items-end gap-3 mb-3">
+              <label className="text-xs font-semibold text-slate-600 min-w-[200px]">Centro de las facturas
+                <select className={`${input} mt-1`} value={centroId} onChange={(e) => setCentroId(e.target.value)}>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+              </label>
+              <label className="text-xs font-semibold text-slate-600 min-w-[220px]">Tipo de consumo del bloque
+                <select className={`${input} mt-1`} value={tipo} onChange={(e) => setTipo(e.target.value as TipoFactura | '')} aria-label="Tipo de consumo">
+                  {TIPOS_SUBIDA.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </label>
+            </div>
+            <label
+              onDragOver={(e) => { e.preventDefault(); setArrastrando(true); }} onDragLeave={() => setArrastrando(false)}
+              onDrop={(e) => { e.preventDefault(); setArrastrando(false); subir(Array.from(e.dataTransfer.files)); }}
+              className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed rounded-xl px-4 py-8 text-center cursor-pointer transition-colors ${arrastrando ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-400'} ${!abierto || cargando ? 'opacity-50 pointer-events-none' : ''}`}>
+              {cargando ? <Loader2 size={22} className="animate-spin text-brand-700" /> : <Upload size={22} className="text-brand-700" />}
+              <span className="text-sm font-semibold text-slate-800">{cargando ? `Leyendo… ${hechas} de ${tareas.length}` : 'Arrastre aquí las facturas o pulse para elegirlas'}</span>
+              <span className="text-[11px] text-slate-500">{tipo ? `Se leerán como: ${TIPOS_SUBIDA.find(([k]) => k === tipo)?.[1]}` : 'Sin tipo indicado, la lectura lo detecta (más lento y menos seguro)'}</span>
+              <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
-            <label className={`${btnP} cursor-pointer ${!abierto || cargando ? 'opacity-50 pointer-events-none' : ''}`}>
-              {cargando ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />} {cargando ? 'Leyendo…' : 'Elegir archivos'}
-              <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(e.target.files); e.target.value = ''; }} />
-            </label>
-            {!abierto && <span className="text-xs text-amber-700">El inventario no está en borrador: no admite facturas nuevas.</span>}
-          </div>
+            {!abierto && <p className="text-xs text-amber-700 mt-2">El inventario no está en borrador: no admite facturas nuevas.</p>}
+            {tareas.length > 0 && (
+              <ul className="mt-3 divide-y divide-slate-100 border border-slate-200 rounded-xl text-xs max-h-48 overflow-auto">
+                {tareas.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
+                    {t.estado === 'listo' ? <CheckCircle2 size={14} className="text-green-600" /> : t.estado === 'error' ? <XCircle size={14} className="text-red-600" /> : t.estado === 'espera' ? <span className="w-3.5 h-3.5 rounded-full border border-slate-300" /> : <Loader2 size={14} className="animate-spin text-brand-700" />}
+                    <span className="flex-1 truncate text-slate-800">{t.nombre}</span>
+                    <span className={t.estado === 'error' ? 'text-red-700' : 'text-slate-500'}>{t.estado === 'error' ? t.msg : { espera: 'En cola', subiendo: 'Subiendo', leyendo: 'Leyendo', listo: 'Leída' }[t.estado]}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
 
+      {pendientes.length > 0 && (
+        <div className={card}>
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <h2 className="text-sm font-bold text-slate-800 flex-1">Pendientes de revisar ({pendientes.length})</h2>
+            <button className={btnS} onClick={() => setSel(new Set(listas.map((d) => d.id)))} disabled={!listas.length}>Seleccionar las {listas.length} sin errores</button>
+            <button className={btnP} onClick={confirmarSeleccion} disabled={!seleccionadasListas.length || cargando || !abierto}><CheckCircle2 size={15} /> Confirmar {seleccionadasListas.length || ''} seleccionadas</button>
+          </div>
+          <p className="text-xs text-slate-600 mb-2">Compruebe los valores de la tabla contra las facturas («Ver»). Las que tienen errores o necesitan elegir combustible se revisan una a una.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Tipo</th><th className="pr-3">Proveedor</th><th className="pr-3">Periodo</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
+              <tbody>
+                {pendientes.map((d) => {
+                  const ev = evaluadas.get(d.id); const e = d.extraccion!;
+                  return (
+                    <React.Fragment key={d.id}>
+                      <tr className="border-b border-slate-100 align-top">
+                        <td className="py-2 pr-2"><input type="checkbox" disabled={!ev?.listo} checked={sel.has(d.id)} onChange={() => alternar(d.id)} aria-label={`Seleccionar ${d.nombre_archivo}`} /></td>
+                        <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{nombreCentro(d.centro_id)}</span></td>
+                        <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500">{e.contador ? `Contador: ${e.contador}` : 'Sin contador'}</span></td>
+                        <td className="pr-3 whitespace-nowrap">{e.periodoDesde ?? '?'} → {e.periodoHasta ?? '?'}</td>
+                        <td className="pr-3 text-right tabular-nums">{e.cantidad !== undefined ? num(e.cantidad, 2) : '—'} {e.unidad ?? ''}</td>
+                        <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
+                        <td className="text-right whitespace-nowrap">
+                          <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
+                          <button className={btnS} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>
+                        </td>
+                      </tr>
+                      {revisando === d.id && (
+                        <tr><td colSpan={8}><Revision doc={d} factores={factores} inv={inv} otras={docs} onHecho={() => { setRevisando(null); onCambio(); }} falla={falla} /></td></tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Facturas del inventario {inv.anio} ({docs.length})</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Todas las facturas del inventario {inv.anio} ({docs.length})</h2>
         {docs.length === 0 ? <p className="text-sm text-slate-600">Aún no hay facturas.</p> : (
           <ul className="divide-y divide-slate-100">
             {docs.map((d) => (
-              <li key={d.id} className="py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                  <FileText size={16} className="text-slate-500" />
-                  <div className="flex-1 min-w-[200px]">
-                    <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
-                    <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)} · {TIPOS[(d.tipo as TipoFactura)] ?? d.tipo}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}</p>
-                  </div>
-                  <Estado e={d.estado} />
-                  <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={14} /> Ver</button>
-                  {d.estado === 'leido' && abierto && <button className={btnP} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>}
+              <li key={d.id} className="py-2.5 flex flex-wrap items-center gap-3">
+                <FileText size={16} className="text-slate-500" />
+                <div className="flex-1 min-w-[200px]">
+                  <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
+                  <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)} · {TIPOS[(d.tipo as TipoFactura)] ?? d.tipo}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}</p>
                 </div>
-                {revisando === d.id && d.extraccion && (
-                  <Revision doc={d} factores={factores} inv={inv} existentes={existentes.filter((x) => x.id !== d.id.slice(0, 8))}
-                    onHecho={() => { setRevisando(null); onCambio(); }} falla={falla} />
-                )}
+                <Estado e={d.estado} />
+                <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
               </li>
             ))}
           </ul>
@@ -369,8 +493,9 @@ const Estado: React.FC<{ e: Documento['estado'] }> = ({ e }) => {
 };
 
 const Revision: React.FC<{
-  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; existentes: Parameters<typeof validarExtraccion>[1]['existentes']; onHecho: () => void; falla: (e: unknown) => void;
-}> = ({ doc, factores, inv, existentes, onHecho, falla }) => {
+  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void;
+}> = ({ doc, factores, inv, otras, onHecho, falla }) => {
+  const existentes = useMemo(() => otras.filter((x) => x.id !== doc.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map((x) => ({ id: x.id.slice(0, 8), proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo })), [otras, doc.id]);
   const [e, setE] = useState<ExtraccionFactura>(doc.extraccion!);
   const [fuente, setFuente] = useState(() => fuentePorDefecto(doc.extraccion!, factores));
   const [guardando, setGuardando] = useState(false);
@@ -384,16 +509,7 @@ const Revision: React.FC<{
 
   const confirmar = async () => {
     setGuardando(true);
-    try {
-      const l = proponerActividad(e, { id: 'x', centro: doc.centro_id ?? '', documentoId: doc.id, fuenteFactor: fuente });
-      await huellaService.crearActividad({
-        inventario_id: inv.id, centro_id: doc.centro_id!, documento_id: doc.id, categoria: l.categoria, fuente: cat === 'electricidad' ? '' : fuente || l.fuente,
-        cantidad: e.cantidad ?? 0, unidad: e.unidad ?? null, origen_electricidad: l.origenElectricidad ?? null,
-        periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null, reparto_proporcion: 1, estado: 'confirmada',
-      });
-      await huellaService.actualizarDocumento(doc.id, { estado: 'revisado', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null, revisado_en: new Date().toISOString() });
-      onHecho();
-    } catch (x) { falla(x); setGuardando(false); }
+    try { await confirmarDocumento(doc, e, cat === 'electricidad' ? '' : fuente, inv); onHecho(); } catch (x) { falla(x); setGuardando(false); }
   };
   const rechazar = async () => { setGuardando(true); try { await huellaService.actualizarDocumento(doc.id, { estado: 'rechazado' }); onHecho(); } catch (x) { falla(x); setGuardando(false); } };
 
@@ -405,6 +521,7 @@ const Revision: React.FC<{
           <select className={`${input} mt-1`} value={e.tipo} onChange={(ev) => { set('tipo', ev.target.value as TipoFactura); setFuente(''); }}>{Object.entries(TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         </label>
         <label className="text-xs font-semibold text-slate-600">Proveedor<input className={`${input} mt-1`} value={e.proveedor ?? ''} onChange={(ev) => set('proveedor', ev.target.value)} /></label>
+        <label className="text-xs font-semibold text-slate-600 col-span-2">Contador / CUPS<input className={`${input} mt-1`} value={e.contador ?? ''} onChange={(ev) => set('contador', ev.target.value)} placeholder="Identifica el punto de suministro" /></label>
         <label className="text-xs font-semibold text-slate-600">Desde<input type="date" className={`${input} mt-1`} value={e.periodoDesde ?? ''} onChange={(ev) => set('periodoDesde', ev.target.value || undefined)} /></label>
         <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" className={`${input} mt-1`} value={e.periodoHasta ?? ''} onChange={(ev) => set('periodoHasta', ev.target.value || undefined)} /></label>
         <label className="text-xs font-semibold text-slate-600">Cantidad<input type="number" min={0} step="any" className={`${input} mt-1`} value={e.cantidad ?? ''} onChange={(ev) => set('cantidad', ev.target.value === '' ? undefined : Number(ev.target.value))} /></label>
@@ -443,13 +560,13 @@ const Revision: React.FC<{
 // ───────────────────────────── Actividad (alta manual y listado) ─────────────────────────────
 const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Centro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onCambio: () => void; falla: (e: unknown) => void }> = ({ inv, abierto, centros, actividad, factores, onCambio, falla }) => {
   const [centro, setCentro] = useState(''); const [cat, setCat] = useState<Categoria>('combustion_fija'); const [fuente, setFuente] = useState('');
-  const [cantidad, setCantidad] = useState(''); const [origen, setOrigen] = useState<OrigenElectricidad>('red'); const [nota, setNota] = useState('');
+  const [cantidad, setCantidad] = useState(''); const [origen, setOrigen] = useState<OrigenElectricidad>('red'); const [nota, setNota] = useState(''); const [contador, setContador] = useState('');
   useEffect(() => { if (!centro && centros[0]) setCentro(centros[0].id); }, [centros, centro]);
   const opciones = opcionesFuente(factores, cat);
   const valido = centro && Number(cantidad) >= 0 && cantidad !== '' && (cat === 'electricidad' || fuente) && nota.trim().length > 3;
   const anadir = async () => {
     try {
-      await huellaService.crearActividad({ inventario_id: inv.id, centro_id: centro, categoria: cat, fuente: cat === 'electricidad' ? '' : fuente, cantidad: Number(cantidad), origen_electricidad: cat === 'electricidad' ? origen : null, reparto_proporcion: 1, estado: 'confirmada', notas: nota.trim() });
+      await huellaService.crearActividad({ inventario_id: inv.id, centro_id: centro, categoria: cat, fuente: cat === 'electricidad' ? '' : fuente, cantidad: Number(cantidad), origen_electricidad: cat === 'electricidad' ? origen : null, reparto_proporcion: 1, estado: 'confirmada', notas: nota.trim(), contador: contador.trim() || null });
       setCantidad(''); setNota(''); onCambio();
     } catch (e) { falla(e); }
   };
@@ -466,6 +583,7 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
             ? <label className="text-xs font-semibold text-slate-600">Origen<select className={`${input} mt-1`} value={origen} onChange={(e) => setOrigen(e.target.value as OrigenElectricidad)}>{Object.entries(ORIGEN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
             : <label className="text-xs font-semibold text-slate-600">{cat === 'fugitiva' ? 'Gas' : 'Combustible'}<select className={`${input} mt-1`} value={fuente} onChange={(e) => setFuente(e.target.value)}><option value="">Elegir…</option>{opciones.map((o) => <option key={o} value={o}>{o}</option>)}</select></label>}
           <label className="text-xs font-semibold text-slate-600">Cantidad ({cat === 'electricidad' ? 'kWh' : cat === 'fugitiva' ? 'kg' : (factores?.unidades[fuente] ?? 'unidad del factor')})<input type="number" min={0} step="any" className={`${input} mt-1`} value={cantidad} onChange={(e) => setCantidad(e.target.value)} /></label>
+          <label className="text-xs font-semibold text-slate-600">Contador / CUPS (opcional)<input className={`${input} mt-1`} value={contador} onChange={(e) => setContador(e.target.value)} /></label>
           <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-3">Origen del dato (obligatorio)<input className={`${input} mt-1`} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej.: lectura de contador del 31/12, albarán 123…" /></label>
           <div className="flex items-end"><button className={btnP} onClick={anadir} disabled={!abierto || !valido}><Plus size={14} /> Añadir</button></div>
         </div>
@@ -475,12 +593,13 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
         {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos. Suba facturas o añada un dato a mano.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Origen</th><th /></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Origen</th><th /></tr></thead>
               <tbody>
                 {actividad.map((a) => (
                   <tr key={a.id} className="border-b border-slate-100">
                     <td className="py-2 pr-3">{nombreCentro(a.centro_id)}</td><td className="pr-3">{CATEGORIAS[a.categoria]}</td>
                     <td className="pr-3">{a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : '—')}</td>
+                    <td className="pr-3 text-xs text-slate-600">{a.contador || '—'}</td>
                     <td className="pr-3 text-right tabular-nums">{num(a.cantidad, 2)}</td>
                     <td className="pr-3 text-xs text-slate-600">{a.documento_id ? 'Factura' : `Manual: ${a.notas ?? ''}`}{a.periodo_desde ? ` · ${a.periodo_desde}` : ''}</td>
                     <td className="text-right">{abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar" onClick={async () => { if (confirm('¿Eliminar este dato de actividad?')) { try { await huellaService.borrarActividad(a.id); onCambio(); } catch (e) { falla(e); } } }}><Trash2 size={15} /></button>}</td>
@@ -502,7 +621,7 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
     const nombre = (id: string) => centros.find((c) => c.id === id)?.nombre ?? id;
     const lineas: LineaActividad[] = []; const fallos: string[] = [];
     for (const a of actividad.filter((x) => x.estado === 'confirmada')) {
-      lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, evidencia: a.documento_id ?? undefined,
+      lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, evidencia: a.documento_id ?? undefined, contador: a.contador ?? undefined,
         reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined });
     }
     const validas = lineas.filter((l) => { try { calcularInventario([l], factores); return true; } catch (e) { fallos.push(`${l.centro} · ${l.fuente || 'electricidad'}: ${e instanceof Error ? e.message : e}`); return false; } });
@@ -516,6 +635,9 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   const ubic = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eUbicacion ?? 0), 0);
   const merc = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const gas = totales.kgCO2PorGas;
+  const acum: Record<string, number> = {};
+  for (const r of resultados) { const k = `${r.linea.centro} · ${r.linea.contador || 'sin contador'}`; acum[k] = (acum[k] ?? 0) + r.kgCO2e; }
+  const porContador = (Object.keys(acum) as string[]).map((k) => [k, acum[k]] as [string, number]);
   const kpi = (titulo: string, kg: number, sub?: string) => (
     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4"><p className="text-[11px] font-semibold text-slate-600">{titulo}</p><p className="text-2xl font-extrabold text-header mt-1 tabular-nums">{t(kg)}</p><p className="text-[11px] text-slate-500">{sub ?? 't CO₂e'}</p></div>
   );
@@ -545,12 +667,18 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
         <h3 className="text-sm font-bold text-slate-800 mb-1">Electricidad: dos métodos, informados por separado (ISO 14064-1, anexo E)</h3>
         <Tabla filas={[['Basado en la ubicación (mix de red)', ubic], ['Basado en el mercado (garantías de origen / autoconsumo)', merc]]} />
       </div>
+      {porContador.length > 1 && (
+        <div className={card}>
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Por contador / punto de suministro (t CO₂e)</h3>
+          <Tabla filas={porContador} />
+        </div>
+      )}
       <div className={card}>
         <h3 className="text-sm font-bold text-slate-800 mb-2">Trazabilidad por línea</h3>
         <div className="overflow-x-auto"><table className="w-full text-xs">
-          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Fuente</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">kg CO₂e</th><th>Cálculo</th></tr></thead>
+          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">kg CO₂e</th><th>Cálculo</th></tr></thead>
           <tbody>{resultados.map((r) => (
-            <tr key={r.linea.id} className="border-b border-slate-100 align-top"><td className="py-1.5 pr-3">{r.linea.centro}</td><td className="pr-3">{r.linea.fuente || 'Electricidad'}</td>
+            <tr key={r.linea.id} className="border-b border-slate-100 align-top"><td className="py-1.5 pr-3">{r.linea.centro}</td><td className="pr-3">{r.linea.fuente || 'Electricidad'}</td><td className="pr-3">{r.linea.contador || '—'}</td>
               <td className="pr-3 text-right tabular-nums">{num(r.linea.cantidad, 2)}</td><td className="pr-3 text-right tabular-nums">{num(r.kgCO2e, 1)}</td><td className="text-slate-600">{r.trazabilidad.factorUsado}</td></tr>
           ))}</tbody>
         </table></div>

@@ -16,7 +16,7 @@ export interface Actividad {
   id: string; inventario_id: string; centro_id: string; documento_id?: string | null; categoria: Categoria; fuente: string;
   cantidad: number; unidad?: string | null; origen_electricidad?: OrigenElectricidad | null;
   periodo_desde?: string | null; periodo_hasta?: string | null; reparto_proporcion: number; reparto_justificacion?: string | null;
-  estado: 'borrador' | 'confirmada'; notas?: string | null;
+  estado: 'borrador' | 'confirmada'; notas?: string | null; contador?: string | null;
 }
 export interface ResultadoLecturaApi {
   extraccion: ExtraccionFactura; incidencias: Incidencia[]; modelo: string; usoRefuerzo: boolean;
@@ -54,13 +54,13 @@ export const huellaService = {
 
   async documentos(inv: string) { return ok<Documento[]>(await supabase.from('hc_documentos').select('*').eq('inventario_id', inv).order('created_at', { ascending: false })); },
   /** Sube el archivo a la carpeta privada y crea el documento en estado «subido». */
-  async subirDocumento(file: File, org: string, inv: string, centro: string) {
+  async subirDocumento(file: File, org: string, inv: string, centro: string, tipo?: string) {
     const limpio = file.name.replace(/[^\w.\-]+/g, '_');
     const path = `${org}/${inv}/${Date.now()}_${limpio}`;
     const up = await supabase.storage.from('hc-facturas').upload(path, file, { contentType: file.type, upsert: false });
     if (up.error) throw new Error(up.error.message);
     const { data: u } = await supabase.auth.getUser();
-    return ok<Documento>(await supabase.from('hc_documentos').insert({ inventario_id: inv, centro_id: centro, archivo_path: path, nombre_archivo: file.name, created_by: u?.user?.id }).select().single());
+    return ok<Documento>(await supabase.from('hc_documentos').insert({ inventario_id: inv, centro_id: centro, archivo_path: path, nombre_archivo: file.name, ...(tipo ? { tipo } : {}), created_by: u?.user?.id }).select().single());
   },
   async actualizarDocumento(id: string, cambios: Partial<Documento> & { revisado_por?: string; revisado_en?: string }) {
     return ok<Documento>(await supabase.from('hc_documentos').update(cambios).eq('id', id).select().single());
@@ -79,7 +79,7 @@ export const huellaService = {
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */
-  async leerFactura(file: File, anioInventario: number, version?: string): Promise<ResultadoLecturaApi> {
+  async leerFactura(file: File, anioInventario: number, version?: string, tipo?: string): Promise<ResultadoLecturaApi> {
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
@@ -92,7 +92,7 @@ export const huellaService = {
     const resp = await fetch('/api/leer-factura', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ anioInventario, version, base64, mediaType: file.type }),
+      body: JSON.stringify({ anioInventario, version, tipo, base64, mediaType: file.type }),
     });
     const cuerpo = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);

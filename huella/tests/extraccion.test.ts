@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { construirConjunto } from '../factores.ts';
 import { evaluarExclusiones, proponerActividad, validarExtraccion, variacionAnual } from '../extraccion.ts';
-import type { ExtraccionFactura } from '../extraccion.ts';
+import type { ContextoValidacion, ExtraccionFactura } from '../extraccion.ts';
 import type { DatosCalculadora } from '../tipos.ts';
 
 const datos: DatosCalculadora = JSON.parse(readFileSync(new URL('../datos/factores-calculadora-2024.1.json', import.meta.url), 'utf-8'));
 const factores = construirConjunto(datos, { anioInventario: 2024 });
-const ctx = { anioInventario: 2024, factores };
+const ctx: ContextoValidacion = { anioInventario: 2024, factores };
 const codigos = (e: ExtraccionFactura, c = ctx) => validarExtraccion(e, c).map((i) => i.codigo);
 
 const luz: ExtraccionFactura = {
@@ -81,4 +81,19 @@ test('exclusión por insignificancia: cada fuente < 3 % y el conjunto ≤ 5 %', 
   assert.equal(ok.permitido, true);
   const ko = evaluarExclusiones(fuentes, ['luz']);
   assert.equal(ko.permitido, false);
+});
+
+test('solapes: contadores distintos no son conflicto; sin contador se pide identificarlo; mismo contador sí avisa', () => {
+  const x = { id: 'F1', proveedor: 'Comercializadora X', contador: 'ES0021000000000001AA', periodoDesde: '2024-03-01', periodoHasta: '2024-03-31', cantidad: 15000, tipo: 'electricidad' as const };
+  const otro = { ...luz, contador: 'ES0021000000000002BB' };
+  assert.deepEqual(codigos(otro, { ...ctx, existentes: [x] }), []); // mismo periodo y misma cantidad, pero otro contador
+  assert.deepEqual(codigos({ ...otro, periodoDesde: '2024-03-15', periodoHasta: '2024-04-14' }, { ...ctx, existentes: [x] }), []);
+  const sin = validarExtraccion(luz, { ...ctx, existentes: [x] });
+  assert.ok(sin.some((i) => i.codigo === 'duplicada' && /contadores distintos/.test(i.mensaje)));
+  assert.ok(codigos({ ...luz, contador: x.contador, periodoDesde: '2024-03-15', periodoHasta: '2024-04-14' }, { ...ctx, existentes: [x] }).includes('solape'));
+  assert.ok(codigos({ ...luz, contador: 'VARIOS' }).includes('varios_contadores'));
+});
+
+test('la propuesta de actividad conserva el contador', () => {
+  assert.equal(proponerActividad({ ...luz, contador: 'ES1' }, { id: 'a', centro: 'H', documentoId: 'D' }).contador, 'ES1');
 });

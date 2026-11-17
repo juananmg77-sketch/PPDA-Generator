@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { construirConjunto } from '../factores.ts';
-import { ESQUEMA_EXTRACCION, MODELO_BASE, MODELO_REFUERZO, leerFactura, validarEntrada } from '../lectura.ts';
+import { ESQUEMA_EXTRACCION, MODELO_BASE, MODELO_REFUERZO, instrucciones, leerFactura, validarEntrada } from '../lectura.ts';
 import type { LlamarModelo } from '../lectura.ts';
 import type { ExtraccionFactura } from '../extraccion.ts';
 import type { DatosCalculadora } from '../tipos.ts';
@@ -66,5 +66,15 @@ test('entrada: límites de tamaño, formato y vacío', () => {
 
 test('el esquema coincide con ExtraccionFactura (todas las claves del tipo están definidas)', () => {
   const claves = Object.keys(ESQUEMA_EXTRACCION.properties).sort();
-  assert.deepEqual(claves, ['cantidad', 'confianza', 'garantiaOrigen', 'importe', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'tipo', 'unidad']);
+  assert.deepEqual(claves, ['cantidad', 'confianza', 'contador', 'garantiaOrigen', 'importe', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'tipo', 'unidad']);
+});
+
+test('tipo indicado de antemano: va en las instrucciones y una lectura distinta obliga a revisar', async () => {
+  assert.match(instrucciones('gas_natural'), /gas natural: usa tipo = gas_natural/);
+  assert.doesNotMatch(instrucciones(), /El usuario indica/);
+  const s = simulado({ [MODELO_BASE]: buena, [MODELO_REFUERZO]: buena });
+  const r = await leerFactura(s.llamar, { texto: 'f', tipoEsperado: 'gas_natural' }, ctx);
+  assert.ok(r.incidencias.some((i) => i.codigo === 'tipo_distinto' && i.gravedad === 'error'));
+  const ok = await leerFactura(simulado({ [MODELO_BASE]: buena }).llamar, { texto: 'f', tipoEsperado: 'electricidad' }, ctx);
+  assert.deepEqual(ok.incidencias, []);
 });

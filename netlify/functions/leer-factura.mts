@@ -2,9 +2,10 @@
 // Variables de entorno en Netlify (nunca en el código): ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY.
 import Anthropic from '@anthropic-ai/sdk';
 import { cargarConjunto } from '../../huella/catalogo.ts';
-import { ESQUEMA_EXTRACCION, INSTRUCCIONES, LIMITES, leerFactura, validarEntrada } from '../../huella/lectura.ts';
+import { extractText, getDocumentProxy } from 'unpdf';
+import { ESQUEMA_EXTRACCION, LIMITES, instrucciones, leerFactura, validarEntrada } from '../../huella/lectura.ts';
 import type { EntradaLectura, LlamarModelo } from '../../huella/lectura.ts';
-import type { ExtraccionFactura } from '../../huella/extraccion.ts';
+import type { ExtraccionFactura, TipoFactura } from '../../huella/extraccion.ts';
 
 const json = (cuerpo: unknown, status = 200) =>
   new Response(JSON.stringify(cuerpo), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
@@ -39,7 +40,7 @@ function crearLlamada(cliente: Anthropic): LlamarModelo {
     const r = await cliente.messages.create({
       model: modelo,
       max_tokens: LIMITES.maxTokensSalida,
-      system: INSTRUCCIONES,
+      system: instrucciones(entrada.tipoEsperado),
       messages: [{ role: 'user', content: contenido }],
       output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_EXTRACCION as unknown as Record<string, unknown> } },
     });
@@ -55,7 +56,7 @@ export default async (req: Request): Promise<Response> => {
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura de facturas no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
 
-  let cuerpo: { anioInventario?: number; version?: string; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; existentes?: never };
+  let cuerpo: { anioInventario?: number; version?: string; tipo?: TipoFactura; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; existentes?: never };
   try {
     cuerpo = await req.json();
   } catch {
@@ -64,9 +65,23 @@ export default async (req: Request): Promise<Response> => {
   const anio = Number(cuerpo.anioInventario);
   if (!Number.isInteger(anio) || anio < 2020 || anio > 2100) return json({ error: 'Año de inventario no válido.' }, 400);
 
-  const entrada: EntradaLectura = { texto: cuerpo.texto, base64: cuerpo.base64, mediaType: cuerpo.mediaType };
+  const entrada: EntradaLectura = { texto: cuerpo.texto, base64: cuerpo.base64, mediaType: cuerpo.mediaType, tipoEsperado: cuerpo.tipo };
   const problema = validarEntrada(entrada);
   if (problema) return json({ error: problema }, 400);
+
+  // Texto primero: un PDF con capa de texto (facturas de luz y gas) es mucho más rápido y barato que enviarlo como documento.
+  if (!entrada.texto && entrada.mediaType === 'application/pdf' && entrada.base64) {
+    try {
+      const pdf = await getDocumentProxy(new Uint8Array(Buffer.from(entrada.base64, 'base64')));
+      const { text } = await extractText(pdf, { mergePages: true });
+      if (text.replace(/\s+/g, ' ').trim().length >= 200) {
+        entrada.texto = text.slice(0, 40_000);
+        entrada.base64 = undefined;
+      }
+    } catch {
+      /* PDF escaneado o ilegible: se envía como documento */
+    }
+  }
 
   try {
     const { conjunto: factores } = await cargarConjunto(anio, cuerpo.version);

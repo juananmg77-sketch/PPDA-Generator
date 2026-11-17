@@ -8,6 +8,8 @@ export type TipoFactura = 'electricidad' | 'gas_natural' | 'gasoleo' | 'glp' | '
 export interface ExtraccionFactura {
   tipo: TipoFactura;
   proveedor?: string;
+  /** Punto de suministro: CUPS (luz y gas), nº de contador o de instalación, tal como figura. «VARIOS» si la factura agrupa varios. */
+  contador?: string;
   periodoDesde?: string; // AAAA-MM-DD
   periodoHasta?: string;
   cantidad?: number;
@@ -28,7 +30,7 @@ export interface ContextoValidacion {
   anioInventario: number;
   factores: ConjuntoFactores;
   /** Facturas ya cargadas, para detectar duplicados y solapes. */
-  existentes?: Array<{ id: string; proveedor?: string; periodoDesde?: string; periodoHasta?: string; cantidad?: number; tipo: TipoFactura }>;
+  existentes?: Array<{ id: string; proveedor?: string; contador?: string; periodoDesde?: string; periodoHasta?: string; cantidad?: number; tipo: TipoFactura }>;
 }
 
 const UNIDAD_ESPERADA: Record<TipoFactura, string[]> = {
@@ -92,17 +94,24 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
     add('aviso', 'origen_electricidad', 'No consta el origen de la electricidad (garantía de origen): se tratará como energía de red salvo que se acredite.');
   }
 
-  // Duplicados y solapes con facturas ya cargadas
+  // Contador / punto de suministro
+  if (norm(e.contador) === 'varios') add('aviso', 'varios_contadores', 'La factura agrupa varios contadores o suministros: sepárelos en líneas distintas (un dato por contador) en la pestaña Actividad.');
+
+  // Duplicados y solapes con facturas ya cargadas. Dos facturas que se solapan pueden ser de contadores distintos:
+  // solo se comparan entre sí las del mismo contador; si falta el contador en alguna, se avisa de que hay que identificarlo.
   for (const x of c.existentes ?? []) {
     if (x.tipo !== e.tipo) continue;
-    if (x.proveedor && e.proveedor && norm(x.proveedor) === norm(e.proveedor) && x.periodoDesde === e.periodoDesde && x.periodoHasta === e.periodoHasta) {
+    if (!(x.proveedor && e.proveedor && norm(x.proveedor) === norm(e.proveedor))) continue;
+    const cx = norm(x.contador), ce = norm(e.contador);
+    if (cx && ce && cx !== ce) continue; // contadores distintos: no hay conflicto, se suman por separado
+    const contadorConocido = !!cx && !!ce;
+    const sufijo = contadorConocido ? '' : ' Si son de contadores distintos, indique el contador (CUPS) en cada una.';
+    if (x.periodoDesde === e.periodoDesde && x.periodoHasta === e.periodoHasta) {
       add(x.cantidad === e.cantidad ? 'error' : 'aviso', x.cantidad === e.cantidad ? 'duplicada' : 'mismo_periodo',
-        x.cantidad === e.cantidad ? `Parece duplicada de la factura ${x.id}.` : `Hay otra factura del mismo proveedor y periodo (${x.id}) con distinta cantidad.`);
+        x.cantidad === e.cantidad ? `Parece duplicada de la factura ${x.id}.${sufijo}` : `Hay otra factura del mismo proveedor y periodo (${x.id}) con distinta cantidad.${sufijo}`);
     } else {
       const xd = fecha(x.periodoDesde), xh = fecha(x.periodoHasta);
-      if (xd && xh && d && h && x.proveedor && e.proveedor && norm(x.proveedor) === norm(e.proveedor) && d <= xh && h >= xd) {
-        add('aviso', 'solape', `El periodo se solapa con el de la factura ${x.id} del mismo proveedor.`);
-      }
+      if (xd && xh && d && h && d <= xh && h >= xd) add('aviso', 'solape', `El periodo se solapa con el de la factura ${x.id} del mismo proveedor.${sufijo}`);
     }
   }
 
@@ -137,6 +146,7 @@ export function proponerActividad(
     cantidad: e.cantidad ?? 0,
     origenElectricidad: origen,
     evidencia: o.documentoId,
+    contador: e.contador || undefined,
   };
 }
 

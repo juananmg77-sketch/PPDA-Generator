@@ -21,6 +21,8 @@ export interface ExtraccionFactura {
   /** Electricidad: ¿garantía de origen renovable? ¿de Baleares? */
   garantiaOrigen?: 'no' | 'renovable_balear' | 'renovable_otra' | 'desconocida';
   confianza?: number; // 0..1
+  /** Nota de la persona que revisa (p. ej. conversión de unidades): pasa a la línea de actividad como evidencia. */
+  nota?: string;
 }
 
 export type Gravedad = 'error' | 'aviso';
@@ -129,7 +131,7 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
   const esperadas = UNIDAD_ESPERADA[e.tipo];
   if (u && esperadas.length && !esperadas.includes(u)) {
     if (e.tipo === 'gas_natural' && (u === 'kwh' || u === 'kwh pci' || u === 'm3' || u === 'm³')) {
-      add('error', 'unidad_gas', `La calculadora oficial usa kWh PCS y la factura indica «${e.unidad}»: confirme si el kWh es PCS o convierta con el dato de la factura.`);
+      add('error', 'unidad_gas', `La calculadora oficial usa kWh PCS y la factura indica «${e.unidad}»: en «Unidad del gas natural» elija si son PCS, PCI o m³ y se convertirá.`);
     } else {
       add('error', 'unidad_incoherente', `Unidad «${e.unidad}» no esperada para una factura de ${e.tipo} (se esperaba ${esperadas.join(' o ')}).`);
     }

@@ -11,8 +11,9 @@ const json = (cuerpo: unknown, status = 200) =>
 
 /** Solo usuarios internos (admin / consultor) con sesión válida del proyecto del PPDA. */
 async function usuarioAutorizado(req: Request): Promise<boolean> {
-  const url = process.env.SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY;
+  // Se reutilizan las variables públicas del sitio (la clave anónima ya viaja en el navegador); no hace falta añadir otras.
+  const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const anon = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
   const auth = req.headers.get('authorization');
   if (!url || !anon || !auth?.startsWith('Bearer ')) return false;
   const cab = { apikey: anon, authorization: auth };

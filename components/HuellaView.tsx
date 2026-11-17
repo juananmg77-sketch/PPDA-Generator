@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { huellaService, Actividad, Centro, Documento, Inventario, InventarioCentro, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
-import { calcularInventario, ratio } from '../huella/motor';
+import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { proponerActividad, validarExtraccion, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
@@ -58,6 +60,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
   const factores = elegido?.conjunto ?? null;
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [modalOrg, setModalOrg] = useState<'nueva' | 'editar' | null>(null);
+  const [centroEditar, setCentroEditar] = useState<Centro | null>(null);
 
   const org = orgs.find((o) => o.id === orgId);
   const inv = invs.find((i) => i.id === invId);
@@ -102,10 +106,15 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
     } catch (e) { falla(e); }
   };
 
-  const nuevaOrg = async () => {
-    const nombre = prompt('Nombre de la organización (empresa o grupo hotelero):')?.trim();
-    if (!nombre) return;
-    try { const o = await huellaService.crearOrganizacion({ nombre, consultor_email: currentUser }); setOrgs([...orgs, o]); setOrgId(o.id); } catch (e) { falla(e); }
+  const guardarOrg = async (v: Partial<Organizacion> & { nombre: string }) => {
+    try {
+      if (modalOrg === 'editar' && org) { const o = await huellaService.actualizarOrganizacion(org.id, v); setOrgs((l) => l.map((x) => (x.id === o.id ? o : x))); }
+      else { const o = await huellaService.crearOrganizacion(v); setOrgs((l) => [...l, o]); setOrgId(o.id); }
+    } catch (e) { falla(e); throw e; }
+  };
+  const guardarCentro = async (v: Partial<Centro>) => {
+    if (!centroEditar) return;
+    try { const c = await huellaService.actualizarCentro(centroEditar.id, v); setCentros((l) => l.map((x) => (x.id === c.id ? c : x))); } catch (e) { falla(e); throw e; }
   };
   const nuevoInv = async () => {
     const a = Number(prompt('Año del inventario (p. ej. 2024):'));
@@ -145,7 +154,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
                 {orgs.length === 0 && <option value="">Sin organizaciones</option>}
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
               </select>
-              <button className={btnS} onClick={nuevaOrg}><Plus size={14} /> Nueva</button>
+              <button className={btnS} onClick={() => setModalOrg('editar')} disabled={!org} title="Editar organización"><Pencil size={14} /> Editar</button>
+              <button className={btnS} onClick={() => setModalOrg('nueva')}><Plus size={14} /> Nueva</button>
             </div>
           </label>
           <label className="w-56 text-xs font-semibold text-slate-600">Inventario (año)
@@ -175,7 +185,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
             </nav>
 
             {tab === 'centros' && (
-              <PanelCentros orgId={orgId} centros={centros} setCentros={setCentros} inv={inv} invCentros={invCentros} abierto={!!abierto} onGuardado={recargarInv} falla={falla} />
+              <PanelCentros orgId={orgId} onEditar={setCentroEditar} centros={centros} setCentros={setCentros} inv={inv} invCentros={invCentros} abierto={!!abierto} onGuardado={recargarInv} falla={falla} />
             )}
             {tab !== 'centros' && !inv && <div className={`${card} text-sm text-slate-600`}>Cree un inventario (año) para continuar.</div>}
             {tab === 'facturas' && inv && (
@@ -187,9 +197,79 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string }> =
             {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
           </>
         )}
+        {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} />}
+        {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} />}
         {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>Todavía no hay organizaciones. Cree la primera con «Nueva».</div>}
       </main>
     </div>
+  );
+};
+
+// ───────────────────────────── Formularios de organización y centro ─────────────────────────────
+const Modal: React.FC<{ titulo: string; onCerrar: () => void; children: React.ReactNode }> = ({ titulo, onCerrar, children }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-label={titulo}>
+    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-auto p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-bold text-slate-900">{titulo}</h2>
+        <button onClick={onCerrar} className="p-1.5 text-slate-500 hover:text-slate-900" aria-label="Cerrar"><XCircle size={18} /></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const Campo: React.FC<{ etiqueta: string; children: React.ReactNode; ancho?: boolean }> = ({ etiqueta, children, ancho }) => (
+  <label className={`text-xs font-semibold text-slate-700 ${ancho ? 'col-span-2' : ''}`}>{etiqueta}<div className="mt-1">{children}</div></label>
+);
+
+const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }) => Promise<void>; onCerrar: () => void }> = ({ org, usuario, onGuardar, onCerrar }) => {
+  const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: org?.criterio_consolidacion ?? 'control', consultor: org?.consultor_email ?? usuario });
+  const [guardando, setGuardando] = useState(false);
+  const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
+  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null }); onCerrar(); } finally { setGuardando(false); } };
+  return (
+    <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar}>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo etiqueta="Nombre (empresa o grupo) *" ancho><input className={input} value={v.nombre} onChange={f('nombre')} autoFocus /></Campo>
+        <Campo etiqueta="CIF"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
+        <Campo etiqueta="Consultor responsable (email)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo>
+        <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
+        <Campo etiqueta="CNAE"><input className={input} value={v.cnae} onChange={f('cnae')} /></Campo>
+        <Campo etiqueta="IAE"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
+        <Campo etiqueta="Criterio de consolidación (ISO 14064-1)" ancho>
+          <select className={input} value={v.criterio} onChange={f('criterio')}><option value="control">Control (operativo o financiero)</option><option value="participacion">Participación en el capital</option></select>
+        </Campo>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button className={btnS} onClick={onCerrar}>Cancelar</button>
+        <button className={btnP} onClick={guardar} disabled={!v.nombre.trim() || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button>
+      </div>
+    </Modal>
+  );
+};
+
+const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => Promise<void>; onCerrar: () => void }> = ({ centro, onGuardar, onCerrar }) => {
+  const [v, setV] = useState({ nombre: centro.nombre, direccion: centro.direccion ?? '', municipio: centro.municipio ?? '', isla: centro.isla ?? 'Mallorca', balear: centro.en_baleares, unidades: centro.unidades_alojamiento != null ? String(centro.unidades_alojamiento) : '' });
+  const [guardando, setGuardando] = useState(false);
+  const guardar = async () => {
+    setGuardando(true);
+    try { await onGuardar({ nombre: v.nombre.trim(), direccion: v.direccion.trim() || null, municipio: v.municipio.trim() || null, isla: v.balear ? v.isla : null, en_baleares: v.balear, unidades_alojamiento: v.unidades === '' ? null : Math.max(0, Math.round(Number(v.unidades))) }); onCerrar(); } finally { setGuardando(false); }
+  };
+  return (
+    <Modal titulo="Editar centro de trabajo" onCerrar={onCerrar}>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo etiqueta="Nombre *" ancho><input className={input} value={v.nombre} onChange={(e) => setV({ ...v, nombre: e.target.value })} autoFocus /></Campo>
+        <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={(e) => setV({ ...v, direccion: e.target.value })} /></Campo>
+        <Campo etiqueta="Municipio"><input className={input} value={v.municipio} onChange={(e) => setV({ ...v, municipio: e.target.value })} /></Campo>
+        <Campo etiqueta="Isla"><select className={input} value={v.isla} disabled={!v.balear} onChange={(e) => setV({ ...v, isla: e.target.value })}>{['Mallorca', 'Menorca', 'Ibiza', 'Formentera'].map((i) => <option key={i}>{i}</option>)}</select></Campo>
+        <Campo etiqueta="Unidades de alojamiento"><input type="number" min={0} className={input} value={v.unidades} onChange={(e) => setV({ ...v, unidades: e.target.value })} /></Campo>
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 self-end pb-2"><input type="checkbox" checked={v.balear} onChange={(e) => setV({ ...v, balear: e.target.checked })} /> Centro en Baleares</label>
+      </div>
+      <div className="flex justify-end gap-2 mt-5">
+        <button className={btnS} onClick={onCerrar}>Cancelar</button>
+        <button className={btnP} onClick={guardar} disabled={!v.nombre.trim() || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button>
+      </div>
+    </Modal>
   );
 };
 
@@ -227,8 +307,8 @@ const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abier
 
 // ───────────────────────────── Centros ─────────────────────────────
 const PanelCentros: React.FC<{
-  orgId: string; centros: Centro[]; setCentros: (c: Centro[]) => void; inv?: Inventario; invCentros: InventarioCentro[]; abierto: boolean; onGuardado: () => void; falla: (e: unknown) => void;
-}> = ({ orgId, centros, setCentros, inv, invCentros, abierto, onGuardado, falla }) => {
+  orgId: string; onEditar: (c: Centro) => void; centros: Centro[]; setCentros: (c: Centro[]) => void; inv?: Inventario; invCentros: InventarioCentro[]; abierto: boolean; onGuardado: () => void; falla: (e: unknown) => void;
+}> = ({ orgId, onEditar, centros, setCentros, inv, invCentros, abierto, onGuardado, falla }) => {
   const [nombre, setNombre] = useState(''); const [municipio, setMunicipio] = useState(''); const [isla, setIsla] = useState('Mallorca'); const [balear, setBalear] = useState(true);
   const crear = async () => {
     if (!nombre.trim()) return;
@@ -255,6 +335,24 @@ const PanelCentros: React.FC<{
           </div>
         </div>
       </div>
+
+      {centros.length > 0 && (
+        <div className={card}>
+          <h2 className="text-sm font-bold text-slate-800 mb-2">Centros registrados ({centros.length})</h2>
+          <ul className="divide-y divide-slate-100">
+            {centros.map((c) => (
+              <li key={c.id} className="py-2 flex items-center gap-3">
+                <Building2 size={16} className="text-slate-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-800">{c.nombre}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{[c.direccion, c.municipio, c.en_baleares ? c.isla : 'Fuera de Baleares', c.unidades_alojamiento != null ? `${c.unidades_alojamiento} unidades` : null].filter(Boolean).join(' · ') || 'Sin más datos'}</p>
+                </div>
+                <button className={btnS} onClick={() => onEditar(c)}><Pencil size={13} /> Editar</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800">Periodo operativo e índice de actividad {inv ? `(${inv.anio})` : ''}</h2>
@@ -289,6 +387,33 @@ const TIPOS_SUBIDA: Array<[TipoFactura | '', string]> = [
   ['', 'Detectar automáticamente'], ['electricidad', 'Electricidad'], ['gas_natural', 'Gas natural'], ['gasoleo', 'Gasóleo (calefacción)'],
   ['glp', 'GLP (propano/butano)'], ['combustible_vehiculo', 'Combustible de vehículos'], ['refrigerante', 'Recarga de refrigerante'],
 ];
+
+const UN_MES = NOMBRES_MES;
+const Meses: React.FC<{ cubiertos: Set<number> }> = ({ cubiertos }) => (
+  <span className="inline-flex gap-0.5" aria-label="Meses cubiertos">
+    {UN_MES.map((m, i) => <span key={m} title={m} className={`text-[9px] w-4 text-center rounded ${cubiertos.has(i) ? 'bg-green-100 text-green-800 font-bold' : 'bg-slate-100 text-slate-400'}`}>{m[0].toUpperCase()}</span>)}
+  </span>
+);
+
+const tipoDoc = (d: Documento) => (d.extraccion?.tipo ?? d.tipo) as string;
+const contadorDoc = (d: Documento) => d.extraccion?.contador;
+
+/** Cabecera de un grupo de facturas: tipo y CUPS (cuando procede), nº, consumo total y meses cubiertos del año. */
+const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Documento[] }; anio: number }> = ({ g, anio }) => {
+  const validas = g.items.filter((d) => d.estado !== 'rechazado');
+  const cubiertos = new Set<number>(validas.flatMap((d) => mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, anio)));
+  const unidad = validas.find((d) => d.extraccion?.unidad)?.extraccion?.unidad ?? '';
+  const total = validas.reduce((s, d) => s + (d.extraccion?.cantidad ?? 0), 0);
+  const conCups = g.tipo !== 'refrigerante' && g.contador !== 'sin contador';
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span className="text-xs font-bold text-slate-800">{TIPOS[g.tipo as TipoFactura] ?? g.tipo}{conCups ? ` · ${g.contador}` : g.tipo !== 'refrigerante' ? ' · sin contador identificado' : ''}</span>
+      <span className="text-[11px] text-slate-600">{g.items.length} factura{g.items.length === 1 ? '' : 's'}{total ? ` · ${num(total, 0)} ${unidad}` : ''}</span>
+      {g.tipo !== 'refrigerante' && <Meses cubiertos={cubiertos} />}
+    </div>
+  );
+};
+
 const MAX_BYTES = 5 * 1024 * 1024;
 const PARALELO = 3;
 
@@ -366,6 +491,8 @@ const PanelFacturas: React.FC<{
   const nombreCentro = (id: string | null) => centros.find((c) => c.id === id)?.nombre ?? '—';
   const pendientes = docs.filter((d) => d.estado === 'leido' && d.extraccion);
   const evaluadas = useMemo(() => new Map(pendientes.map((d) => [d.id, evaluarDoc(d, factores, inv.anio, docs)])), [docs, factores, inv.anio]); // eslint-disable-line
+  const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, contadorDoc), [docs]); // eslint-disable-line
+  const gruposTodas = useMemo(() => agruparPorTipoYContador(docs, tipoDoc, contadorDoc), [docs]);
   const listas = pendientes.filter((d) => evaluadas.get(d.id)?.listo);
   const seleccionadasListas = listas.filter((d) => sel.has(d.id));
   const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
@@ -437,7 +564,10 @@ const PanelFacturas: React.FC<{
             <table className="w-full text-xs">
               <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Tipo</th><th className="pr-3">Proveedor</th><th className="pr-3">Periodo</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
               <tbody>
-                {pendientes.map((d) => {
+                {gruposPend.map((g) => (
+                  <React.Fragment key={`${g.tipo}|${g.contador}`}>
+                    <tr className="bg-slate-100"><td colSpan={8} className="px-2 py-1.5"><CabeceraGrupo g={g} anio={inv.anio} /></td></tr>
+                {g.items.map((d) => {
                   const ev = evaluadas.get(d.id); const e = d.extraccion!;
                   return (
                     <React.Fragment key={d.id}>
@@ -459,6 +589,8 @@ const PanelFacturas: React.FC<{
                     </React.Fragment>
                   );
                 })}
+                  </React.Fragment>
+                ))}
               </tbody>
             </table>
           </div>
@@ -468,19 +600,26 @@ const PanelFacturas: React.FC<{
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800 mb-3">Todas las facturas del inventario {inv.anio} ({docs.length})</h2>
         {docs.length === 0 ? <p className="text-sm text-slate-600">Aún no hay facturas.</p> : (
-          <ul className="divide-y divide-slate-100">
-            {docs.map((d) => (
-              <li key={d.id} className="py-2.5 flex flex-wrap items-center gap-3">
-                <FileText size={16} className="text-slate-500" />
-                <div className="flex-1 min-w-[200px]">
-                  <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
-                  <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)} · {TIPOS[(d.tipo as TipoFactura)] ?? d.tipo}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}</p>
-                </div>
-                <Estado e={d.estado} />
-                <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
-              </li>
+          <div className="space-y-3">
+            {gruposTodas.map((g) => (
+              <details key={`${g.tipo}|${g.contador}`} open className="border border-slate-200 rounded-xl">
+                <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl"><span className="inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span></summary>
+                <ul className="divide-y divide-slate-100 px-3">
+                  {[...g.items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (
+                    <li key={d.id} className="py-2 flex flex-wrap items-center gap-3">
+                      <FileText size={15} className="text-slate-500" />
+                      <div className="flex-1 min-w-[200px]">
+                        <p className="text-sm font-semibold text-slate-800">{d.nombre_archivo}</p>
+                        <p className="text-[11px] text-slate-500">{nombreCentro(d.centro_id)}{d.periodo_desde ? ` · ${d.periodo_desde} → ${d.periodo_hasta ?? ''}` : ''}{d.extraccion?.cantidad !== undefined ? ` · ${num(d.extraccion.cantidad, 0)} ${d.extraccion.unidad ?? ''}` : ''}</p>
+                      </div>
+                      <Estado e={d.estado} />
+                      <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
@@ -561,6 +700,7 @@ const Revision: React.FC<{
 const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Centro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onCambio: () => void; falla: (e: unknown) => void }> = ({ inv, abierto, centros, actividad, factores, onCambio, falla }) => {
   const [centro, setCentro] = useState(''); const [cat, setCat] = useState<Categoria>('combustion_fija'); const [fuente, setFuente] = useState('');
   const [cantidad, setCantidad] = useState(''); const [origen, setOrigen] = useState<OrigenElectricidad>('red'); const [nota, setNota] = useState(''); const [contador, setContador] = useState('');
+  const [fCentro, setFCentro] = useState(''); const [fFuente, setFFuente] = useState(''); const [fContador, setFContador] = useState(''); const [metrica, setMetrica] = useState<'co2e' | 'consumo'>('co2e');
   useEffect(() => { if (!centro && centros[0]) setCentro(centros[0].id); }, [centros, centro]);
   const opciones = opcionesFuente(factores, cat);
   const valido = centro && Number(cantidad) >= 0 && cantidad !== '' && (cat === 'electricidad' || fuente) && nota.trim().length > 3;
@@ -571,8 +711,14 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
     } catch (e) { falla(e); }
   };
   const nombreCentro = (id: string) => centros.find((c) => c.id === id)?.nombre ?? '—';
+  const etiquetaFuente = (a: Actividad) => a.fuente || 'Electricidad';
+  const fuentesDisp = (Array.from(new Set(actividad.map(etiquetaFuente))) as string[]).sort();
+  const contadoresDisp = (Array.from(new Set(actividad.map((a) => a.contador || ''))) as string[]).filter(Boolean).sort();
+  const filtradas = actividad.filter((a) => (!fCentro || a.centro_id === fCentro) && (!fFuente || etiquetaFuente(a) === fFuente) && (!fContador || (a.contador || '') === fContador));
   return (
     <div className="space-y-4">
+      <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={filtradas} fuentesDisp={fuentesDisp} contadoresDisp={contadoresDisp}
+        fCentro={fCentro} setFCentro={setFCentro} fFuente={fFuente} setFFuente={setFFuente} fContador={fContador} setFContador={setFContador} metrica={metrica} setMetrica={setMetrica} />
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800 mb-1">Añadir dato a mano</h2>
         <p className="text-xs text-slate-600 mb-3">Para datos sin factura legible (p. ej. un contador). Es obligatorio indicar el origen del dato: queda como evidencia para el verificador.</p>
@@ -589,13 +735,13 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
         </div>
       </div>
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Datos de actividad confirmados ({actividad.length})</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Datos de actividad confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
         {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos. Suba facturas o añada un dato a mano.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Origen</th><th /></tr></thead>
               <tbody>
-                {actividad.map((a) => (
+                {filtradas.map((a) => (
                   <tr key={a.id} className="border-b border-slate-100">
                     <td className="py-2 pr-3">{nombreCentro(a.centro_id)}</td><td className="pr-3">{CATEGORIAS[a.categoria]}</td>
                     <td className="pr-3">{a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : '—')}</td>
@@ -610,6 +756,89 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// ───────────────────────────── Gráfico mensual de la actividad ─────────────────────────────
+const COLORES = ['#00BF46', '#022ADA', '#EA980F', '#24CBF5', '#C234D6', '#F9416D', '#77D464', '#000F51'];
+
+const GraficoActividad: React.FC<{
+  inv: Inventario; factores: ConjuntoFactores | null; centros: Centro[]; actividad: Actividad[]; filtradas: Actividad[]; fuentesDisp: string[]; contadoresDisp: string[];
+  fCentro: string; setFCentro: (v: string) => void; fFuente: string; setFFuente: (v: string) => void; fContador: string; setFContador: (v: string) => void;
+  metrica: 'co2e' | 'consumo'; setMetrica: (m: 'co2e' | 'consumo') => void;
+}> = ({ inv, factores, centros, actividad, filtradas, fuentesDisp, contadoresDisp, fCentro, setFCentro, fFuente, setFFuente, fContador, setFContador, metrica, setMetrica }) => {
+  const consumoPosible = !!fFuente; // el consumo solo tiene sentido en una única unidad
+  const m = consumoPosible ? metrica : 'co2e';
+  const unidad = fFuente === 'Electricidad' ? 'kWh' : factores?.unidades[fFuente] ?? (factores?.pcaRefrigerantes[fFuente] !== undefined ? 'kg' : 'unidad del factor');
+
+  const { datos, series, sinPeriodo, fuera } = useMemo(() => {
+    const series: string[] = [];
+    const datos = UN_MES.map((mes) => ({ mes } as Record<string, number | string>));
+    let sinPeriodo = 0; let fuera = 0;
+    for (const a of filtradas) {
+      const serie = a.fuente || 'Electricidad';
+      if (!series.includes(serie)) series.push(serie);
+      let valor = Number(a.cantidad);
+      if (m === 'co2e') {
+        if (!factores) continue;
+        try {
+          const l: LineaActividad = { id: a.id, centro: a.centro_id, categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined };
+          valor = calcularLinea(l, factores).kgCO2e / 1000;
+        } catch { continue; }
+      }
+      const r = repartirPorMes(a.periodo_desde, a.periodo_hasta, valor, inv.anio);
+      if (r.sinPeriodo) { sinPeriodo += 1; continue; }
+      fuera += r.fueraDeAnio;
+      r.meses.forEach((v, i) => { datos[i][serie] = Number(datos[i][serie] ?? 0) + v; });
+    }
+    return { datos, series, sinPeriodo, fuera };
+  }, [filtradas, factores, m, inv.anio]);
+
+  const fmt = (v: number) => v.toLocaleString('es-ES', { maximumFractionDigits: m === 'co2e' ? 2 : 0 });
+  const hayDatos = series.some((s) => datos.some((d) => Number(d[s] ?? 0) > 0));
+  return (
+    <div className={card}>
+      <div className="flex flex-wrap items-end gap-3 mb-3">
+        <h2 className="text-sm font-bold text-slate-800 flex-1 min-w-[180px]">Evolución mensual · {inv.anio}</h2>
+        <label className="text-[11px] font-semibold text-slate-600">Centro
+          <select className={`${input} mt-1`} value={fCentro} onChange={(e) => setFCentro(e.target.value)} aria-label="Filtrar por centro"><option value="">Todos</option>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+        </label>
+        <label className="text-[11px] font-semibold text-slate-600">Tipo de consumo / fuente
+          <select className={`${input} mt-1`} value={fFuente} onChange={(e) => setFFuente(e.target.value)} aria-label="Filtrar por fuente"><option value="">Todas</option>{fuentesDisp.map((f) => <option key={f} value={f}>{f}</option>)}</select>
+        </label>
+        {contadoresDisp.length > 0 && (
+          <label className="text-[11px] font-semibold text-slate-600">Contador / CUPS
+            <select className={`${input} mt-1`} value={fContador} onChange={(e) => setFContador(e.target.value)} aria-label="Filtrar por contador"><option value="">Todos</option>{contadoresDisp.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          </label>
+        )}
+        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden text-xs font-semibold" role="group" aria-label="Magnitud">
+          <button className={`px-3 py-2 ${m === 'co2e' ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'}`} onClick={() => setMetrica('co2e')}>t CO₂e</button>
+          <button className={`px-3 py-2 ${m === 'consumo' ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'} disabled:opacity-40`} disabled={!consumoPosible} onClick={() => setMetrica('consumo')} title={consumoPosible ? '' : 'Elija una fuente para ver su consumo en su unidad'}>Consumo{consumoPosible ? ` (${unidad})` : ''}</button>
+        </div>
+      </div>
+      {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos de actividad para representar.</p>
+        : !hayDatos ? <p className="text-sm text-slate-600">No hay datos con periodo para estos filtros.</p> : (
+        <div style={{ width: '100%', height: 280 }} role="img" aria-label={`Gráfico mensual de ${m === 'co2e' ? 'emisiones en toneladas de CO2 equivalente' : `consumo en ${unidad}`}`}>
+          <ResponsiveContainer>
+            <BarChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => fmt(v)} width={56} />
+              <Tooltip formatter={(v: number) => `${fmt(v)} ${m === 'co2e' ? 't CO₂e' : unidad}`} />
+              {series.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+              {series.map((sr, i) => <Bar key={sr} dataKey={sr} stackId="a" fill={COLORES[i % COLORES.length]} />)}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+      {(sinPeriodo > 0 || fuera > 0.5) && (
+        <p className="text-[11px] text-amber-800 mt-2">
+          {sinPeriodo > 0 && `${sinPeriodo} dato(s) sin periodo no aparecen en el gráfico. `}
+          {fuera > 0.5 && `Parte de algún periodo cae fuera de ${inv.anio} y no se representa.`}
+        </p>
+      )}
+      <p className="text-[11px] text-slate-500 mt-1">Cada consumo se reparte por meses en proporción a los días de su periodo de facturación.</p>
     </div>
   );
 };

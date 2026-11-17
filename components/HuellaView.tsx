@@ -1,15 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
-import { huellaService, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
+import { construirInforme } from '../huella/informe';
+import type { DatosInforme } from '../huella/informe';
+import { informeAHtml } from '../huella/informeHtml';
+import { huellaService, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
-type Pestana = 'resumen' | 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre' | 'ajustes';
+type Pestana = 'resumen' | 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre' | 'informe' | 'ajustes';
 export type RolHuella = 'consultor' | 'cliente';
 
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -133,6 +136,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     { k: 'actividad', nombre: 'Consumos', icono: <ListChecks size={17} /> },
     { k: 'resultados', nombre: 'Resultados', icono: <BarChart3 size={17} /> },
     { k: 'cierre', nombre: 'Cierre', icono: <Lock size={17} />, solo: 'consultor' },
+    { k: 'informe', nombre: 'Informe', icono: <FileCheck size={17} />, solo: 'consultor' },
     { k: 'ajustes', nombre: 'Ajustes', icono: <Settings size={17} />, solo: 'consultor' },
   ];
   const visibles = nav.filter((n) => !n.solo || esConsultor);
@@ -143,6 +147,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
     actividad: ['Consumos', 'Evolución mensual y datos de actividad confirmados.'],
     resultados: ['Resultados', 'Huella del inventario según el Registro balear.'],
     cierre: ['Cierre del inventario', 'Comprobaciones, variaciones y cierre con registro.'],
+    informe: ['Informe de inventario', 'ISO 14064-1 · listo para entregar al verificador.'],
     ajustes: ['Ajustes técnicos', 'Factores de emisión y datos de la organización.'],
   };
 
@@ -223,9 +228,24 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                   onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
               )}
+              {tab === 'informe' && inv && esConsultor && (
+                <PanelInforme org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                  onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
+              )}
               {tab === 'ajustes' && esConsultor && (
                 <div className="space-y-4">
                   {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />}
+                  {inv && (
+                    <div className={card}>
+                      <label className="text-sm font-bold text-slate-800">Año base del inventario
+                        <div className="flex items-center gap-3 mt-2">
+                          <input type="number" min={2007} max={2100} className={`${input} w-32`} defaultValue={inv.anio_base ?? ''} disabled={!abierto} aria-label="Año base"
+                            onBlur={async (e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v === (inv.anio_base ?? null)) return; try { const u = await huellaService.guardarAnioBase(inv.id, v); setInvs((l) => l.map((x) => (x.id === u.id ? { ...x, ...u } : x))); } catch (x) { falla(x); } }} />
+                          <span className="text-xs font-normal text-slate-600">Año de referencia para comparar y para el plan de reducción (ISO 14064-1, 6.4).</span>
+                        </div>
+                      </label>
+                    </div>
+                  )}
                   <div className={card}>
                     <div className="flex items-center gap-3">
                       <div className="flex-1"><h2 className="text-sm font-bold text-slate-800">Organización</h2><p className="text-xs text-slate-600">{org.nombre}{org.cif ? ` · ${org.cif}` : ''}</p></div>
@@ -305,7 +325,7 @@ const PanelResumen: React.FC<{
           {kpi('Total', t(calculo.totales.kgCO2eTotal), 't CO₂e')}
           {kpi('Emisiones directas', t(calculo.totales.kgCO2eAlcance1), 't CO₂e · Alcance 1')}
           {kpi('Electricidad', t(calculo.totales.kgCO2eAlcance2), 't CO₂e · Alcance 2')}
-          {kpi('Por estancia', indice > 0 ? (ratio(calculo.totales.kgCO2eTotal, indice) * 1000).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—', indice > 0 ? 'kg CO₂e por estancia' : 'Falta indicar las estancias')}
+          {kpi('Por estancia', indice > 0 ? ratio(calculo.totales.kgCO2eTotal, indice).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—', indice > 0 ? 'kg CO₂e por estancia' : 'Falta indicar las estancias')}
         </div>
       ) : <div className={`${card} text-sm text-slate-600`}>Los resultados aparecerán aquí en cuanto haya facturas revisadas.</div>}
 
@@ -1187,6 +1207,124 @@ const PanelCierre: React.FC<{
           </div>
         </Modal>
       )}
+    </div>
+  );
+};
+
+// ───────────────────────────── Informe de inventario (ISO 14064-1) ─────────────────────────────
+async function totalesAnterior(inv: Inventario, invs: Inventario[], centros: Centro[]) {
+  const prev = invs.find((i) => i.anio === inv.anio - 1);
+  if (!prev) return null;
+  try {
+    const [act, conj] = await Promise.all([huellaService.actividad(prev.id), prev.conjunto_factores ? Promise.resolve(prev.conjunto_factores) : cargarConjunto(prev.anio).then((c) => c.conjunto)]);
+    const tt = calcularActividad(act, centros, conj).totales;
+    return { anio: prev.anio, a1: tt.kgCO2eAlcance1, a2: tt.kgCO2eAlcance2, total: tt.kgCO2eTotal };
+  } catch { return null; }
+}
+
+const descargar = (blob: Blob, nombre: string) => {
+  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+const imagenBytes = async (url: string) => { try { const r = await fetch(url); return r.ok ? new Uint8Array(await r.arrayBuffer()) : undefined; } catch { return undefined; } };
+
+const PanelInforme: React.FC<{
+  org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
+}> = ({ org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
+  const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
+  const [ncs, setNcs] = useState<NoConformidad[]>([]);
+  const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
+  const [trabajando, setTrabajando] = useState('');
+  const [ver, setVer] = useState<Verificacion>({ nivel: 'Limitado' });
+  const marco = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    Promise.all([huellaService.exclusiones(inv.id), huellaService.noConformidades(inv.id)]).then(([e, n]) => { setExclusiones(e); setNcs(n); }).catch(falla);
+  }, [inv.id]); // eslint-disable-line
+  useEffect(() => { setAnterior(undefined); totalesAnterior(inv, invs, centros).then(setAnterior); }, [inv.id, invs.length]); // eslint-disable-line
+
+  const datos: DatosInforme | null = useMemo(() => {
+    if (!factores || anterior === undefined) return null;
+    const c = calcularActividad(actividad, centros, factores);
+    const nombreDoc = (id?: string | null) => docs.find((d) => d.id === id)?.nombre_archivo ?? null;
+    const nombreCentro = (id: string) => centros.find((x) => x.id === id)?.nombre ?? id;
+    return {
+      organizacion: { nombre: org.nombre, cif: org.cif, direccion: org.direccion, cnae: org.cnae, iae: org.iae, criterio: org.criterio_consolidacion ?? 'control', consultorEmail: org.consultor_email },
+      centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0) }; }),
+      inventario: { anio: inv.anio, estado: inv.estado, anioBase: inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
+      factores, resultados: c.resultados, totales: c.totales,
+      actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
+      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
+      documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
+      emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
+    };
+  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario]);
+
+  const modelo = useMemo(() => (datos ? construirInforme(datos) : null), [datos]);
+  const html = useMemo(() => (modelo ? informeAHtml(modelo, { baseUrl: window.location.origin }) : ''), [modelo]);
+
+  const word = async () => {
+    if (!modelo) return; setTrabajando('word');
+    try {
+      const [{ informeADocx }, green, group] = await Promise.all([import('../huella/informeDocx'), imagenBytes('/logo-hsgreen-recortado.png'), imagenBytes('/logo-hs-group.png')]);
+      descargar(await informeADocx(modelo, { green, group }), `${modelo.meta.codigo}_V01.docx`);
+    } catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
+  const paquete = async () => {
+    if (!datos) return; setTrabajando('xlsx');
+    try { const { paqueteAXlsx } = await import('../huella/paquete'); descargar(paqueteAXlsx(datos), `Paquete_verificador_${inv.anio}_${org.nombre.replace(/[^\w]+/g, '_')}.xlsx`); }
+    catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
+  const marcarVerificado = async () => {
+    if (!confirm('Va a marcar el inventario como verificado con los datos indicados. ¿Continuar?')) return;
+    setTrabajando('ver');
+    try { onInventario(await huellaService.marcarVerificado(inv.id, ver)); } catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
+
+  if (!modelo || !datos) return <div className={`${card} text-sm text-slate-600`}><Loader2 size={14} className="inline animate-spin mr-2" />Preparando el informe…</div>;
+  const cerrado = inv.estado === 'cerrado' || inv.estado === 'verificado';
+  return (
+    <div className="space-y-4">
+      <div className={card}>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[220px]">
+            <p className="text-xs font-semibold text-slate-600">{modelo.meta.codigo}</p>
+            <p className="text-sm font-bold text-slate-900">{modelo.meta.subtitulo}</p>
+            <span className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-1 rounded-full ${inv.estado === 'verificado' ? 'bg-green-100 text-green-800' : cerrado ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>{modelo.meta.estado}</span>
+          </div>
+          <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
+          <button className={btnP} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
+          <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador</button>
+        </div>
+      </div>
+
+      {modelo.pendientes.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
+          <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={15} /> Antes de entregarlo al verificador</p>
+          <ul className="list-disc pl-5 text-xs space-y-0.5">{modelo.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+      )}
+
+      {inv.estado === 'cerrado' && (
+        <div className={card}>
+          <h2 className="text-sm font-bold text-slate-800 mb-1">Registrar la verificación</h2>
+          <p className="text-xs text-slate-600 mb-3">Cuando la entidad acreditada (ISO 14064-3) emita su informe, anote sus datos. El inventario pasa a «verificado» y el informe los recoge en el apartado 11.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
+            <label className="text-xs font-semibold text-slate-700">Entidad verificadora<input className={`${input} mt-1`} value={ver.entidad ?? ''} onChange={(e) => setVer({ ...ver, entidad: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700">Nivel de aseguramiento<select className={`${input} mt-1`} value={ver.nivel} onChange={(e) => setVer({ ...ver, nivel: e.target.value })}><option>Limitado</option><option>Razonable</option></select></label>
+            <label className="text-xs font-semibold text-slate-700">Fecha<input type="date" className={`${input} mt-1`} value={ver.fecha ?? ''} onChange={(e) => setVer({ ...ver, fecha: e.target.value })} /></label>
+            <label className="text-xs font-semibold text-slate-700">Referencia del informe<input className={`${input} mt-1`} value={ver.referencia ?? ''} onChange={(e) => setVer({ ...ver, referencia: e.target.value })} /></label>
+          </div>
+          <button className={`${btnP} mt-3`} onClick={marcarVerificado} disabled={!ver.entidad?.trim() || !ver.fecha || trabajando === 'ver'}><CheckCircle2 size={15} /> Marcar como verificado</button>
+        </div>
+      )}
+
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-2">Vista previa</h2>
+        <iframe ref={marco} title="Vista previa del informe" srcDoc={html} className="w-full rounded-lg border border-slate-200 bg-white" style={{ height: 640 }} />
+      </div>
     </div>
   );
 };

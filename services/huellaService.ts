@@ -11,9 +11,10 @@ export interface CierreDatos {
   resumen?: { kgCO2eAlcance1: number; kgCO2eAlcance2: number; kgCO2eTotal: number; indiceActividad: number; factores: string; lineas: number; fecha: string };
   reaperturas?: Array<{ fecha: string; usuario: string; motivo: string }>;
 }
+export interface Verificacion { entidad?: string; nivel?: string; fecha?: string; referencia?: string }
 export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
-export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null }
+export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
@@ -79,6 +80,13 @@ export const huellaService = {
   async crearNoConformidad(x: Omit<NoConformidad, 'id' | 'fecha'>) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').insert(x).select().single()); },
   async cerrarNoConformidad(id: string) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').update({ cerrada_en: new Date().toISOString().slice(0, 10) }).eq('id', id).select().single()); },
   async borrarNoConformidad(id: string) { ok(await supabase.from('hc_no_conformidades').delete().eq('id', id)); },
+  async guardarAnioBase(inv: string, anio: number | null) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ anio_base: anio }).eq('id', inv).select().single());
+  },
+  /** Marca un inventario cerrado como verificado con los datos de la entidad verificadora. */
+  async marcarVerificado(inv: string, v: Verificacion) {
+    return ok<Inventario>(await supabase.from('hc_inventarios').update({ estado: 'verificado', verificacion: v }).eq('id', inv).select().single());
+  },
   async inventarioCentros(inv: string) { return ok<InventarioCentro[]>(await supabase.from('hc_inventario_centros').select('*').eq('inventario_id', inv)); },
   async guardarInventarioCentro(x: InventarioCentro) {
     return ok<InventarioCentro>(await supabase.from('hc_inventario_centros').upsert(x, { onConflict: 'inventario_id,centro_id' }).select().single());

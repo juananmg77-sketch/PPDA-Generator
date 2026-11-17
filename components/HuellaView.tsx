@@ -16,7 +16,7 @@ import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
-type Pestana = 'resumen' | 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre' | 'informe' | 'ajustes';
+type Pestana = 'resumen' | 'centros' | 'facturas' | 'resultados' | 'cierre' | 'ajustes';
 export type RolHuella = 'consultor' | 'cliente';
 
 const t = (kg: number) => (kg / 1000).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -55,6 +55,14 @@ function fuentePorDefecto(e: ExtraccionFactura, f: ConjuntoFactores | null): str
   return opcionesFuente(f, cat).find((k) => k.toLowerCase().startsWith(p)) ?? '';
 }
 
+const Segmentos: React.FC<{ valor: string; opciones: Array<[string, string]>; onCambio: (v: string) => void; etiqueta: string }> = ({ valor, opciones, onCambio, etiqueta }) => (
+  <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white text-sm font-semibold" role="group" aria-label={etiqueta}>
+    {opciones.map(([k, t]) => (
+      <button key={k} aria-pressed={valor === k} onClick={() => onCambio(k)} className={`px-4 py-2 transition-colors ${valor === k ? 'text-white' : 'text-slate-700 hover:bg-slate-50'}`} style={valor === k ? { background: '#0002C9' } : undefined}>{t}</button>
+    ))}
+  </div>
+);
+
 export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol?: RolHuella }> = ({ onBack, currentUser, rol = 'consultor' }) => {
   const esConsultor = rol === 'consultor';
   const [orgs, setOrgs] = useState<Organizacion[]>([]);
@@ -63,6 +71,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const [invId, setInvId] = useState('');
   const [tab, setTab] = useState<Pestana>('resumen');
   const [vista, setVista] = useState<'biblioteca' | 'calculo'>('biblioteca');
+  const [vistaFacturas, setVistaFacturas] = useState<'facturas' | 'consumos'>('facturas');
+  const [pasoCierre, setPasoCierre] = useState<'cierre' | 'informe'>('cierre');
   const [biblio, setBiblio] = useState<FilaBiblioteca[] | null>(null);
   const [nuevoCalculo, setNuevoCalculo] = useState(false);
   const [invInicial, setInvInicial] = useState('');
@@ -84,7 +94,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
 
   const cargarBiblioteca = useCallback(() => { huellaService.biblioteca().then(setBiblio).catch(falla); huellaService.organizaciones().then(setOrgs).catch(falla); }, []); // eslint-disable-line
   useEffect(() => { cargarBiblioteca(); }, [cargarBiblioteca]);
-  const abrir = (oId: string, iId: string) => { setInvInicial(iId); setOrgId(oId); if (oId === orgId) setInvId(iId); setTab('resumen'); setVista('calculo'); };
+  const abrir = (oId: string, iId: string) => { setInvInicial(iId); setOrgId(oId); if (oId === orgId) setInvId(iId); setTab('resumen'); setVistaFacturas('facturas'); setVista('calculo'); };
+  useEffect(() => { if (inv) setPasoCierre(inv.estado === 'borrador' ? 'cierre' : 'informe'); }, [inv?.id, inv?.estado]); // eslint-disable-line
   const volverABiblioteca = () => { setVista('biblioteca'); cargarBiblioteca(); };
   useEffect(() => {
     setInvs([]); setInvId(''); setCentros([]);
@@ -149,26 +160,22 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
 
   const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const pendientes = docs.filter((d) => d.estado === 'leido').length;
-  const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; solo?: 'consultor'; badge?: number }> = [
+  const cerradoInv = !!inv && inv.estado !== 'borrador';
+  const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; solo?: 'consultor'; badge?: number; oculto?: boolean }> = [
     { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
     { k: 'centros', nombre: 'Centros', icono: <Building2 size={17} />, solo: 'consultor' },
     { k: 'facturas', nombre: esConsultor ? 'Facturas' : 'Mis facturas', icono: <FileText size={17} />, badge: esConsultor ? pendientes : 0 },
-    { k: 'actividad', nombre: 'Consumos', icono: <ListChecks size={17} /> },
     { k: 'resultados', nombre: 'Resultados', icono: <BarChart3 size={17} /> },
-    { k: 'cierre', nombre: 'Cierre', icono: <Lock size={17} />, solo: 'consultor' },
-    { k: 'informe', nombre: 'Informe', icono: <FileCheck size={17} />, solo: 'consultor' },
-    { k: 'ajustes', nombre: 'Ajustes', icono: <Settings size={17} />, solo: 'consultor' },
+    { k: 'cierre', nombre: esConsultor ? 'Cierre e informe' : 'Informe', icono: esConsultor ? <Lock size={17} /> : <FileCheck size={17} />, oculto: !esConsultor && !cerradoInv },
   ];
-  const visibles = nav.filter((n) => !n.solo || esConsultor);
+  const visibles = nav.filter((n) => (!n.solo || esConsultor) && !n.oculto);
   const titulos: Record<Pestana, [string, string]> = {
-    resumen: [esConsultor ? 'Resumen del inventario' : 'Su huella de carbono', esConsultor ? 'Dónde estás y qué falta para cerrar.' : 'Suba sus facturas y consulte sus resultados.'],
+    resumen: [esConsultor ? 'Resumen del cálculo' : 'Su huella de carbono', esConsultor ? 'Dónde estás y qué falta para cerrar.' : 'Suba sus facturas y consulte sus resultados.'],
     centros: ['Centros de trabajo', 'Datos de cada centro, su periodo operativo y estancias.'],
-    facturas: [esConsultor ? 'Facturas' : 'Mis facturas', 'Suba un bloque completo; se leen solas y usted las revisa.'],
-    actividad: ['Consumos', 'Evolución mensual y datos de actividad confirmados.'],
-    resultados: ['Resultados', 'Huella del inventario según el Registro balear.'],
-    cierre: ['Cierre del inventario', 'Comprobaciones, variaciones y cierre con registro.'],
-    informe: ['Informe de inventario', 'ISO 14064-1 · listo para entregar al verificador.'],
-    ajustes: ['Ajustes técnicos', 'Factores de emisión y datos de la organización.'],
+    facturas: vistaFacturas === 'consumos' ? ['Consumos', 'Evolución mensual y consumos confirmados.'] : [esConsultor ? 'Facturas' : 'Mis facturas', 'Suba un bloque completo; se leen solas y usted las revisa.'],
+    resultados: ['Resultados', 'Huella del cálculo según el Registro balear.'],
+    cierre: esConsultor ? [pasoCierre === 'informe' ? 'Informe' : 'Cierre del cálculo', pasoCierre === 'informe' ? 'ISO 14064-1 · listo para entregar al verificador.' : 'Comprobaciones, variaciones y cierre con registro.'] : ['Informe', 'Informe del cálculo cerrado.'],
+    ajustes: ['Ajustes del cálculo', 'Factores de emisión y datos de la organización.'],
   };
 
   if (vista === 'biblioteca') {
@@ -221,6 +228,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <p className="text-lg font-extrabold text-slate-900 truncate" title={org.nombre}>{org.nombre}</p>
                 <p className="text-xs text-slate-600 truncate">{centros.length === 1 ? `Hotel: ${centros[0].nombre}` : `${centros.length} centro${centros.length === 1 ? '' : 's'} de trabajo`}{org.suite_cadena && norm(org.suite_cadena) !== norm(org.nombre) ? ` · ${org.suite_cadena}` : ''}</p>
               </div>
+              {esConsultor && <button className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => setTab('ajustes')} title="Ajustes del cálculo" aria-label="Ajustes del cálculo"><Settings size={18} /></button>}
               {inv && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800">Cálculo {inv.anio}</span>
@@ -230,6 +238,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
             </div>
           )}
           <div>
+            {tab === 'ajustes' && <button className="mb-1 text-xs font-semibold text-slate-600 underline hover:text-slate-900" onClick={() => setTab('resumen')}>← Volver al resumen</button>}
             <h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1>
             <p className="text-sm text-slate-600">{titulos[tab][1]}</p>
           </div>
@@ -245,31 +254,35 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {tab === 'centros' && esConsultor && (
                 <PanelCentros orgId={orgId} onEditar={setCentroEditar} centros={centros} setCentros={setCentros} inv={inv} invCentros={invCentros} abierto={!!abierto} onGuardado={recargarInv} falla={falla} />
               )}
-              {tab !== 'centros' && !inv && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Cree un inventario (año) con el botón + del menú para continuar.' : 'Todavía no hay un inventario abierto. Su consultor lo creará.'}</div>}
+              {tab !== 'centros' && !inv && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Abra un cálculo desde la biblioteca para continuar.' : 'Todavía no hay un cálculo abierto. Su consultor lo creará.'}</div>}
               {tab === 'resumen' && inv && (
                 <PanelResumen rol={rol} inv={inv} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} ir={setTab} />
               )}
               {tab === 'facturas' && inv && (
-                <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
-              )}
-              {tab === 'actividad' && inv && (
-                <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
+                <div className="space-y-4">
+                  <Segmentos etiqueta="Vista" valor={vistaFacturas} onCambio={(v) => setVistaFacturas(v as 'facturas' | 'consumos')} opciones={[['facturas', esConsultor ? 'Facturas' : 'Mis facturas'], ['consumos', 'Consumos']]} />
+                  {vistaFacturas === 'facturas'
+                    ? <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
+                    : <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />}
+                </div>
               )}
               {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
-              {tab === 'cierre' && inv && esConsultor && (
-                <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
-                  onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
-              )}
-              {tab === 'informe' && inv && esConsultor && (
-                <PanelInforme org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
-                  onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
+              {tab === 'cierre' && inv && (
+                <div className="space-y-4">
+                  {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
+                  {esConsultor && pasoCierre === 'cierre'
+                    ? <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
+                    : <PanelInforme soloLectura={!esConsultor} org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />}
+                </div>
               )}
               {tab === 'ajustes' && esConsultor && (
                 <div className="space-y-4">
                   {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />}
                   {inv && (
                     <div className={card}>
-                      <label className="text-sm font-bold text-slate-800">Año base del inventario
+                      <label className="text-sm font-bold text-slate-800">Año base del cálculo
                         <div className="flex items-center gap-3 mt-2">
                           <input type="number" min={2007} max={2100} className={`${input} w-32`} defaultValue={inv.anio_base ?? ''} disabled={!abierto} aria-label="Año base"
                             onBlur={async (e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v === (inv.anio_base ?? null)) return; try { const u = await huellaService.guardarAnioBase(inv.id, v); setInvs((l) => l.map((x) => (x.id === u.id ? { ...x, ...u } : x))); } catch (x) { falla(x); } }} />
@@ -515,9 +528,9 @@ const PanelResumen: React.FC<{
   if (porRevisar > 0) pendientes.push({ icono: <AlertTriangle size={18} />, texto: esConsultor ? `${porRevisar} factura(s) esperan su revisión.` : `${porRevisar} factura(s) en revisión por su consultor.`, boton: esConsultor ? 'Revisar' : 'Ver', destino: 'facturas', nivel: 'aviso' });
   for (const h of huecos.slice(0, 3)) pendientes.push({ icono: <FileText size={18} />, texto: `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, boton: 'Subir', destino: 'facturas', nivel: 'aviso' });
   if (esConsultor && sinIndice.length > 0 && confirmadas > 0) pendientes.push({ icono: <Building2 size={18} />, texto: `Indique las estancias de: ${sinIndice.map((c) => c.nombre).join(', ')}.`, boton: 'Indicar', destino: 'centros', nivel: 'aviso' });
-  if (esConsultor && !inv.conjunto_factores && confirmadas > 0) pendientes.push({ icono: <Settings size={18} />, texto: 'Confirme la versión de factores de emisión del inventario.', boton: 'Revisar', destino: 'ajustes', nivel: 'aviso' });
+  if (esConsultor && !inv.conjunto_factores && confirmadas > 0) pendientes.push({ icono: <Settings size={18} />, texto: 'Confirme la versión de factores de emisión del cálculo.', boton: 'Revisar', destino: 'ajustes', nivel: 'aviso' });
   if (esConsultor && !cerrado && confirmadas > 0 && porRevisar === 0 && pendientes.length === 0) pendientes.push({ icono: <Lock size={18} />, texto: 'Todo está al día: puede pasar a las comprobaciones de cierre.', boton: 'Cierre', destino: 'cierre', nivel: 'ok' });
-  if (cerrado) pendientes.push({ icono: <Lock size={18} />, texto: `Inventario ${inv.estado}. Sus datos están bloqueados.`, boton: 'Ver', destino: esConsultor ? 'cierre' : 'resultados', nivel: 'ok' });
+  if (cerrado) pendientes.push({ icono: <Lock size={18} />, texto: `Cálculo ${inv.estado}. Sus datos están bloqueados.`, boton: 'Ver', destino: esConsultor ? 'cierre' : 'resultados', nivel: 'ok' });
 
   const kpi = (titulo: string, valor: string, sub: string) => (
     <div className={card}><p className="text-xs font-semibold text-slate-600">{titulo}</p><p className="text-3xl font-extrabold text-header mt-1 tabular-nums">{valor}</p><p className="text-[11px] text-slate-500">{sub}</p></div>
@@ -747,12 +760,12 @@ const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abier
   return (
     <div className={`${card} space-y-2`}>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-semibold text-slate-600 min-w-[260px]">Factores de emisión del inventario {inv.anio}
+        <label className="text-xs font-semibold text-slate-600 min-w-[260px]">Factores de emisión del cálculo {inv.anio}
           <select className={`${input} mt-1`} value={actual} disabled={!abierto || elegido.disponibles.length < 2 && fijada} onChange={(e) => onElegir(e.target.value)} aria-label="Versión de factores">
             {elegido.disponibles.map((id) => <option key={id} value={id}>{etiqueta(id)}</option>)}
           </select>
         </label>
-        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${fijada ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{fijada ? 'Fijada en el inventario' : 'Propuesta por defecto: confírmela para fijarla'}</span>
+        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${fijada ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{fijada ? 'Fijada en el cálculo' : 'Propuesta por defecto: confírmela para fijarla'}</span>
         {!fijada && abierto && <button className={btnP} onClick={() => onElegir(actual)}>Fijar esta versión</button>}
       </div>
       {comparaciones.map(({ id, dif }) => {
@@ -858,7 +871,7 @@ const PanelCentros: React.FC<{
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800">Periodo operativo e índice de actividad {inv ? `(${inv.anio})` : ''}</h2>
         <p className="text-xs text-slate-600 mt-1 mb-3">Si un centro estuvo cerrado o abrió a mitad de año, indique su periodo. El índice (estancias) puede ser 0: los ratios solo se calculan cuando es mayor que 0.</p>
-        {!inv ? <p className="text-sm text-slate-600">Cree un inventario para indicar estos datos.</p> : centros.length === 0 ? <p className="text-sm text-slate-600">Añada al menos un centro.</p> : (
+        {!inv ? <p className="text-sm text-slate-600">Abra un cálculo para indicar estos datos.</p> : centros.length === 0 ? <p className="text-sm text-slate-600">Añada al menos un centro.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Operativo desde</th><th className="pr-3">Hasta</th><th>Estancias</th></tr></thead>
@@ -1056,7 +1069,7 @@ const PanelFacturas: React.FC<{
               <span className="text-[11px] text-slate-500">{tipo ? `Se leerán como: ${TIPOS_SUBIDA.find(([k]) => k === tipo)?.[1]}` : 'Sin tipo indicado, la lectura lo detecta (más lento y menos seguro)'}</span>
               <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
-            {!abierto && <p className="text-xs text-amber-700 mt-2">El inventario no está en borrador: no admite facturas nuevas.</p>}
+            {!abierto && <p className="text-xs text-amber-700 mt-2">El cálculo no está en borrador: no admite facturas nuevas.</p>}
             {tareas.length > 0 && (
               <ul className="mt-3 divide-y divide-slate-100 border border-slate-200 rounded-xl text-xs max-h-48 overflow-auto">
                 {tareas.map((t) => (
@@ -1122,7 +1135,7 @@ const PanelFacturas: React.FC<{
       )}
 
       <div className={card}>
-        <h2 className="text-sm font-bold text-slate-800 mb-3">Todas las facturas del inventario {inv.anio} ({docs.length})</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Todas las facturas del cálculo {inv.anio} ({docs.length})</h2>
         {docs.length === 0 ? <p className="text-sm text-slate-600">Aún no hay facturas.</p> : (
           <div className="space-y-3">
             {gruposTodas.map((g) => (
@@ -1280,7 +1293,7 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
       <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={filtradas} fuentesDisp={fuentesDisp} contadoresDisp={contadoresDisp}
         fCentro={fCentro} setFCentro={setFCentro} fFuente={fFuente} setFFuente={setFFuente} fContador={fContador} setFContador={setFContador} metrica={metrica} setMetrica={setMetrica} />
       {formAbierto && abierto && (
-        <Modal titulo="Añadir dato a mano" onCerrar={() => setFormAbierto(false)}>
+        <Modal titulo="Añadir consumo a mano" onCerrar={() => setFormAbierto(false)}>
           <p className="text-xs text-slate-600 mb-3">Para datos sin factura legible (p. ej. un contador). Es obligatorio indicar el origen del dato: queda como evidencia para el verificador.</p>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-semibold text-slate-600">Centro<select className={`${input} mt-1`} value={centro} onChange={(e) => setCentro(e.target.value)}>{centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
@@ -1300,10 +1313,10 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
       )}
       <div className={card}>
         <div className="flex items-center gap-3 mb-3">
-          <h2 className="flex-1 text-sm font-bold text-slate-800">Datos de actividad confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
-          {abierto && <button className={btnS} onClick={() => setFormAbierto(true)}><Plus size={14} /> Añadir dato a mano</button>}
+          <h2 className="flex-1 text-sm font-bold text-slate-800">Consumos confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
+          {abierto && <button className={btnS} onClick={() => setFormAbierto(true)}><Plus size={14} /> Añadir consumo a mano</button>}
         </div>
-        {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos. Suba facturas o añada un dato a mano.</p> : (
+        {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay consumos. Suba facturas o añada un consumo a mano.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Origen</th><th /></tr></thead>
@@ -1424,7 +1437,7 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
   return { ...calcularInventario(validas, factores), fallos, lineas: validas.length };
 }
 
-// ───────────────────────────── Cierre del inventario ─────────────────────────────
+// ───────────────────────────── Cierre del cálculo ─────────────────────────────
 const PanelCierre: React.FC<{
   inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
@@ -1491,7 +1504,7 @@ const PanelCierre: React.FC<{
   };
   const cerrar = async () => {
     if (!factores || !calculo || !evaluacion?.puedeCerrar) return;
-    if (!confirm(`Va a cerrar el inventario ${inv.anio}. Se fijarán los factores (${factores.id}) y los resultados, y no podrá modificarse ningún dato sin reabrirlo con su causa. ¿Continuar?`)) return;
+    if (!confirm(`Va a cerrar el cálculo ${inv.anio}. Se fijarán los factores (${factores.id}) y los resultados, y no podrá modificarse ningún dato sin reabrirlo con su causa. ¿Continuar?`)) return;
     setTrabajando(true);
     try {
       const resumen = { kgCO2eAlcance1: calculo.totales.kgCO2eAlcance1, kgCO2eAlcance2: calculo.totales.kgCO2eAlcance2, kgCO2eTotal: calculo.totales.kgCO2eTotal, indiceActividad: indice, factores: factores.id, lineas: calculo.lineas, fecha: new Date().toISOString() };
@@ -1527,7 +1540,7 @@ const PanelCierre: React.FC<{
     <div className="space-y-4">
       {cerrado && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-4 text-sm text-green-900">
-          <p className="font-bold flex items-center gap-2"><Lock size={15} /> Inventario {inv.anio} {inv.estado}{inv.cerrado_en ? ` el ${new Date(inv.cerrado_en).toLocaleDateString('es-ES')}` : ''}</p>
+          <p className="font-bold flex items-center gap-2"><Lock size={15} /> Cálculo {inv.anio} {inv.estado}{inv.cerrado_en ? ` el ${new Date(inv.cerrado_en).toLocaleDateString('es-ES')}` : ''}</p>
           {r && <p className="text-xs mt-1">Resultados fijados: Alcance 1 {t(r.kgCO2eAlcance1)} · Alcance 2 {t(r.kgCO2eAlcance2)} · Total {t(r.kgCO2eTotal)} t CO₂e · {r.lineas} líneas · factores {r.factores}.</p>}
           {inv.estado === 'cerrado' && <button className={`${btnS} mt-3`} onClick={() => setReabrir(true)}><Unlock size={14} /> Reabrir con registro de la causa</button>}
         </div>
@@ -1546,7 +1559,7 @@ const PanelCierre: React.FC<{
             <ul className="space-y-1.5">{evaluacion.items.map((i, k) => <li key={k} className="flex items-start gap-2 text-xs text-slate-800">{icono(i.nivel)}<span>{i.mensaje}</span></li>)}</ul>
             {abierto && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button className={btnP} onClick={cerrar} disabled={!evaluacion.puedeCerrar || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} Cerrar inventario {inv.anio}</button>
+                <button className={btnP} onClick={cerrar} disabled={!evaluacion.puedeCerrar || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} Cerrar cálculo {inv.anio}</button>
                 {!evaluacion.puedeCerrar && <span className="text-xs text-red-700">Resuelva los errores para poder cerrar.</span>}
               </div>
             )}
@@ -1611,7 +1624,7 @@ const PanelCierre: React.FC<{
       )}
 
       {reabrir && (
-        <Modal titulo={`Reabrir el inventario ${inv.anio}`} onCerrar={() => setReabrir(false)}>
+        <Modal titulo={`Reabrir el cálculo ${inv.anio}`} onCerrar={() => setReabrir(false)}>
           <p className="text-xs text-slate-700 mb-3">Al reabrirlo podrá modificar datos. La causa queda registrada junto con la fecha y el usuario, y la base anota el cambio en la auditoría. Deberá volver a cerrarlo.</p>
           <textarea className={input} rows={4} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Causa de la reapertura (mínimo 10 caracteres)" autoFocus />
           <div className="flex justify-end gap-2 mt-4">
@@ -1642,9 +1655,9 @@ const descargar = (blob: Blob, nombre: string) => {
 const imagenBytes = async (url: string) => { try { const r = await fetch(url); return r.ok ? new Uint8Array(await r.arrayBuffer()) : undefined; } catch { return undefined; } };
 
 const PanelInforme: React.FC<{
-  org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  soloLectura?: boolean; org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
-}> = ({ org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
+}> = ({ soloLectura, org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
@@ -1692,7 +1705,7 @@ const PanelInforme: React.FC<{
     catch (e) { falla(e); } finally { setTrabajando(''); }
   };
   const marcarVerificado = async () => {
-    if (!confirm('Va a marcar el inventario como verificado con los datos indicados. ¿Continuar?')) return;
+    if (!confirm('Va a marcar el cálculo como verificado con los datos indicados. ¿Continuar?')) return;
     setTrabajando('ver');
     try { onInventario(await huellaService.marcarVerificado(inv.id, ver)); } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
@@ -1708,14 +1721,14 @@ const PanelInforme: React.FC<{
             <p className="text-sm font-bold text-slate-900">{modelo.meta.subtitulo}</p>
             <span className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-1 rounded-full ${inv.estado === 'verificado' ? 'bg-green-100 text-green-800' : cerrado ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>{modelo.meta.estado}</span>
           </div>
-          {inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
+          {!soloLectura && inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
           <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
           <button className={btnP} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
           <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador</button>
         </div>
       </div>
 
-      {modelo.pendientes.length > 0 && (
+      {!soloLectura && modelo.pendientes.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
           <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={15} /> Antes de entregarlo al verificador</p>
           <ul className="list-disc pl-5 text-xs space-y-0.5">{modelo.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul>
@@ -1724,7 +1737,7 @@ const PanelInforme: React.FC<{
 
       {modalVer && inv.estado === 'cerrado' && (
         <Modal titulo="Registrar la verificación" onCerrar={() => setModalVer(false)}>
-          <p className="text-xs text-slate-600 mb-3">La entidad verificadora varía según el cliente: elija SGS o AENOR de la lista o escriba otra. Cuando emita su informe de verificación (ISO 14064-3), anote sus datos. El inventario pasa a «verificado» y el informe los recoge en el apartado 11.</p>
+          <p className="text-xs text-slate-600 mb-3">La entidad verificadora varía según el cliente: elija SGS o AENOR de la lista o escriba otra. Cuando emita su informe de verificación (ISO 14064-3), anote sus datos. El cálculo pasa a «verificado» y el informe los recoge en el apartado 11.</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-semibold text-slate-700">Entidad verificadora<input className={`${input} mt-1`} list="entidades-verificadoras" placeholder="SGS, AENOR u otra" value={ver.entidad ?? ''} onChange={(e) => setVer({ ...ver, entidad: e.target.value })} />
               <datalist id="entidades-verificadoras"><option value="SGS" /><option value="AENOR" /></datalist></label>
@@ -1767,7 +1780,7 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   return (
     <div className="space-y-4">
       <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-xs">
-        Resultado provisional del inventario {inv.anio} ({inv.estado}). Factores: <strong>{factores.id}</strong> · GWP CH₄ {factores.gwp.ch4}, N₂O {factores.gwp.n2o} · mix eléctrico balear {factores.mixElectrico} kg CO₂e/kWh. Solo cuentan los datos confirmados.
+        Resultado provisional del cálculo {inv.anio} ({inv.estado}). Factores: <strong>{factores.id}</strong> · GWP CH₄ {factores.gwp.ch4}, N₂O {factores.gwp.n2o} · mix eléctrico balear {factores.mixElectrico} kg CO₂e/kWh. Solo cuentan los datos confirmados.
       </div>
       {fallos.length > 0 && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-xs space-y-1" role="alert">{fallos.map((f, i) => <p key={i}><AlertTriangle size={12} className="inline mr-1" />{f} (excluido del cálculo hasta corregirlo)</p>)}</div>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

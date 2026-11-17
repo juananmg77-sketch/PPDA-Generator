@@ -70,7 +70,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;
-  if (!e.variaciones) add('info', 'sin_anterior', 'No hay inventario del año anterior con el que comparar.');
+  if (!e.variaciones) add('info', 'sin_anterior', 'No hay cálculo del año anterior con el que comparar.');
   else {
     const grandes = e.variaciones.map((m) => ({ ...m, ...variacionAnual(m.actual, m.anterior, umbral) })).filter((m) => m.analizar);
     if (grandes.length === 0) add('ok', 'variacion', 'Ninguna magnitud varía más del 20 % respecto al año anterior.');

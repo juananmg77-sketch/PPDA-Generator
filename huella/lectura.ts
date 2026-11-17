@@ -1,6 +1,6 @@
 // Lectura de facturas con IA: esquema de salida, instrucciones y orquestación (modelo barato primero, modelo mayor solo si hace falta).
 // Este módulo NO conoce la API ni la clave: recibe una función `llamar` (la inyecta la función de servidor o los tests).
-import { validarExtraccion } from './extraccion.ts';
+import { normalizarContador, validarExtraccion } from './extraccion.ts';
 import type { ContextoValidacion, ExtraccionFactura, Incidencia, TipoFactura } from './extraccion.ts';
 
 export const MODELO_BASE = 'claude-haiku-5-5';
@@ -100,9 +100,13 @@ function incidenciaTipo(e: ExtraccionFactura, entrada: EntradaLectura): Incidenc
 const nErrores = (i: Incidencia[]) => i.filter((x) => x.gravedad === 'error').length;
 const nLectura = (i: Incidencia[]) => i.filter((x) => CODIGOS_DE_LECTURA.has(x.codigo)).length;
 
+/** Deja el contador en forma normalizada (CUPS sin caracteres de control, mayúsculas) para poder compararlo. */
+const limpiar = (e: ExtraccionFactura): ExtraccionFactura => (e.contador ? { ...e, contador: normalizarContador(e.contador) || undefined } : e);
+
 export async function leerFactura(llamar: LlamarModelo, entrada: EntradaLectura, ctx: ContextoValidacion): Promise<ResultadoLectura> {
   const consumo: ResultadoLectura['consumo'] = [];
   const primera = await llamar(MODELO_BASE, entrada);
+  primera.extraccion = limpiar(primera.extraccion);
   consumo.push({ modelo: MODELO_BASE, tokensEntrada: primera.tokensEntrada, tokensSalida: primera.tokensSalida });
   const inc1 = [...validarExtraccion(primera.extraccion, ctx), ...incidenciaTipo(primera.extraccion, entrada)];
 
@@ -111,6 +115,7 @@ export async function leerFactura(llamar: LlamarModelo, entrada: EntradaLectura,
   // Segundo intento con el modelo mayor, solo cuando hay señales de mala lectura. Se queda con el que tenga menos problemas.
   try {
     const segunda = await llamar(MODELO_REFUERZO, entrada);
+    segunda.extraccion = limpiar(segunda.extraccion);
     consumo.push({ modelo: MODELO_REFUERZO, tokensEntrada: segunda.tokensEntrada, tokensSalida: segunda.tokensSalida });
     const inc2 = [...validarExtraccion(segunda.extraccion, ctx), ...incidenciaTipo(segunda.extraccion, entrada)];
     const mejor = nErrores(inc2) + nLectura(inc2) < nErrores(inc1) + nLectura(inc1);

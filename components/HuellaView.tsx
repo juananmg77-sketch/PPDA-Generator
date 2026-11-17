@@ -6,7 +6,7 @@ import { evaluarCierre } from '../huella/cierre';
 import { huellaService, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
-import { proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
+import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
 
 type Pestana = 'centros' | 'facturas' | 'actividad' | 'resultados' | 'cierre';
@@ -426,14 +426,18 @@ interface Tarea { id: number; nombre: string; estado: 'espera' | 'subiendo' | 'l
 
 /** Evalúa una factura leída: datos propuestos, fuente del factor e incidencias (sirve para la revisión individual y en bloque). */
 function evaluarDoc(d: Documento, factores: ConjuntoFactores | null, anio: number, otras: Documento[]) {
-  const e = d.extraccion as ExtraccionFactura;
+  const e0 = d.extraccion as ExtraccionFactura;
+  const centro = d.centro_id ?? undefined;
   const existentes = otras.filter((x) => x.id !== d.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion)
-    .map((x) => ({ id: x.id.slice(0, 8), proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo }));
-  const incidencias = factores ? validarExtraccion(e, { anioInventario: anio, factores, existentes }) : [];
+    .map((x) => ({ id: x.id.slice(0, 8), centro: x.centro_id ?? undefined, proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo }));
+  // Si no trae contador y su periodo se solapa con el de otros contadores, se deduce a cuál pertenece (propuesta visible y revisable)
+  const asignacion = asignarContador(e0, { centro, existentes });
+  const e: ExtraccionFactura = asignacion.contador ? { ...e0, contador: asignacion.contador } : e0;
+  const incidencias = factores ? validarExtraccion(e, { anioInventario: anio, centro, factores, existentes }) : [];
   const fuente = fuentePorDefecto(e, factores);
   const errores = incidencias.filter((i) => i.gravedad === 'error').length;
   const sinFuente = e.tipo !== 'electricidad' && !fuente;
-  return { e, incidencias, fuente, errores, avisos: incidencias.length - errores, sinFuente, listo: !!factores && errores === 0 && !sinFuente && e.tipo !== 'otro' };
+  return { e, incidencias, fuente, errores, avisos: incidencias.length - errores, sinFuente, asignacion, listo: !!factores && errores === 0 && !sinFuente && e.tipo !== 'otro' };
 }
 
 /** Crea la línea de actividad confirmada y marca la factura como revisada (misma lógica para una o varias). */
@@ -579,7 +583,7 @@ const PanelFacturas: React.FC<{
                       <tr className="border-b border-slate-100 align-top">
                         <td className="py-2 pr-2"><input type="checkbox" disabled={!ev?.listo} checked={sel.has(d.id)} onChange={() => alternar(d.id)} aria-label={`Seleccionar ${d.nombre_archivo}`} /></td>
                         <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{nombreCentro(d.centro_id)}</span></td>
-                        <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500">{e.contador ? `Contador: ${e.contador}` : 'Sin contador'}</span></td>
+                        <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500" title={ev?.asignacion.motivo}>{ev?.e.contador ? `Contador: ${ev.e.contador}${ev.asignacion.contador ? ' (asignado)' : ''}` : ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador'}</span></td>
                         <td className="pr-3 whitespace-nowrap">{e.periodoDesde ?? '?'} → {e.periodoHasta ?? '?'}</td>
                         <td className="pr-3 text-right tabular-nums">{e.cantidad !== undefined ? num(e.cantidad, 2) : '—'} {e.unidad ?? ''}</td>
                         <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
@@ -639,12 +643,14 @@ const Estado: React.FC<{ e: Documento['estado'] }> = ({ e }) => {
 const Revision: React.FC<{
   doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void;
 }> = ({ doc, factores, inv, otras, onHecho, falla }) => {
-  const existentes = useMemo(() => otras.filter((x) => x.id !== doc.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map((x) => ({ id: x.id.slice(0, 8), proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo })), [otras, doc.id]);
-  const [e, setE] = useState<ExtraccionFactura>(doc.extraccion!);
+  const existentes = useMemo(() => otras.filter((x) => x.id !== doc.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map((x) => ({ id: x.id.slice(0, 8), centro: x.centro_id ?? undefined, proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo })), [otras, doc.id]);
+  const asignacion = useMemo(() => asignarContador(doc.extraccion!, { centro: doc.centro_id ?? undefined, existentes }), [doc.id, existentes]); // eslint-disable-line
+  const [e, setE] = useState<ExtraccionFactura>(() => (asignacion.contador ? { ...doc.extraccion!, contador: asignacion.contador } : doc.extraccion!));
+  const conocidos = useMemo(() => Array.from(new Set(existentes.map((x) => x.contador).filter(Boolean))) as string[], [existentes]);
   const [fuente, setFuente] = useState(() => fuentePorDefecto(doc.extraccion!, factores));
   const [guardando, setGuardando] = useState(false);
   useEffect(() => { if (!fuente) setFuente(fuentePorDefecto(e, factores)); }, [factores]); // eslint-disable-line
-  const incidencias = useMemo(() => (factores ? validarExtraccion(e, { anioInventario: inv.anio, factores, existentes }) : []), [e, factores, inv.anio, existentes]);
+  const incidencias = useMemo(() => (factores ? validarExtraccion(e, { anioInventario: inv.anio, centro: doc.centro_id ?? undefined, factores, existentes }) : []), [e, factores, inv.anio, existentes]);
   const errores = incidencias.filter((i) => i.gravedad === 'error');
   const cat: Categoria = e.tipo === 'electricidad' ? 'electricidad' : e.tipo === 'refrigerante' ? 'fugitiva' : e.tipo === 'combustible_vehiculo' ? 'combustion_movil' : 'combustion_fija';
   const opciones = opcionesFuente(factores, cat);
@@ -665,7 +671,8 @@ const Revision: React.FC<{
           <select className={`${input} mt-1`} value={e.tipo} onChange={(ev) => { set('tipo', ev.target.value as TipoFactura); setFuente(''); }}>{Object.entries(TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         </label>
         <label className="text-xs font-semibold text-slate-600">Proveedor<input className={`${input} mt-1`} value={e.proveedor ?? ''} onChange={(ev) => set('proveedor', ev.target.value)} /></label>
-        <label className="text-xs font-semibold text-slate-600 col-span-2">Contador / CUPS<input className={`${input} mt-1`} value={e.contador ?? ''} onChange={(ev) => set('contador', ev.target.value)} placeholder="Identifica el punto de suministro" /></label>
+        <label className="text-xs font-semibold text-slate-600 col-span-2">Contador / CUPS<input className={`${input} mt-1`} list={`contadores-${doc.id}`} value={e.contador ?? ''} onChange={(ev) => set('contador', ev.target.value)} placeholder="Identifica el punto de suministro" />
+          <datalist id={`contadores-${doc.id}`}>{conocidos.map((c) => <option key={c} value={c} />)}</datalist></label>
         <label className="text-xs font-semibold text-slate-600">Desde<input type="date" className={`${input} mt-1`} value={e.periodoDesde ?? ''} onChange={(ev) => set('periodoDesde', ev.target.value || undefined)} /></label>
         <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" className={`${input} mt-1`} value={e.periodoHasta ?? ''} onChange={(ev) => set('periodoHasta', ev.target.value || undefined)} /></label>
         <label className="text-xs font-semibold text-slate-600">Cantidad<input type="number" min={0} step="any" className={`${input} mt-1`} value={e.cantidad ?? ''} onChange={(ev) => set('cantidad', ev.target.value === '' ? undefined : Number(ev.target.value))} /></label>
@@ -683,6 +690,12 @@ const Revision: React.FC<{
           </label>
         ) : null}
       </div>
+      {asignacion.motivo && (
+        <div className="mt-3 text-xs rounded-lg px-3 py-2 bg-blue-50 text-blue-900 flex flex-wrap items-center gap-2">
+          <Eye size={13} className="shrink-0" /><span><strong>{asignacion.contador && e.contador === asignacion.contador ? 'Contador asignado automáticamente:' : 'Contador por decidir:'}</strong> {asignacion.motivo} Compruébelo con la factura.</span>
+          {!asignacion.contador && asignacion.candidatos.map((c) => <button key={c} className={btnS} onClick={() => set('contador', c)}>{c}</button>)}
+        </div>
+      )}
       {incidencias.length > 0 && (
         <ul className="mt-3 space-y-1.5">
           {incidencias.map((i, k) => (

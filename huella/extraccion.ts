@@ -28,9 +28,11 @@ export interface Incidencia { gravedad: Gravedad; codigo: string; mensaje: strin
 
 export interface ContextoValidacion {
   anioInventario: number;
+  /** Centro de la factura: los contadores pertenecen a un centro, solo se comparan facturas del mismo. */
+  centro?: string;
   factores: ConjuntoFactores;
   /** Facturas ya cargadas, para detectar duplicados y solapes. */
-  existentes?: Array<{ id: string; proveedor?: string; contador?: string; periodoDesde?: string; periodoHasta?: string; cantidad?: number; tipo: TipoFactura }>;
+  existentes?: Array<{ id: string; centro?: string; proveedor?: string; contador?: string; periodoDesde?: string; periodoHasta?: string; cantidad?: number; tipo: TipoFactura }>;
 }
 
 const UNIDAD_ESPERADA: Record<TipoFactura, string[]> = {
@@ -45,6 +47,73 @@ const UNIDAD_ESPERADA: Record<TipoFactura, string[]> = {
 
 const norm = (s?: string) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const fecha = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T00:00:00Z') : null);
+
+/**
+ * Normaliza un identificador de suministro para compararlo: mayúsculas, sin espacios ni guiones y, si es un CUPS español
+ * (ES + 16 cifras + 2 letras, a veces con 2 caracteres de control más), solo los 20 primeros caracteres.
+ */
+export function normalizarContador(c?: string | null): string {
+  const x = (c ?? '').toUpperCase().replace(/[\s\-.]/g, '');
+  return /^ES\d{16}[A-Z]{2}/.test(x) ? x.slice(0, 20) : x;
+}
+
+export interface AsignacionContador {
+  /** Contador asignado (solo si es el único posible). */
+  contador?: string;
+  /** Contadores entre los que no se puede decidir. */
+  candidatos: string[];
+  /** Contadores con los que se solapa el periodo (descartados). */
+  solapaCon: string[];
+  motivo?: string;
+}
+
+const DIA = 86400000;
+const solapan = (d1: Date, h1: Date, d2: Date, h2: Date) => d1 <= h2 && h1 >= d2;
+
+/**
+ * Cuando la factura no trae contador y su periodo se solapa con el de facturas de contadores ya conocidos del mismo centro y tipo,
+ * se deduce a cuál pertenece: se descartan los contadores con los que se solapa (un mismo contador no factura dos veces el mismo periodo);
+ * si solo queda uno, se asigna; si quedan varios, se elige el que enlaza en fechas (su factura anterior o siguiente está a ≤ 7 días);
+ * si aun así hay duda, se devuelven los candidatos para que decida una persona. Es siempre una propuesta revisable.
+ */
+export function asignarContador(e: ExtraccionFactura, c: Pick<ContextoValidacion, 'centro' | 'existentes'>): AsignacionContador {
+  const vacio: AsignacionContador = { candidatos: [], solapaCon: [] };
+  if (normalizarContador(e.contador)) return vacio;
+  const d = fecha(e.periodoDesde), h = fecha(e.periodoHasta);
+  if (!d || !h) return vacio;
+
+  const mismos = (c.existentes ?? []).filter((x) => x.tipo === e.tipo && normalizarContador(x.contador) && normalizarContador(x.contador) !== 'VARIOS' && (!c.centro || !x.centro || x.centro === c.centro));
+  // si hay facturas del mismo proveedor, se razona con sus contadores; si no, con todos los del centro
+  const delProveedor = mismos.filter((x) => x.proveedor && e.proveedor && norm(x.proveedor) === norm(e.proveedor));
+  const base = delProveedor.length > 0 ? delProveedor : mismos;
+  const candidatos = [...new Set(base.map((x) => normalizarContador(x.contador)))];
+  if (candidatos.length === 0) return vacio;
+
+  const solapaCon: string[] = [];
+  for (const cand of candidatos) {
+    const choca = base.some((x) => {
+      if (normalizarContador(x.contador) !== cand) return false;
+      const xd = fecha(x.periodoDesde), xh = fecha(x.periodoHasta);
+      return !!xd && !!xh && solapan(d, h, xd, xh);
+    });
+    if (choca) solapaCon.push(cand);
+  }
+  if (solapaCon.length === 0) return { candidatos, solapaCon }; // sin solape no se deduce nada
+
+  const libres = candidatos.filter((x) => !solapaCon.includes(x));
+  if (libres.length === 1) return { contador: libres[0], candidatos: libres, solapaCon, motivo: `Su periodo se solapa con el de ${solapaCon.join(', ')}, así que corresponde a ${libres[0]}.` };
+  if (libres.length === 0) return { candidatos: [], solapaCon, motivo: `Se solapa con todos los contadores conocidos (${solapaCon.join(', ')}): puede ser un contador nuevo; indíquelo.` };
+
+  // varios posibles: continuidad de fechas (la factura anterior o siguiente de ese contador está pegada a este periodo)
+  const enlazan = libres.filter((cand) => base.some((x) => {
+    if (normalizarContador(x.contador) !== cand) return false;
+    const xd = fecha(x.periodoDesde), xh = fecha(x.periodoHasta);
+    if (!xd || !xh) return false;
+    return Math.abs(d.getTime() - xh.getTime()) <= 7 * DIA || Math.abs(xd.getTime() - h.getTime()) <= 7 * DIA;
+  }));
+  if (enlazan.length === 1) return { contador: enlazan[0], candidatos: libres, solapaCon, motivo: `Se solapa con ${solapaCon.join(', ')} y enlaza en fechas con ${enlazan[0]}.` };
+  return { candidatos: libres, solapaCon, motivo: `Se solapa con ${solapaCon.join(', ')}; puede ser de ${libres.join(' o ')}.` };
+}
 
 export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): Incidencia[] {
   const out: Incidencia[] = [];
@@ -95,14 +164,15 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
   }
 
   // Contador / punto de suministro
-  if (norm(e.contador) === 'varios') add('aviso', 'varios_contadores', 'La factura agrupa varios contadores o suministros: sepárelos en líneas distintas (un dato por contador) en la pestaña Actividad.');
+  if (normalizarContador(e.contador) === 'VARIOS') add('aviso', 'varios_contadores', 'La factura agrupa varios contadores o suministros: sepárelos en líneas distintas (un dato por contador) en la pestaña Actividad.');
 
   // Duplicados y solapes con facturas ya cargadas. Dos facturas que se solapan pueden ser de contadores distintos:
   // solo se comparan entre sí las del mismo contador; si falta el contador en alguna, se avisa de que hay que identificarlo.
   for (const x of c.existentes ?? []) {
     if (x.tipo !== e.tipo) continue;
     if (!(x.proveedor && e.proveedor && norm(x.proveedor) === norm(e.proveedor))) continue;
-    const cx = norm(x.contador), ce = norm(e.contador);
+    if (c.centro && x.centro && x.centro !== c.centro) continue; // otro centro: otro suministro
+    const cx = normalizarContador(x.contador).toLowerCase(), ce = normalizarContador(e.contador).toLowerCase();
     if (cx && ce && cx !== ce) continue; // contadores distintos: no hay conflicto, se suman por separado
     const contadorConocido = !!cx && !!ce;
     const sufijo = contadorConocido ? '' : ' Si son de contadores distintos, indique el contador (CUPS) en cada una.';

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { construirConjunto } from '../factores.ts';
-import { evaluarExclusiones, proponerActividad, validarExtraccion, variacionAnual } from '../extraccion.ts';
+import { asignarContador, evaluarExclusiones, normalizarContador, proponerActividad, validarExtraccion, variacionAnual } from '../extraccion.ts';
 import type { ContextoValidacion, ExtraccionFactura } from '../extraccion.ts';
 import type { DatosCalculadora } from '../tipos.ts';
 
@@ -96,4 +96,48 @@ test('solapes: contadores distintos no son conflicto; sin contador se pide ident
 
 test('la propuesta de actividad conserva el contador', () => {
   assert.equal(proponerActividad({ ...luz, contador: 'ES1' }, { id: 'a', centro: 'H', documentoId: 'D' }).contador, 'ES1');
+});
+
+const ex = (id: string, contador: string | undefined, d: string, h: string, proveedor = 'Comercializadora X') => ({ id, proveedor, contador, periodoDesde: d, periodoHasta: h, cantidad: 1000, tipo: 'electricidad' as const });
+
+test('CUPS: se normaliza (mayúsculas, sin espacios, sin los 2 caracteres de control)', () => {
+  assert.equal(normalizarContador('es 0021 0000 1234 5678 ab 0f'), 'ES0021000012345678AB');
+  assert.equal(normalizarContador('ES0021000012345678AB'), 'ES0021000012345678AB');
+  assert.equal(normalizarContador(' 12-345 '), '12345');
+  assert.equal(normalizarContador(undefined), '');
+  // con y sin los caracteres de control es el mismo contador: no hay conflicto de «contadores distintos»
+  const x = { ...ex('F1', 'ES0021000012345678AB0F', '2024-03-01', '2024-03-31'), cantidad: 15000 };
+  assert.ok(codigos({ ...luz, contador: 'ES0021000012345678AB' }, { ...ctx, existentes: [x] }).includes('duplicada'));
+});
+
+test('contador por exclusión: si el periodo se solapa con el de un contador, pertenece al otro', () => {
+  const existentes = [ex('F1', 'ES0021000000000001AA', '2024-03-01', '2024-03-31'), ex('F2', 'ES0021000000000002BB', '2024-02-01', '2024-02-29')];
+  const a = asignarContador({ ...luz, contador: undefined }, { existentes });
+  assert.equal(a.contador, 'ES0021000000000002BB');
+  assert.deepEqual(a.solapaCon, ['ES0021000000000001AA']);
+  assert.match(a.motivo!, /se solapa/);
+  // ya tiene contador: no se toca
+  assert.equal(asignarContador({ ...luz, contador: 'ES0021000000000001AA' }, { existentes }).contador, undefined);
+  // sin solape: no se deduce nada
+  assert.equal(asignarContador({ ...luz, periodoDesde: '2024-05-01', periodoHasta: '2024-05-31' }, { existentes }).contador, undefined);
+});
+
+test('contador por continuidad cuando quedan varios posibles; si no, candidatos', () => {
+  const existentes = [
+    ex('F1', 'ES0021000000000001AA', '2024-03-01', '2024-03-31'),
+    ex('F2', 'ES0021000000000002BB', '2024-02-01', '2024-02-29'),
+    ex('F3', 'ES0021000000000003CC', '2024-06-01', '2024-06-30'),
+  ];
+  const a = asignarContador({ ...luz }, { existentes });
+  assert.equal(a.contador, 'ES0021000000000002BB'); // BB termina el 29-feb, pegado al 1-mar
+  const dudoso = asignarContador({ ...luz, periodoDesde: '2024-03-10', periodoHasta: '2024-04-09' }, { existentes: [ex('F1', 'ES0021000000000001AA', '2024-03-01', '2024-03-31'), ex('F2', 'ES0021000000000002BB', '2024-01-01', '2024-01-31'), ex('F3', 'ES0021000000000003CC', '2024-07-01', '2024-07-31')] });
+  assert.equal(dudoso.contador, undefined);
+  assert.deepEqual(dudoso.candidatos.sort(), ['ES0021000000000002BB', 'ES0021000000000003CC']);
+});
+
+test('los contadores pertenecen a un centro: no se mezclan facturas de otro centro', () => {
+  const existentes = [{ ...ex('F1', 'ES0021000000000001AA', '2024-03-01', '2024-03-31'), centro: 'C2' }];
+  assert.equal(asignarContador({ ...luz }, { centro: 'C1', existentes }).candidatos.length, 0);
+  assert.deepEqual(codigos(luz, { ...ctx, centro: 'C1', existentes }), []);
+  assert.ok(codigos({ ...luz, contador: 'ES0021000000000001AA' }, { ...ctx, centro: 'C2', existentes }).includes('mismo_periodo'));
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, Leaf, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
@@ -24,7 +24,7 @@ const CATEGORIAS: Record<Categoria, string> = {
 const ORIGEN: Record<OrigenElectricidad, string> = {
   red: 'Red (sin garantía)', autoconsumo: 'Autoconsumo', gdo_renovable_balear: 'GdO renovable de Baleares', gdo_otra: 'GdO renovable (otra)',
 };
-const card = 'no-glass bg-white rounded-2xl border border-slate-200 p-5 shadow-sm';
+const card = 'bg-white rounded-2xl border border-slate-200 p-5 shadow-sm';
 const input = 'w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500';
 const btn = 'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50';
 const btnP = `${btn} bg-brand-600 text-white hover:bg-brand-700`;
@@ -147,24 +147,22 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-900" style={{ background: '#F3F5F9' }}>
-      <aside className="md:w-60 flex-shrink-0 text-white flex flex-col" style={{ background: '#00093D' }}>
-        <div className="flex items-center gap-2 px-4 pt-4 pb-3">
-          <button onClick={onBack} className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10" title="Volver al inicio" aria-label="Volver al inicio"><ArrowLeft size={17} /></button>
-          <div className="leading-tight">
-            <p className="text-sm font-bold flex items-center gap-1.5"><Leaf size={15} style={{ color: '#77D464' }} /> HS GREEN</p>
-            <p className="text-[10px] text-white/60">Huella de carbono</p>
-          </div>
+    <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
+      <aside className="md:w-60 flex-shrink-0 flex flex-col md:border-r border-white/70" style={{ background: 'rgba(255,255,255,.66)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', backdropFilter: 'blur(14px) saturate(1.2)', color: '#00093D' }}>
+        <div className="flex items-center gap-2 px-3 pt-4 pb-2">
+          <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-white/70" style={{ color: '#00093D' }} title="Volver al inicio" aria-label="Volver al inicio"><ArrowLeft size={17} /></button>
+          <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-10 w-auto object-contain" />
         </div>
+        <p className="px-4 pb-3 text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'rgba(0,9,61,.6)' }}>Huella de carbono</p>
 
-        <div className="mx-3 mb-3 rounded-xl p-2.5 space-y-2" style={{ background: 'rgba(255,255,255,0.10)' }}>
+        <div className="mx-3 mb-3 rounded-xl p-2.5 space-y-2" style={{ background: 'rgba(0,9,61,0.06)' }}>
           {esConsultor || orgs.length > 1 ? (
             <div className="flex gap-1.5">
               <select className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-900 bg-white" value={orgId} onChange={(e) => setOrgId(e.target.value)} aria-label="Organización">
                 {orgs.length === 0 && <option value="">Sin organizaciones</option>}
                 {orgs.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
               </select>
-              {esConsultor && <button className="px-2 rounded-lg bg-white/15 hover:bg-white/25" onClick={() => setModalOrg('nueva')} title="Nueva organización" aria-label="Nueva organización"><Plus size={14} /></button>}
+              {esConsultor && <button className="px-2 rounded-lg hover:bg-white/70" style={{ background: 'rgba(0,9,61,.10)', color: '#00093D' }} onClick={() => setModalOrg('nueva')} title="Nueva organización" aria-label="Nueva organización"><Plus size={14} /></button>}
             </div>
           ) : <p className="text-sm font-bold px-1">{org?.nombre ?? '—'}</p>}
           <div className="flex gap-1.5">
@@ -172,21 +170,24 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {invs.length === 0 && <option value="">Sin inventarios</option>}
               {invs.map((i) => <option key={i.id} value={i.id}>Año {i.anio} · {i.estado}</option>)}
             </select>
-            {esConsultor && <button className="px-2 rounded-lg bg-white/15 hover:bg-white/25 disabled:opacity-40" onClick={nuevoInv} disabled={!orgId} title="Nuevo inventario" aria-label="Nuevo inventario"><Plus size={14} /></button>}
+            {esConsultor && <button className="px-2 rounded-lg hover:bg-white/70 disabled:opacity-40" style={{ background: 'rgba(0,9,61,.10)', color: '#00093D' }} onClick={nuevoInv} disabled={!orgId} title="Nuevo inventario" aria-label="Nuevo inventario"><Plus size={14} /></button>}
           </div>
         </div>
 
         <nav className="flex md:flex-col gap-0.5 px-2 pb-3 overflow-x-auto md:overflow-visible" role="tablist" aria-label="Secciones">
           {visibles.map((n) => (
             <button key={n.k} role="tab" aria-selected={tab === n.k} onClick={() => setTab(n.k)}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors ${tab === n.k ? 'text-white font-semibold' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}
-              style={tab === n.k ? { background: '#0002C9' } : undefined}>
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm whitespace-nowrap transition-colors ${tab === n.k ? 'text-white font-semibold' : 'hover:bg-white/60'}`}
+              style={tab === n.k ? { background: '#0002C9' } : { color: '#00093D' }}>
               {n.icono} <span>{n.nombre}</span>
               {!!n.badge && <span className="ml-auto text-[10px] font-bold px-1.5 rounded-full text-white" style={{ background: '#F9416D' }}>{n.badge}</span>}
             </button>
           ))}
         </nav>
-        <div className="hidden md:block mt-auto px-4 py-3 text-[11px] text-white/55 border-t border-white/10">{currentUser}</div>
+        <div className="hidden md:block mt-auto px-4 py-4 border-t" style={{ borderColor: 'rgba(0,9,61,.12)' }}>
+          <img src="/logo-hs-group.png" alt="HS Consulting Group" className="h-9 w-auto object-contain" />
+          <p className="text-[11px] mt-2 truncate" style={{ color: 'rgba(0,9,61,.65)' }}>{currentUser}</p>
+        </div>
       </aside>
 
       <main className="flex-1 min-w-0 p-4 md:p-8">
@@ -969,7 +970,7 @@ const GraficoActividad: React.FC<{
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v: number) => fmt(v)} width={56} />
               <Tooltip formatter={(v: number) => `${fmt(v)} ${m === 'co2e' ? 't CO₂e' : unidad}`} />
               {series.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
-              {series.map((sr, i) => <Bar key={sr} dataKey={sr} stackId="a" fill={COLORES[i % COLORES.length]} />)}
+              {series.map((sr, i) => <Bar key={sr} dataKey={sr} stackId="a" fill={COLORES[i % COLORES.length]} isAnimationActive={false} />)}
             </BarChart>
           </ResponsiveContainer>
         </div>

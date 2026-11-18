@@ -8,6 +8,8 @@ const AZUL = '0002C9', MARINO = '00093D', GRIS = '9D9D9C', ZEBRA = 'F2F2F2', FUE
 const run = (text: string, o: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}) => new TextRun({ text, font: FUENTE, size: (o.size ?? 10) * 2, bold: o.bold, color: o.color, italics: o.italics });
 
 export interface Logos { green?: Uint8Array; group?: Uint8Array }
+/** Convierte un gráfico SVG en PNG (solo en el navegador); sin él, los gráficos no se incluyen en el Word. */
+export type Rasterizador = (svg: string, ancho: number, alto: number) => Promise<Uint8Array>;
 
 function parrafoTexto(texto: string, o: { size?: number; color?: string; bold?: boolean } = {}) {
   const lineas = texto.split('\n');
@@ -35,8 +37,18 @@ function tabla(b: Extract<Bloque, { k: 'tabla' }>) {
   return out;
 }
 
-function bloqueADocx(b: Bloque): Array<Paragraph | Table> {
+function bloqueADocx(b: Bloque, imagenes: Map<string, Uint8Array>): Array<Paragraph | Table> {
   switch (b.k) {
+    case 'grafico': {
+      const png = imagenes.get(b.svg);
+      if (!png) return [];
+      const ancho = 600, alto = Math.round((ancho * b.alto) / b.ancho);
+      return [
+        new Paragraph({ keepNext: true, spacing: { before: 160, after: 60 }, children: [run(b.titulo, { bold: true, size: 9, color: MARINO })] }),
+        new Paragraph({ spacing: { after: b.pie ? 40 : 160 }, children: [new ImageRun({ type: 'png', data: png, transformation: { width: ancho, height: alto }, altText: { title: b.titulo, description: b.titulo, name: 'grafico' } })] }),
+        ...(b.pie ? [new Paragraph({ spacing: { after: 160 }, children: [run(b.pie, { size: 8, color: '666666' })] })] : []),
+      ];
+    }
     case 'p': return [parrafoTexto(b.texto)];
     case 'nota': return [parrafoTexto(b.texto, { size: 8, color: '666666' })];
     case 'h': return [new Paragraph({ keepNext: true, spacing: { before: 200, after: 80 }, children: [run(b.texto, { bold: true, size: 10, color: AZUL })] })];
@@ -45,7 +57,13 @@ function bloqueADocx(b: Bloque): Array<Paragraph | Table> {
   }
 }
 
-export async function informeADocx(m: ModeloInforme, logos: Logos = {}): Promise<Blob> {
+export async function informeADocx(m: ModeloInforme, logos: Logos = {}, rasterizar?: Rasterizador): Promise<Blob> {
+  // Los gráficos (SVG) se convierten antes a PNG; si no hay rasterizador se omiten
+  const imagenes = new Map<string, Uint8Array>();
+  if (rasterizar) {
+    const graficos = m.secciones.flatMap((s) => s.bloques).filter((b): b is Extract<Bloque, { k: 'grafico' }> => b.k === 'grafico');
+    await Promise.all(graficos.map(async (g) => { imagenes.set(g.svg, await rasterizar(g.svg, g.ancho, g.alto)); }));
+  }
   const img = (data: Uint8Array | undefined, w: number, h: number) => (data ? [new ImageRun({ type: 'png', data, transformation: { width: w, height: h }, altText: { title: 'Logo', description: 'Logotipo', name: 'logo' } })] : []);
   const cabecera = new Header({ children: [new Paragraph({
     tabStops: [{ type: TabStopType.RIGHT, position: 9500 }],
@@ -73,7 +91,7 @@ export async function informeADocx(m: ModeloInforme, logos: Logos = {}): Promise
   ];
   const cuerpo = m.secciones.flatMap((s) => [
     new Paragraph({ keepNext: true, spacing: { before: 280, after: 120 }, border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: AZUL, space: 2 } }, children: [run(`${s.id}. ${s.titulo.toUpperCase()}`, { bold: true, size: 11, color: MARINO })] }),
-    ...s.bloques.flatMap(bloqueADocx),
+    ...s.bloques.flatMap((bl) => bloqueADocx(bl, imagenes)),
   ]);
 
   const doc = new Document({

@@ -9,6 +9,7 @@ function bloque(b: Bloque): string {
     case 'p': return `<p>${multi(b.texto)}</p>`;
     case 'h': return `<h3>${esc(b.texto)}</h3>`;
     case 'nota': return `<p class="nota">${multi(b.texto)}</p>`;
+    case 'grafico': return `<figure class="graf"><figcaption>${esc(b.titulo)}</figcaption>${b.svg}${b.pie ? `<p class="pie">${esc(b.pie)}</p>` : ''}</figure>`;
     case 'lista': return `<ul>${b.items.map((i) => `<li>${multi(i)}</li>`).join('')}</ul>`;
     case 'tabla': {
       const num = new Set(b.numericas ?? []);
@@ -61,6 +62,9 @@ th{background:#0002C9;color:#fff;text-align:left;padding:1.6mm 2mm;font-weight:6
 td{padding:1.4mm 2mm;border:.5pt solid #9D9D9C;vertical-align:top}
 tbody tr:nth-child(even) td{background:#F2F2F2}
 .n{text-align:right;font-variant-numeric:tabular-nums}
+.graf{margin:3mm 0 5mm;break-inside:avoid}
+.graf figcaption{font-weight:600;font-size:9pt;color:#00093D;margin-bottom:1.5mm}
+.graf svg{width:100%;max-width:175mm;height:auto;border:.5pt solid #E5E5E5;border-radius:2mm}
 .conf{font-size:7.5pt;color:#777;margin-top:10mm;border-top:.5pt solid #9D9D9C;padding-top:2mm}
 </style></head><body>
 <div class="cabecera"><img src="${logoGroup}" alt="HS Consulting Group"><img src="${logoGreen}" alt="HS GREEN"></div>

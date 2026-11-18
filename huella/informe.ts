@@ -1,6 +1,7 @@
 // Modelo del informe de inventario de GEI (ISO 14064-1 / Decreto 48/2021). Función pura: de los datos del inventario a un documento estructurado
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
+import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
 
 export const VERSION_MOTOR = 'HS GREEN huella 1.0';
 
@@ -9,6 +10,7 @@ export type Bloque =
   | { k: 'h'; texto: string }
   | { k: 'lista'; items: string[] }
   | { k: 'nota'; texto: string }
+  | { k: 'grafico'; titulo: string; svg: string; ancho: number; alto: number; pie?: string }
   | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string };
 export interface Seccion { id: string; titulo: string; bloques: Bloque[] }
 export interface ModeloInforme {
@@ -34,6 +36,8 @@ export interface DatosInforme {
   exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string }>;
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
   documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
+  /** Emisiones mensuales por fuente (t CO₂e, 12 valores) para el gráfico de evolución; opcional. */
+  mensualPorFuente?: Record<string, number[]>;
   emitidoPor: string;
   fecha: string; // AAAA-MM-DD
 }
@@ -203,7 +207,29 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const merc = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const indiceTotal = d.centros.reduce((s, c) => s + (c.indice > 0 ? c.indice : 0), 0);
   const g = tot.kgCO2PorGas;
+  // Gráficos de resultados (SVG)
+  const fuenteT: Record<string, number> = {};
+  for (const r of d.resultados) { const k = etiquetaFuente(r.linea.fuente); fuenteT[k] = (fuenteT[k] ?? 0) + r.kgCO2e / 1000; }
+  const graficos: Bloque[] = [];
+  const gAnillo = svgAnillo(Object.entries(fuenteT).map(([nombre, t]) => ({ nombre, t })), 'Reparto de las emisiones por fuente');
+  graficos.push({ k: 'grafico', titulo: 'Reparto de las emisiones por fuente (t CO₂e)', ...gAnillo, pie: 'Cada fuente con su aportación al total de emisiones del año.' });
+  const mens = d.mensualPorFuente ?? {};
+  const seriesM = Object.entries(mens).map(([nombre, valores]) => ({ nombre, valores })).sort((a, b) => b.valores.reduce((x, y) => x + y, 0) - a.valores.reduce((x, y) => x + y, 0));
+  if (seriesM.some((x) => x.valores.some((v) => v > 0))) {
+    graficos.push({ k: 'grafico', titulo: `Evolución mensual de las emisiones ${anio} (t CO₂e)`, ...svgBarrasApiladas(NOMBRES_MES, seriesM, 'Evolución mensual de las emisiones'), pie: 'Cada consumo se reparte por meses en proporción a los días de su periodo de facturación.' });
+  }
+  const centrosT = Object.entries(tot.porCentro).map(([nombre, kg]) => ({ nombre, t: kg / 1000 }));
+  if (centrosT.length > 1) graficos.push({ k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro') });
+  if (d.anterior) {
+    graficos.push({ k: 'grafico', titulo: `Comparación con ${d.anterior.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Alcance 1', 'Alcance 2', 'Total'], [
+      { nombre: String(d.anterior.anio), valores: [d.anterior.a1 / 1000, d.anterior.a2 / 1000, d.anterior.total / 1000] },
+      { nombre: String(anio), valores: [tot.kgCO2eAlcance1 / 1000, tot.kgCO2eAlcance2 / 1000, tot.kgCO2eTotal / 1000] },
+    ], `Comparación con ${d.anterior.anio}`) });
+  }
+
   const bloques9: Bloque[] = [
+    { k: 'h', texto: '9.0 Resumen gráfico' },
+    ...graficos,
     { k: 'h', texto: '9.1 Resultados por categoría' },
     { k: 'tabla', cab: ['Categoría', 'Emisiones (t CO₂e)'], filas: [['1 · Emisiones directas (Alcance 1)', tn(tot.kgCO2eAlcance1)], ['2 · Energía importada (Alcance 2, criterio del registro)', tn(tot.kgCO2eAlcance2)], ['Total', tn(tot.kgCO2eTotal)]], numericas: [1], pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
     { k: 'h', texto: '9.2 Resultados por gas' },

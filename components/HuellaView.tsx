@@ -8,6 +8,7 @@ import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
+import { emisionesMensuales } from '../huella/graficos';
 import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
@@ -1711,6 +1712,9 @@ const PanelInforme: React.FC<{
       anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
       documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
+      mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
+        try { return [{ fuente: a.fuente, kgCO2e: calcularLinea({ id: a.id, centro: a.centro_id, categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined }, factores).kgCO2e, desde: a.periodo_desde, hasta: a.periodo_hasta }]; } catch { return []; }
+      }), inv.anio),
       emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
     };
   }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario]);
@@ -1721,8 +1725,8 @@ const PanelInforme: React.FC<{
   const word = async () => {
     if (!modelo) return; setTrabajando('word');
     try {
-      const [{ informeADocx }, green, group] = await Promise.all([import('../huella/informeDocx'), imagenBytes('/logo-hsgreen-recortado.png'), imagenBytes('/logo-hs-group.png')]);
-      descargar(await informeADocx(modelo, { green, group }), `${modelo.meta.codigo}_V01.docx`);
+      const [{ informeADocx }, { svgAPng }, green, group] = await Promise.all([import('../huella/informeDocx'), import('../huella/svgPng'), imagenBytes('/logo-hsgreen-recortado.png'), imagenBytes('/logo-hs-group.png')]);
+      descargar(await informeADocx(modelo, { green, group }, svgAPng), `${modelo.meta.codigo}_V01.docx`);
     } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
   const paquete = async () => {

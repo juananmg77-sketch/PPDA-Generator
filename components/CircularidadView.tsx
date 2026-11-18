@@ -526,7 +526,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
   const ancho = COLS_ACC.reduce((n, [, w]) => n + w, 0);
 
   return (
-    <div className="space-y-4">
+    <div className="no-glass bg-slate-50 rounded-2xl border border-slate-300 p-4 md:p-5 space-y-4 shadow-sm">
       <datalist id="circ-equipo">{(plan.ficha.equipo ?? []).filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={[m.nombre, m.cargo].filter(Boolean).join(' · ')} />)}</datalist>
       <div className="flex flex-wrap items-center gap-2">
         <button className={btnP} onClick={onCatalogo}><Plus size={15} /> Objetivo del catálogo</button>
@@ -539,10 +539,10 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
         const col = AREAS[area].color; const avance = os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length;
         return (
           <details key={area} open className="group">
-            <summary className="cursor-pointer list-none flex items-center gap-3 rounded-2xl border px-4 py-3" style={{ background: `${col}14`, borderColor: `${col}55` }}>
+            <summary className="cursor-pointer list-none flex items-center gap-3 rounded-2xl border px-4 py-3" style={{ background: `linear-gradient(${col}1A, ${col}1A), #FFFFFF`, borderColor: `${col}88` }}>
               <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0" style={{ background: col }}>{gi + 1}</span>
               <span className="flex-1 min-w-0"><span className="block text-[10px] font-black uppercase tracking-widest" style={{ color: col }}>Área prioritaria</span><span className="block text-base font-extrabold text-slate-900">{AREAS[area].nombre}</span></span>
-              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
+              <span className="no-glass text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
               <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: col }}>{pc(avance)} en {anio}</span>
             </summary>
             <div className="mt-3 space-y-4 md:pl-6">

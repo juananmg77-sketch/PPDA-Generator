@@ -306,6 +306,18 @@ const CabeceraArea: React.FC<{ area: Area; detalle?: string; abierto?: boolean; 
     <span className="flex-1 border-t border-slate-200" />
   </div>
 );
+/** Cabecera de «fase» de un área prioritaria: la misma en Plan de acción y en Seguimiento. */
+const FaseInner: React.FC<{ area: Area; indice: number; children: React.ReactNode; abierto?: boolean }> = ({ area, indice, children, abierto }) => {
+  const col = AREAS[area].color;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border px-4 py-3" style={{ background: `linear-gradient(${col}1A, ${col}1A), #FFFFFF`, borderColor: `${col}88` }}>
+      <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0" style={{ background: col }}>{indice}</span>
+      <span className="flex-1 min-w-0"><span className="block text-[10px] font-black uppercase tracking-widest" style={{ color: col }}>Área prioritaria</span><span className="block text-base font-extrabold text-slate-900">{AREAS[area].nombre}</span></span>
+      {children}
+      {abierto !== undefined && <span className="text-slate-500 text-sm w-4 text-center">{abierto ? '▾' : '▸'}</span>}
+    </div>
+  );
+};
 const celda = 'w-full bg-slate-50 border border-transparent focus:bg-white focus:border-brand-300 rounded px-2 py-1.5 text-xs text-slate-700 transition-all';
 const Equipo: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void }> = ({ plan, cambiar }) => {
   const equipo = plan.ficha.equipo ?? [];
@@ -548,11 +560,11 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
         const col = AREAS[area].color; const avance = os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length;
         return (
           <details key={area} open className="group">
-            <summary className="cursor-pointer list-none flex items-center gap-3 rounded-2xl border px-4 py-3" style={{ background: `linear-gradient(${col}1A, ${col}1A), #FFFFFF`, borderColor: `${col}88` }}>
-              <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0" style={{ background: col }}>{gi + 1}</span>
-              <span className="flex-1 min-w-0"><span className="block text-[10px] font-black uppercase tracking-widest" style={{ color: col }}>Área prioritaria</span><span className="block text-base font-extrabold text-slate-900">{AREAS[area].nombre}</span></span>
-              <span className="no-glass text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
-              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: col }}>{pc(avance)} en {anio}</span>
+            <summary className="cursor-pointer list-none">
+              <FaseInner area={area} indice={gi + 1}>
+                <span className="no-glass text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: col }}>{pc(avance)} en {anio}</span>
+              </FaseInner>
             </summary>
             <div className="mt-3 space-y-4 md:pl-6">
               {os.map((o) => {
@@ -655,32 +667,58 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
         {cerrado && <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-green-100 text-green-800 inline-flex items-center gap-1"><Lock size={12} /> Año cerrado</span>}
         <button className={cerrado ? btnS : btnP} onClick={alternarCierre}>{cerrado ? <><Unlock size={14} /> Reabrir {anio}</> : <><Lock size={14} /> Cerrar seguimiento {anio}</>}</button>
       </div>
-      {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
+      {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }, gi) => (
         <React.Fragment key={area}>
-        <CabeceraArea area={area} detalle={`Avance ${anio}: ${pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)}`} abierto={os.every((o) => estaAbierto(o.id))} onClick={() => alternarArea(os.map((o) => o.id))} />
-        {os.map((o) => (
-        <details key={o.id} className="no-glass bg-white rounded-2xl border border-slate-300 shadow-sm" open={estaAbierto(o.id)} onToggle={(e) => { const ab = (e.currentTarget as HTMLDetailsElement).open; if (ab !== estaAbierto(o.id)) setAbiertos((m) => ({ ...m, [o.id]: ab })); }} style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
-          <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} /><span className="text-sm font-bold text-slate-800 flex-1 min-w-[200px]">{o.codigo}. {o.descripcion}</span><span className="w-32"><Barra valor={progresoObjetivo(plan, o, anio)} color={AREAS[o.area].color} /></span><span className="text-xs font-bold text-slate-700 w-10 text-right">{pc(progresoObjetivo(plan, o, anio))}</span></summary>
-          <div className="px-5 pb-4 overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Acción</th>{TRIMESTRES.map((t) => <th key={t} className="text-center w-14">{t.toUpperCase()}</th>)}<th className="pl-3">Evidencia / notas</th></tr></thead>
-              <tbody>{o.acciones.map((a) => {
-                const s = seg?.acciones[a.id] ?? vacioSeg();
-                return (
-                  <tr key={a.id} className="border-b border-slate-100 align-top">
-                    <td className="py-2 pr-2"><strong>{a.codigo}</strong> {a.descripcion}<span className="block text-[10px] text-slate-500">{a.responsable || 'Sin responsable'} · {pc(progresoAccion(s))}</span></td>
-                    {TRIMESTRES.map((t) => <td key={t} className="text-center pt-2"><input type="checkbox" className="w-4 h-4 accent-green-600" checked={s[t].cumple} disabled={cerrado} aria-label={`${a.codigo} ${t.toUpperCase()} cumplido`} onChange={(e) => setSeg(a.id, (x) => ({ ...x, [t]: { ...x[t], cumple: e.target.checked } }))} /></td>)}
-                    <td className="pl-3 py-1.5 min-w-[220px]">
-                      <input className={`${input} text-xs`} placeholder="Evidencia (documento, factura, acta…)" disabled={cerrado} value={TRIMESTRES.map((t) => s[t].evidencia).find((x) => x) ?? ''} onChange={(e) => setSeg(a.id, (x) => { const t = [...TRIMESTRES].reverse().find((q) => x[q].cumple) ?? 't1'; return { ...x, [t]: { ...x[t], evidencia: e.target.value } }; })} />
-                      <input className={`${input} text-xs mt-1`} placeholder="Notas" disabled={cerrado} value={s.notas} onChange={(e) => setSeg(a.id, (x) => ({ ...x, notas: e.target.value }))} />
-                    </td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
+        <div role="button" tabIndex={0} className="cursor-pointer select-none" aria-expanded={os.every((o) => estaAbierto(o.id))} title="Pulse para desplegar o plegar todos los objetivos del área"
+          onClick={() => alternarArea(os.map((o) => o.id))} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternarArea(os.map((o) => o.id)); } }}>
+          <FaseInner area={area} indice={gi + 1} abierto={os.every((o) => estaAbierto(o.id))}>
+            <span className="no-glass text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-300 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: AREAS[area].color }}>{pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)} en {anio}</span>
+          </FaseInner>
+        </div>
+        <div className="space-y-4 md:pl-6">
+        {os.map((o) => { const col = AREAS[area].color; return (
+        <details key={o.id} className="no-glass bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: `${col}66` }} open={estaAbierto(o.id)} onToggle={(e) => { const ab = (e.currentTarget as HTMLDetailsElement).open; if (ab !== estaAbierto(o.id)) setAbiertos((m) => ({ ...m, [o.id]: ab })); }}>
+          <summary className="cursor-pointer list-none flex flex-wrap items-center gap-3 px-5 py-3.5 border-b border-slate-100">
+            <span className="w-16 text-center text-xs font-black rounded-md border px-2 py-1 bg-slate-50" style={{ color: col, borderColor: `${col}66` }}>{o.codigo}</span>
+            <span className="flex-1 min-w-[240px] text-base font-extrabold text-slate-900">{o.descripcion}</span>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full border" style={{ color: col, borderColor: `${col}66`, background: `${col}12` }}>{AREAS[area].nombre}</span>
+            <span className="w-28"><Barra valor={progresoObjetivo(plan, o, anio)} color={col} /></span>
+            <span className="text-xs font-black text-slate-800 w-10 text-right">{pc(progresoObjetivo(plan, o, anio))}</span>
+          </summary>
+          <div className="px-5 pt-3 pb-4">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">Seguimiento trimestral · {anio}</span>
+            <div className="no-glass bg-white rounded-xl border border-slate-300 overflow-x-auto">
+              <table className="text-xs border-collapse" style={{ minWidth: 1050, width: '100%', tableLayout: 'fixed' }}>
+                <colgroup>{[60, 260, 130, 44, 44, 44, 44, 190, 170, 64].map((w, k) => <col key={k} style={{ width: w }} />)}</colgroup>
+                <thead><tr className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-600">
+                  {['ID', 'Acción', 'Responsable'].map((n) => <th key={n} className="px-2 py-2 border border-slate-200 font-bold">{n}</th>)}
+                  {TRIMESTRES.map((t) => <th key={t} className="px-1 py-2 border border-slate-200 font-bold text-center">{t.toUpperCase()}</th>)}
+                  {['Evidencia', 'Notas', 'Avance'].map((n) => <th key={n} className="px-2 py-2 border border-slate-200 font-bold">{n}</th>)}
+                </tr></thead>
+                <tbody>
+                  {o.acciones.length === 0 && <tr><td colSpan={10} className="px-3 py-4 text-center text-slate-500 italic border border-slate-200">Este objetivo no tiene acciones. Añádalas en «Plan de acción».</td></tr>}
+                  {o.acciones.map((a) => {
+                    const sg = seg?.acciones[a.id] ?? vacioSeg();
+                    return (
+                      <tr key={a.id} className="bg-white hover:bg-slate-50/80">
+                        <td className="border border-slate-200 px-2 py-1.5 text-center"><span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ color: col, background: `${col}1A` }}>{a.codigo}</span></td>
+                        <td className="border border-slate-200 px-2 py-1.5 text-slate-900">{a.descripcion || <span className="text-slate-400">Sin descripción</span>}</td>
+                        <td className="border border-slate-200 px-2 py-1.5 text-slate-700">{a.responsable || <span className="text-slate-400">Sin responsable</span>}</td>
+                        {TRIMESTRES.map((t) => <td key={t} className="border border-slate-200 text-center"><input type="checkbox" className="w-4 h-4 accent-green-600" checked={sg[t].cumple} disabled={cerrado} aria-label={`${a.codigo} ${t.toUpperCase()} cumplido`} onChange={(e) => setSeg(a.id, (x) => ({ ...x, [t]: { ...x[t], cumple: e.target.checked } }))} /></td>)}
+                        <td className="border border-slate-200"><input className={celdaIn} placeholder="Documento, factura, acta…" disabled={cerrado} value={TRIMESTRES.map((t) => sg[t].evidencia).find((x) => x) ?? ''} onChange={(e) => setSeg(a.id, (x) => { const t = [...TRIMESTRES].reverse().find((q) => x[q].cumple) ?? 't1'; return { ...x, [t]: { ...x[t], evidencia: e.target.value } }; })} aria-label="Evidencia" /></td>
+                        <td className="border border-slate-200"><input className={celdaIn} placeholder="Notas" disabled={cerrado} value={sg.notas} onChange={(e) => setSeg(a.id, (x) => ({ ...x, notas: e.target.value }))} aria-label="Notas" /></td>
+                        <td className="border border-slate-200 px-2 py-1.5 text-center font-bold text-slate-800">{pc(progresoAccion(sg))}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </details>
-        ))}
+        ); })}
+        </div>
         </React.Fragment>
       ))}
     </div>

@@ -2,17 +2,17 @@
 import React from 'react';
 import { Recycle } from 'lucide-react';
 
-const C = { x: 380, y: 255 }, R = 170;
+const C = { x: 380, y: 290 }, R = 170;
 const punto = (grados: number) => { const a = (grados * Math.PI) / 180; return `${(C.x + R * Math.cos(a)).toFixed(1)} ${(C.y + R * Math.sin(a)).toFixed(1)}`; };
 const arco = (desde: number, hasta: number) => `M ${punto(desde)} A ${R} ${R} 0 0 1 ${punto(hasta)}`;
 // Tramos visibles entre tarjetas (arriba → derecha → izquierda → arriba), en sentido horario
-const TRAMOS: Array<[number, number]> = [[-43, 23], [44, 136], [157, 224]];
+const TRAMOS: Array<[number, number]> = [[-44, 11], [44, 136], [170, 224]];
 
 /** Escritorio: ciclo en triángulo con flechas; móvil: las tarjetas apiladas con una flecha entre ellas. */
 export const CicloProductos: React.FC<{ arriba: React.ReactNode; izquierda: React.ReactNode; derecha: React.ReactNode }> = ({ arriba, izquierda, derecha }) => (
   <>
-    <div className="hidden md:block relative mx-auto" style={{ width: 760, height: 490 }}>
-      <svg className="absolute inset-0 pointer-events-none" width="760" height="490" viewBox="0 0 760 490" aria-hidden="true">
+    <div className="hidden md:block relative mx-auto" style={{ width: 760, height: 505 }}>
+      <svg className="absolute inset-0 pointer-events-none" width="760" height="505" viewBox="0 0 760 505" aria-hidden="true">
         <defs>
           <marker id="flecha-ciclo" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#00BF46" /></marker>
           <linearGradient id="grad-ciclo" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#00BF46" /><stop offset="1" stopColor="#0002C9" /></linearGradient>

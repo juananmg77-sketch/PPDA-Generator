@@ -8,6 +8,7 @@ import type { Objetivo, Plan } from '../circularidad/plan';
 import { planDemo } from '../circularidad/demo';
 import { construirInformeCirculardad } from '../circularidad/informe';
 import { informeAHtml } from '../huella/informeHtml';
+import type { Accion } from '../circularidad/plan';
 import { FUNCIONES_PLAN, FUNCION_RESPONSABLE, migrarPlan, miembroVacio, planVacio, responsableDelPlan } from '../circularidad/plan';
 import { circularidadService } from '../services/circularidadService';
 import type { FilaPlan } from '../services/circularidadService';
@@ -483,8 +484,8 @@ const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
 // ───────────────────────────── Plan de acción ─────────────────────────────
 const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; onCatalogo: () => void }> = ({ plan, anio, cambiar, onCatalogo }) => {
   const setObj = (id: string, k: keyof Objetivo, v: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === id ? { ...o, [k]: v } : o)) }));
-  const setAcc = (oid: string, aid: string, k: 'descripcion' | 'responsable' | 'plazo', v: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.map((a) => (a.id === aid ? { ...a, [k]: v } : a)) } : o)) }));
-  const addAcc = (o: Objetivo) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, acciones: [...x.acciones, { id: `${o.id}-${Date.now()}`, codigo: `${o.codigo}${String.fromCharCode(65 + o.acciones.length)}`, descripcion: '', responsable: '', plazo: String(anio) }] } : x)) }));
+  const setAcc = (oid: string, aid: string, patch: Partial<Accion>) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.map((a) => (a.id === aid ? { ...a, ...patch, ...(patch.fin !== undefined ? { plazo: patch.fin.slice(0, 4) } : {}) } : a)) } : o)) }));
+  const addAcc = (o: Objetivo) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, acciones: [...x.acciones, { id: `${o.id}-${Date.now()}`, codigo: `${o.codigo}${String.fromCharCode(65 + o.acciones.length)}`, descripcion: '', responsable: '', plazo: String(anio), indicadores: o.indicadorId ? [o.indicadorId] : [], recursos: '', inversion: '', inicio: '', fin: '' }] } : x)) }));
   const delAcc = (oid: string, aid: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.filter((a) => a.id !== aid) } : o)) }));
   const delObj = (o: Objetivo) => { if (confirm(`¿Eliminar el objetivo «${o.descripcion}» y sus acciones?`)) cambiar((p) => ({ ...p, objetivos: p.objetivos.filter((x) => x.id !== o.id) })); };
   return (
@@ -514,14 +515,22 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
             </div>
             <div>
               <p className="text-xs font-bold text-slate-700 mb-1">Acciones</p>
-              <div className="space-y-1.5">
+              <div className="space-y-2.5">
                 {o.acciones.map((a) => (
-                  <div key={a.id} className="grid grid-cols-12 gap-2 items-center">
-                    <span className="col-span-1 text-xs font-bold text-slate-600">{a.codigo}</span>
-                    <input className={`${input} col-span-6`} value={a.descripcion} onChange={(e) => setAcc(o.id, a.id, 'descripcion', e.target.value)} aria-label="Acción" />
-                    <input className={`${input} col-span-3`} value={a.responsable} placeholder="Responsable" onChange={(e) => setAcc(o.id, a.id, 'responsable', e.target.value)} aria-label="Responsable de la acción" />
-                    <input className={`${input} col-span-1`} value={a.plazo} onChange={(e) => setAcc(o.id, a.id, 'plazo', e.target.value)} aria-label="Plazo" />
-                    <button className="col-span-1 p-1.5 text-slate-500 hover:text-red-600" onClick={() => delAcc(o.id, a.id)} aria-label={`Eliminar la acción ${a.codigo}`}><Trash2 size={14} /></button>
+                  <div key={a.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <span className="col-span-1 text-xs font-bold text-slate-600">{a.codigo}</span>
+                      <input className={`${input} col-span-7`} value={a.descripcion} onChange={(e) => setAcc(o.id, a.id, { descripcion: e.target.value })} aria-label="Acción" placeholder="Descripción de la acción" />
+                      <input className={`${input} col-span-3`} value={a.responsable} placeholder="Responsable" onChange={(e) => setAcc(o.id, a.id, { responsable: e.target.value })} aria-label="Responsable de la acción" />
+                      <button className="col-span-1 p-1.5 text-slate-500 hover:text-red-600" onClick={() => delAcc(o.id, a.id)} aria-label={`Eliminar la acción ${a.codigo}`}><Trash2 size={14} /></button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <label className="text-[11px] font-semibold text-slate-600">Inicio<input type="date" className={`${input} mt-0.5`} value={a.inicio ?? ''} onChange={(e) => setAcc(o.id, a.id, { inicio: e.target.value })} /></label>
+                      <label className="text-[11px] font-semibold text-slate-600">Fin<input type="date" className={`${input} mt-0.5`} value={a.fin ?? ''} min={a.inicio || undefined} onChange={(e) => setAcc(o.id, a.id, { fin: e.target.value })} /></label>
+                      <label className="text-[11px] font-semibold text-slate-600">Recursos<input className={`${input} mt-0.5`} value={a.recursos ?? ''} placeholder="Humanos, materiales…" onChange={(e) => setAcc(o.id, a.id, { recursos: e.target.value })} /></label>
+                      <label className="text-[11px] font-semibold text-slate-600">Inversión<input className={`${input} mt-0.5`} value={a.inversion ?? ''} placeholder="p. ej. 12.000 €" onChange={(e) => setAcc(o.id, a.id, { inversion: e.target.value })} /></label>
+                    </div>
+                    <IndicadoresAccion seleccion={a.indicadores ?? []} onChange={(ids) => setAcc(o.id, a.id, { indicadores: ids })} />
                   </div>
                 ))}
               </div>
@@ -535,6 +544,23 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
     </div>
   );
 };
+
+/** Indicadores relacionados con una acción: chips de los elegidos y lista, agrupada por área, para marcar o desmarcar. */
+const IndicadoresAccion: React.FC<{ seleccion: string[]; onChange: (ids: string[]) => void }> = ({ seleccion, onChange }) => (
+  <details className="text-xs">
+    <summary className="cursor-pointer flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] font-semibold text-slate-600">Indicadores relacionados</span>
+      {seleccion.length === 0 && <span className="text-[11px] text-slate-400">ninguno · pulse para elegir</span>}
+      {seleccion.map((id) => { const i = INDICADORES.find((x) => x.id === id); return i ? <span key={id} className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-white" style={{ background: AREAS[i.area].color }}>{i.nombre}</span> : null; })}
+    </summary>
+    <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-0.5 bg-white rounded-lg border border-slate-200 p-2">
+      {ORDEN_AREAS.flatMap((a) => INDICADORES.filter((i) => i.area === a).map((i) => (
+        <label key={i.id} className="flex items-center gap-2 py-0.5"><input type="checkbox" className="accent-green-600" checked={seleccion.includes(i.id)} onChange={(e) => onChange(e.target.checked ? [...seleccion, i.id] : seleccion.filter((x) => x !== i.id))} />
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: AREAS[a].color }} /><span>{i.nombre}</span></label>
+      )))}
+    </div>
+  </details>
+);
 
 const CatalogoMedidas: React.FC<{ onCerrar: () => void; onElegir: (m: (typeof MEDIDAS)[number]) => void }> = ({ onCerrar, onElegir }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-label="Catálogo de medidas">

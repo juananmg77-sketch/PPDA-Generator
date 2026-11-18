@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { camasElevablesExigidas } from '../catalogo.ts';
 import { planDemo } from '../demo.ts';
-import { camas, completitud, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, resumenCumplimiento, valorIndicador, migrarPlan, responsableDelPlan } from '../plan.ts';
+import { camas, completitud, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, resumenCumplimiento, valorIndicador, migrarPlan, responsableDelPlan, periodoAccion } from '../plan.ts';
 import { construirInformeCirculardad } from '../informe.ts';
 import { informeAHtml } from '../../huella/informeHtml.ts';
 
@@ -84,4 +84,14 @@ test('el equipo es estructurado y los planes con texto libre se migran', () => {
   assert.equal(m.ficha.equipo.length, 3);
   assert.equal(responsableDelPlan(m.ficha), 'Ana Pérez · Responsable de Calidad');
   assert.deepEqual(m.ficha.equipo[1], { ...m.ficha.equipo[1], cargo: 'Director', nombre: 'Luis Gómez' });
+});
+
+test('la ficha de la acción lleva indicadores, recursos, inversión y periodo', () => {
+  const m = migrarPlan(planDemo());
+  const a = m.objetivos[0].acciones[0];
+  assert.deepEqual(a.indicadores, ['E1']);
+  assert.equal(a.fin, '2024-12-31');
+  assert.equal(periodoAccion({ ...a, inicio: '2024-03-01', fin: '2024-12-31' }), '01/03/2024 – 31/12/2024');
+  const html = informeAHtml(construirInformeCirculardad(m, { anioEvaluacion: 2024, hoy: '2026-11-18' }));
+  assert.match(html, /Indicadores relacionados/); assert.match(html, /Periodo/);
 });

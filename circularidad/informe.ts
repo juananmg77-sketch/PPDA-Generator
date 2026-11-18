@@ -3,7 +3,7 @@ import type { Bloque, ModeloInforme, Seccion } from '../huella/informe.ts';
 import { svgBarrasAgrupadas } from '../huella/graficos.ts';
 import { AREAS, CATEGORIAS_HOTEL, INDICADORES, ORDEN_AREAS, tablaCamas } from './catalogo.ts';
 import type { Plan } from './plan.ts';
-import { TRIMESTRES, camas, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, valorIndicador, nombreArea, responsableDelPlan } from './plan.ts';
+import { TRIMESTRES, periodoAccion, camas, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, valorIndicador, nombreArea, responsableDelPlan } from './plan.ts';
 
 const num = (v: number, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fechaEs = (iso: string) => new Date(iso.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
@@ -72,8 +72,11 @@ export function construirInformeCirculardad(plan: Plan, o: OpcionesInformeCirc):
     b4.push({ k: 'h', texto: `Objetivo ${x.codigo} · ${x.descripcion}` });
     b4.push({ k: 'tabla', cab: ['Campo', 'Contenido'], filas: [
       ['Área prioritaria', nombreArea(x.area)], ['Línea base', x.lineaBase], ['Meta y plazo', `${x.meta} (${x.plazo})`], ['Responsable', x.responsable], ['Recursos necesarios', x.recursos], ['Inversión', x.inversion],
-      ['Acciones', x.acciones.map((a) => `${a.codigo} · ${a.descripcion} (${a.responsable}, ${a.plazo})`).join('\n')],
     ] });
+    if (x.acciones.length) {
+      const nomInd = (id: string) => INDICADORES.find((i) => i.id === id)?.nombre ?? id;
+      b4.push({ k: 'tabla', cab: ['Cód.', 'Acción', 'Responsable', 'Periodo', 'Indicadores relacionados', 'Recursos', 'Inversión'], filas: x.acciones.map((a) => [a.codigo, a.descripcion, a.responsable || '—', periodoAccion(a), (a.indicadores ?? []).map(nomInd).join('; ') || '—', a.recursos || '—', a.inversion || '—']) });
+    }
   }
   const s4: Seccion = { id: '4', titulo: 'Planificación circular', bloques: b4 };
 

@@ -18,7 +18,21 @@ export interface Ficha {
   responsablePlan?: string; estructura?: string;
   vigenciaDesde: number; vigenciaHasta: number; fechaPublicacion: string;
 }
-export interface Accion { id: string; codigo: string; descripcion: string; responsable: string; plazo: string }
+export interface Accion {
+  id: string; codigo: string; descripcion: string; responsable: string;
+  /** Año de finalización (se deriva de `fin`; se conserva por compatibilidad con planes anteriores). */
+  plazo: string;
+  /** Ficha de la acción (guía AETIB, tabla 2): indicadores relacionados, recursos, inversión y periodo. */
+  indicadores?: string[]; recursos?: string; inversion?: string; inicio?: string; fin?: string;
+}
+const fechaCorta = (iso: string) => iso.split('-').reverse().join('/');
+/** Periodo previsto de una acción en texto («01/03/2024 – 31/12/2024»); si no hay fechas, el plazo antiguo. */
+export function periodoAccion(a: Accion): string {
+  if (a.inicio && a.fin) return `${fechaCorta(a.inicio)} – ${fechaCorta(a.fin)}`;
+  if (a.fin) return `hasta el ${fechaCorta(a.fin)}`;
+  if (a.inicio) return `desde el ${fechaCorta(a.inicio)}`;
+  return a.plazo || '—';
+}
 export interface Objetivo {
   id: string; codigo: string; area: Area; descripcion: string; indicadorId: string; lineaBase: string; meta: string; plazo: string;
   responsable: string; recursos: string; inversion: string; acciones: Accion[];
@@ -142,6 +156,13 @@ export function responsableDelPlan(f: Ficha): string {
 
 /** Convierte los planes guardados con la estructura en texto libre («Cargo: Nombre» por línea) al equipo estructurado. */
 export function migrarPlan(p: Plan): Plan {
+  p = migrarEquipo(p);
+  // Acciones de versiones anteriores: indicador del objetivo como relacionado y fecha de fin a partir del plazo (año).
+  return { ...p, objetivos: p.objetivos.map((o) => ({ ...o, acciones: o.acciones.map((a) => (a.indicadores !== undefined ? a : {
+    ...a, indicadores: o.indicadorId ? [o.indicadorId] : [], recursos: a.recursos ?? '', inversion: a.inversion ?? '', inicio: a.inicio ?? '', fin: a.fin ?? (/^\d{4}$/.test(a.plazo) ? `${a.plazo}-12-31` : ''),
+  })) })) };
+}
+function migrarEquipo(p: Plan): Plan {
   if (Array.isArray(p.ficha.equipo)) return p;
   const lineas = (p.ficha.estructura ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
   const equipo: Miembro[] = [];

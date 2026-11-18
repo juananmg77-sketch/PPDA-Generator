@@ -14,8 +14,16 @@ export function planDemo(): Plan {
       establecimiento: 'Hotel Mediterráneo Playa (ejemplo)', empresa: 'Hoteles Ejemplo Baleares, S.A.', direccion: 'Av. de la Platja, s/n · Alcúdia (Mallorca)',
       actividad: 'Alojamiento turístico en régimen de todo incluido. Restaurante con cocina propia, lavandería, 2 piscinas y spa.',
       apertura: '15/03 – 31/10', habitaciones: 298, capacidad: 596, pernoctaciones: 61460, superficie: 35760,
-      categoria: '4', categoriaTexto: '4 estrellas', responsablePlan: 'Responsable de Calidad · Nombre Apellidos',
-      estructura: 'Director: Nombre Apellidos\nInterventor: Nombre Apellidos\nJefe de Recepción: Nombre Apellidos\nJefe de Servicios Técnicos: Nombre Apellidos\nGobernanta: Nombre Apellidos\nChef: Nombre Apellidos',
+      categoria: '4', categoriaTexto: '4 estrellas',
+      equipo: [
+        { id: 'm1', departamento: 'Calidad', nombre: 'Nombre Apellidos', cargo: 'Responsable de Calidad', email: 'calidad@ejemplo.es', funcion: 'Responsable del plan' },
+        { id: 'm2', departamento: 'Dirección', nombre: 'Nombre Apellidos', cargo: 'Director', email: 'direccion@ejemplo.es', funcion: 'Dirección' },
+        { id: 'm3', departamento: 'Servicios Técnicos', nombre: 'Nombre Apellidos', cargo: 'Jefe de Servicios Técnicos', email: 'tecnico@ejemplo.es', funcion: 'Responsable línea Energía' },
+        { id: 'm4', departamento: 'Mantenimiento', nombre: 'Nombre Apellidos', cargo: 'Jefe de Mantenimiento', email: 'mantenimiento@ejemplo.es', funcion: 'Responsable línea Agua' },
+        { id: 'm5', departamento: 'Pisos', nombre: 'Nombre Apellidos', cargo: 'Gobernanta', email: 'pisos@ejemplo.es', funcion: 'Responsable línea Materiales y residuos' },
+        { id: 'm6', departamento: 'Cocina', nombre: 'Nombre Apellidos', cargo: 'Chef', email: 'cocina@ejemplo.es', funcion: 'Responsable línea Alimentos' },
+        { id: 'm7', departamento: 'Recepción', nombre: 'Nombre Apellidos', cargo: 'Jefe de Recepción', email: 'recepcion@ejemplo.es', funcion: 'Responsable línea Gobernanza y sensibilización' },
+      ],
       vigenciaDesde: 2023, vigenciaHasta: 2028, fechaPublicacion: '2023-04-28',
     },
     datos: {

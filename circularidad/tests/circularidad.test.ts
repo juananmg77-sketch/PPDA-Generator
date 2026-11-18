@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { camasElevablesExigidas } from '../catalogo.ts';
 import { planDemo } from '../demo.ts';
-import { camas, completitud, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, resumenCumplimiento, valorIndicador } from '../plan.ts';
+import { camas, completitud, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, resumenCumplimiento, valorIndicador, migrarPlan, responsableDelPlan } from '../plan.ts';
 import { construirInformeCirculardad } from '../informe.ts';
 import { informeAHtml } from '../../huella/informeHtml.ts';
 
@@ -72,4 +72,16 @@ test('el informe del plan tiene las secciones de la guía, gráficos y se vuelca
   assert.equal(m.pendientes.length, 0);
   const html = informeAHtml(m);
   assert.match(html, /Hotel Mediterráneo Playa/); assert.match(html, /<svg/); assert.match(html, /Ley 3\/2022/);
+});
+
+test('el equipo es estructurado y los planes con texto libre se migran', () => {
+  const d = planDemo();
+  assert.equal(responsableDelPlan(d.ficha), 'Nombre Apellidos · Responsable de Calidad');
+  const html = informeAHtml(construirInformeCirculardad(d, { anioEvaluacion: 2024, hoy: '2026-11-18' }));
+  assert.match(html, /Función en el plan/); assert.match(html, /Responsable línea Energía/);
+  const viejo = { ...d, ficha: { ...d.ficha, equipo: undefined, responsablePlan: 'Responsable de Calidad · Ana Pérez', estructura: 'Director: Luis Gómez\nChef: Marta Ruiz' } } as unknown as typeof d;
+  const m = migrarPlan(viejo);
+  assert.equal(m.ficha.equipo.length, 3);
+  assert.equal(responsableDelPlan(m.ficha), 'Ana Pérez · Responsable de Calidad');
+  assert.deepEqual(m.ficha.equipo[1], { ...m.ficha.equipo[1], cargo: 'Director', nombre: 'Luis Gómez' });
 });

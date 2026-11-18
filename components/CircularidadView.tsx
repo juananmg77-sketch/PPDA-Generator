@@ -8,7 +8,7 @@ import type { Objetivo, Plan } from '../circularidad/plan';
 import { planDemo } from '../circularidad/demo';
 import { construirInformeCirculardad } from '../circularidad/informe';
 import { informeAHtml } from '../huella/informeHtml';
-import { planVacio } from '../circularidad/plan';
+import { FUNCIONES_PLAN, FUNCION_RESPONSABLE, migrarPlan, miembroVacio, planVacio, responsableDelPlan } from '../circularidad/plan';
 import { circularidadService } from '../services/circularidadService';
 import type { FilaPlan } from '../services/circularidadService';
 import { huellaService } from '../services/huellaService';
@@ -46,7 +46,7 @@ const ESTADOS: Array<[EstadoReq, string, string]> = [['cumple', 'Cumple', 'bg-gr
 type Guardado = 'guardado' | 'guardando' | 'error';
 const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; currentUser: string; onGuardar?: (p: Plan) => Promise<void> }> = ({ plan0, demo, onSalir, currentUser, onGuardar }) => {
   const onBack = onSalir;
-  const [plan, setPlan] = useState<Plan>(plan0);
+  const [plan, setPlan] = useState<Plan>(() => migrarPlan(plan0));
   const [guardado, setGuardado] = useState<Guardado>('guardado');
   const [errorGuardar, setErrorGuardar] = useState('');
   const sucio = useRef(false);
@@ -253,18 +253,53 @@ const FichaPanel: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void
         <Campo etiqueta="Capacidad (plazas)">{n('capacidad')}</Campo>
         <Campo etiqueta="Pernoctaciones anuales (promedio)">{n('pernoctaciones')}</Campo>
         <Campo etiqueta="Área total del establecimiento (m²)">{n('superficie')}</Campo>
-        <Campo etiqueta="Cargo y nombre de la persona responsable del plan *" ancho><input className={input} value={f.responsablePlan} onChange={(e) => set('responsablePlan', e.target.value)} /></Campo>
-        <Campo etiqueta="Estructura organizativa y responsables de las líneas de acción *" ancho><textarea rows={5} className={input} value={f.estructura} onChange={(e) => set('estructura', e.target.value)} /></Campo>
         <Campo etiqueta="Vigencia desde"><input type="number" className={input} value={f.vigenciaDesde} onChange={(e) => set('vigenciaDesde', Number(e.target.value))} /></Campo>
         <Campo etiqueta="Vigencia hasta (máximo 5 años)"><input type="number" className={input} value={f.vigenciaHasta} onChange={(e) => set('vigenciaHasta', Math.min(Number(e.target.value), f.vigenciaDesde + 4))} /></Campo>
         <Campo etiqueta="Fecha de publicación del informe"><input type="date" className={input} value={f.fechaPublicacion} onChange={(e) => set('fechaPublicacion', e.target.value)} /></Campo>
       </div>
+      <Equipo plan={plan} cambiar={cambiar} />
       <p className="text-[11px] text-slate-500 mt-3">Los campos con * son obligatorios según la guía AETIB; el resto son opcionales. Las pernoctaciones se usan para calcular los indicadores por pernoctación.</p>
     </div>
   );
 };
 
 // ───────────────────────────── Indicadores ─────────────────────────────
+const celda = 'w-full bg-slate-50 border border-transparent focus:bg-white focus:border-brand-300 rounded px-2 py-1.5 text-xs text-slate-700 transition-all';
+const Equipo: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void }> = ({ plan, cambiar }) => {
+  const equipo = plan.ficha.equipo ?? [];
+  const setEq = (f: (e: typeof equipo) => typeof equipo) => cambiar((p) => ({ ...p, ficha: { ...p.ficha, equipo: f(p.ficha.equipo ?? []) } }));
+  const upd = (id: string, k: 'departamento' | 'nombre' | 'cargo' | 'email' | 'funcion', v: string) => setEq((e) => e.map((m) => (m.id === id ? { ...m, [k]: v } : m)));
+  const hayResp = !!responsableDelPlan(plan.ficha).trim();
+  return (
+    <div className="mt-5 border-t border-slate-100 pt-4">
+      <div className="flex items-center gap-2 mb-2">
+        <h3 className="text-sm font-bold text-slate-800 flex-1">Estructura organizativa y responsables *</h3>
+        <button className={btnS} onClick={() => setEq((e) => [...e, miembroVacio()])}><Plus size={14} /> Añadir persona</button>
+      </div>
+      <p className="text-xs text-slate-600 mb-2">Indique quién es el responsable del plan y quién lleva cada línea de acción.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[640px]">
+          <thead className="text-[10px] font-bold uppercase text-slate-500 tracking-wide border-b border-slate-100"><tr><th className="p-1.5">Departamento</th><th className="p-1.5">Nombre</th><th className="p-1.5">Cargo</th><th className="p-1.5">Email</th><th className="p-1.5">Función en el plan</th><th className="w-8" /></tr></thead>
+          <tbody className="divide-y divide-slate-50">
+            {equipo.map((m) => (
+              <tr key={m.id}>
+                <td className="p-1"><input className={celda} value={m.departamento} placeholder="Dpto." aria-label="Departamento" onChange={(e) => upd(m.id, 'departamento', e.target.value)} /></td>
+                <td className="p-1"><input className={`${celda} font-semibold`} value={m.nombre} placeholder="Nombre" aria-label="Nombre" onChange={(e) => upd(m.id, 'nombre', e.target.value)} /></td>
+                <td className="p-1"><input className={celda} value={m.cargo} placeholder="Cargo" aria-label="Cargo" onChange={(e) => upd(m.id, 'cargo', e.target.value)} /></td>
+                <td className="p-1"><input className={celda} value={m.email} placeholder="Email" aria-label="Email" onChange={(e) => upd(m.id, 'email', e.target.value)} /></td>
+                <td className="p-1"><select className={celda} value={m.funcion} aria-label="Función en el plan" onChange={(e) => upd(m.id, 'funcion', e.target.value)}>{FUNCIONES_PLAN.map((x) => <option key={x}>{x}</option>)}</select></td>
+                <td className="p-1 text-center"><button className="text-slate-300 hover:text-red-500 p-1 rounded" aria-label="Quitar persona" onClick={() => setEq((e) => e.filter((x) => x.id !== m.id))}><Trash2 size={14} /></button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {equipo.length === 0 && <div className="text-center py-6 text-slate-500 italic text-sm border border-dashed border-slate-200 rounded-xl mt-2">Aún no hay personas. Añada al menos al responsable del plan.</div>}
+      </div>
+      {!hayResp && <p className="text-xs text-amber-700 font-semibold mt-2 flex items-center gap-1"><AlertTriangle size={13} /> Falta indicar quién tiene la función «{FUNCION_RESPONSABLE}» (dato obligatorio).</p>}
+    </div>
+  );
+};
+
 const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; aniosOpc: number[] }> = ({ plan, anio, cambiar }) => {
   const ant = anio - 1;
   const setDato = (campo: string, v: string) => cambiar((p) => ({ ...p, datos: { ...p.datos, [anio]: { ...(p.datos[anio] ?? {}), [campo]: v === '' ? undefined : Number(v) } } }));

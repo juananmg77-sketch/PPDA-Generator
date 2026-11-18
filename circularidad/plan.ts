@@ -2,10 +2,20 @@
 import { AREAS, INDICADORES, ORDEN_AREAS, REQUISITOS, camasElevablesExigidas, indicador } from './catalogo.ts';
 import type { Area, CategoriaHotel, EstadoReq } from './catalogo.ts';
 
+/** Persona del equipo responsable del plan (estructura organizativa). */
+export interface Miembro { id: string; departamento: string; nombre: string; cargo: string; email: string; funcion: string }
+export const FUNCION_RESPONSABLE = 'Responsable del plan';
+export const FUNCIONES_PLAN = [FUNCION_RESPONSABLE, 'Dirección', 'Responsable línea Energía', 'Responsable línea Agua', 'Responsable línea Materiales y residuos', 'Responsable línea Alimentos', 'Responsable línea Gobernanza y sensibilización', 'Colaborador'];
+export const miembroVacio = (): Miembro => ({ id: `m${Date.now()}${Math.floor(Math.random() * 1000)}`, departamento: '', nombre: '', cargo: '', email: '', funcion: 'Colaborador' });
+
 export interface Ficha {
   establecimiento: string; empresa: string; direccion: string; actividad: string; apertura: string;
   habitaciones?: number; capacidad?: number; pernoctaciones?: number; superficie?: number;
-  categoria: CategoriaHotel; categoriaTexto: string; responsablePlan: string; estructura: string;
+  categoria: CategoriaHotel; categoriaTexto: string;
+  /** Estructura organizativa: personas con su departamento, cargo y función en el plan. */
+  equipo: Miembro[];
+  /** Campos de texto de versiones anteriores; solo se leen para migrarlos a `equipo`. */
+  responsablePlan?: string; estructura?: string;
   vigenciaDesde: number; vigenciaHasta: number; fechaPublicacion: string;
 }
 export interface Accion { id: string; codigo: string; descripcion: string; responsable: string; plazo: string }
@@ -115,9 +125,26 @@ export function planVacio(base: Partial<Ficha> & { establecimiento: string }, an
   return {
     id: '', version: 1, cerrado: false,
     ficha: {
-      empresa: '', direccion: '', actividad: '', apertura: '', categoria: '4', categoriaTexto: '4 estrellas', responsablePlan: '', estructura: '',
+      empresa: '', direccion: '', actividad: '', apertura: '', categoria: '4', categoriaTexto: '4 estrellas', equipo: [],
       vigenciaDesde: anio, vigenciaHasta: anio + 4, fechaPublicacion: '', ...base,
     },
     datos: {}, letraCertificado: {}, accionesClientes: [], camasElevablesInstaladas: {}, objetivos: [], seguimiento: {}, requisitos: {},
   };
+}
+
+/** Responsable del plan según el equipo (o el texto antiguo si el plan es de una versión anterior). */
+export function responsableDelPlan(f: Ficha): string {
+  const m = f.equipo?.find((x) => x.funcion === FUNCION_RESPONSABLE && x.nombre.trim());
+  return m ? [m.nombre, m.cargo].filter(Boolean).join(' · ') : (f.responsablePlan ?? '');
+}
+
+/** Convierte los planes guardados con la estructura en texto libre («Cargo: Nombre» por línea) al equipo estructurado. */
+export function migrarPlan(p: Plan): Plan {
+  if (Array.isArray(p.ficha.equipo)) return p;
+  const lineas = (p.ficha.estructura ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const equipo: Miembro[] = [];
+  const resp = (p.ficha.responsablePlan ?? '').trim();
+  if (resp) { const [cargo, ...n] = resp.split('·').map((x) => x.trim()); equipo.push({ ...miembroVacio(), cargo: n.length ? cargo : '', nombre: n.length ? n.join(' · ') : cargo, funcion: FUNCION_RESPONSABLE }); }
+  lineas.forEach((l, i) => { const k = l.indexOf(':'); equipo.push({ ...miembroVacio(), id: `m-mig-${i}`, cargo: k > 0 ? l.slice(0, k).trim() : '', nombre: k > 0 ? l.slice(k + 1).trim() : l, funcion: 'Colaborador' }); });
+  return { ...p, ficha: { ...p.ficha, equipo } };
 }

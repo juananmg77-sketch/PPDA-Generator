@@ -3,7 +3,7 @@ import type { Bloque, ModeloInforme, Seccion } from '../huella/informe.ts';
 import { svgBarrasAgrupadas } from '../huella/graficos.ts';
 import { AREAS, CATEGORIAS_HOTEL, INDICADORES, ORDEN_AREAS, tablaCamas } from './catalogo.ts';
 import type { Plan } from './plan.ts';
-import { TRIMESTRES, camas, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, valorIndicador, nombreArea } from './plan.ts';
+import { TRIMESTRES, camas, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, valorIndicador, nombreArea, responsableDelPlan } from './plan.ts';
 
 const num = (v: number, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fechaEs = (iso: string) => new Date(iso.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
@@ -31,8 +31,12 @@ export function construirInformeCirculardad(plan: Plan, o: OpcionesInformeCirc):
       ['Nombre del establecimiento', f.establecimiento], ['Empresa a la que pertenece', f.empresa], ['Dirección', f.direccion], ['Categoría', CATEGORIAS_HOTEL[f.categoria] ?? f.categoriaTexto],
       ['Actividad y servicios', f.actividad], ['Periodo de apertura', f.apertura], ['Número de habitaciones', dash(f.habitaciones)], ['Capacidad (plazas)', dash(f.capacidad)],
       ['Pernoctaciones anuales (promedio)', f.pernoctaciones ? num(f.pernoctaciones, 0) : '—'], ['Área total (m²)', f.superficie ? num(f.superficie, 0) : '—'],
-      ['Responsable del plan', f.responsablePlan], ['Estructura organizativa', f.estructura], ['Duración prevista del plan', `${f.vigenciaDesde}-${f.vigenciaHasta} (revisable anualmente)`], ['Fecha de publicación del informe', fechaEs(f.fechaPublicacion)],
+      ['Responsable del plan', responsableDelPlan(f) || '—'], ['Duración prevista del plan', `${f.vigenciaDesde}-${f.vigenciaHasta} (revisable anualmente)`], ['Fecha de publicación del informe', fechaEs(f.fechaPublicacion)],
     ] },
+    { k: 'h', texto: 'Estructura organizativa y responsables de las líneas de acción' },
+    ...((f.equipo ?? []).length
+      ? [{ k: 'tabla' as const, cab: ['Departamento', 'Nombre', 'Cargo', 'Función en el plan', 'Contacto'], filas: f.equipo.map((m) => [m.departamento || '—', m.nombre || '—', m.cargo || '—', m.funcion, m.email || '—']) }]
+      : [{ k: 'nota' as const, texto: 'Sin definir: añada el equipo responsable en la ficha del establecimiento.' }]),
   ] };
 
   // ── 3 Evaluación circular

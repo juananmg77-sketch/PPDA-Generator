@@ -20,6 +20,7 @@ import type { Organizacion } from '../services/huellaService';
 
 type Pestana = 'resumen' | 'indicadores' | 'plan' | 'seguimiento' | 'cumplimiento' | 'informe';
 const CLAVE = 'hsgreen-circularidad-demo-v1';
+const CLAVE_BORRADOR = 'hsgreen-circularidad-borrador-v1';
 const HOY = new Date().toISOString().slice(0, 10);
 
 const card = 'bg-white rounded-2xl border border-slate-200 p-5 shadow-sm';
@@ -55,7 +56,7 @@ const Tendencia: React.FC<{ t: string }> = ({ t }) => t === 'mejora' ? <span cla
 const ESTADOS: Array<[EstadoReq, string, string]> = [['cumple', 'Cumple', 'bg-green-100 text-green-800'], ['parcial', 'Parcial', 'bg-amber-100 text-amber-800'], ['no', 'No cumple', 'bg-red-100 text-red-800'], ['na', 'No aplica', 'bg-slate-100 text-slate-600'], ['pendiente', 'Pendiente', 'bg-slate-100 text-slate-700']];
 
 type Guardado = 'guardado' | 'guardando' | 'error';
-const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; currentUser: string; onGuardar?: (p: Plan) => Promise<void> }> = ({ plan0, demo, onSalir, currentUser, onGuardar }) => {
+const Editor: React.FC<{ plan0: Plan; demo: boolean; claveLocal?: string; etiqueta?: string; onSalir: () => void; currentUser: string; onGuardar?: (p: Plan) => Promise<void> }> = ({ plan0, demo, claveLocal, etiqueta, onSalir, currentUser, onGuardar }) => {
   const onBack = onSalir;
   const [plan, setPlan] = useState<Plan>(() => migrarPlan(plan0));
   const [guardado, setGuardado] = useState<Guardado>('guardado');
@@ -68,7 +69,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
   const [modalMedida, setModalMedida] = useState(false);
   const [config, setConfig] = useState(false);
   const volcar = async (p: Plan) => {
-    if (demo) { try { localStorage.setItem(CLAVE, JSON.stringify(p)); } catch { /* ignorar */ } sucio.current = false; return; }
+    if (demo) { try { localStorage.setItem(claveLocal ?? CLAVE, JSON.stringify(p)); } catch { /* ignorar */ } sucio.current = false; return; }
     setGuardado('guardando');
     try { await onGuardar!(p); if (ultimo.current === p) { sucio.current = false; setGuardado('guardado'); setErrorGuardar(''); } }
     catch (e) { setGuardado('error'); setErrorGuardar(e instanceof Error ? e.message : String(e)); }
@@ -133,7 +134,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
           ))}
         </nav>
         <div className="hidden md:block mt-auto px-4 py-4 border-t" style={{ borderColor: 'rgba(0,9,61,.12)' }}>
-          {demo && <button className="text-[11px] font-semibold underline mb-3 inline-flex items-center gap-1" style={{ color: 'rgba(0,9,61,.75)' }} onClick={() => { if (confirm('¿Restablecer el ejemplo? Se perderán los cambios de esta demostración.')) { sucio.current = true; setPlan(planDemo()); } }}><RotateCcw size={11} /> Restablecer ejemplo</button>}
+          {demo && <button className="text-[11px] font-semibold underline mb-3 inline-flex items-center gap-1" style={{ color: 'rgba(0,9,61,.75)' }} onClick={() => { if (confirm(claveLocal ? '¿Empezar de nuevo? Se vaciará este borrador.' : '¿Restablecer el ejemplo? Se perderán los cambios de esta demostración.')) { sucio.current = true; setPlan(claveLocal ? planVacio({ establecimiento: '' }) : planDemo()); } }}><RotateCcw size={11} /> {claveLocal ? 'Empezar de nuevo' : 'Restablecer ejemplo'}</button>}
           <img src="/logo-hs-group.png" alt="HS Consulting Group" className="h-9 w-auto object-contain" />
           <p className="text-[11px] mt-2 truncate" style={{ color: 'rgba(0,9,61,.65)' }}>{currentUser}</p>
         </div>
@@ -151,7 +152,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800">Plan {plan.ficha.vigenciaDesde}-{plan.ficha.vigenciaHasta}</span>
               <button onClick={() => setConfig(true)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Configuración del establecimiento" aria-label="Abrir la configuración del establecimiento"><Settings size={17} /></button>
-              {demo ? <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">Demostración</span>
+              {demo ? <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">{etiqueta ?? 'Demostración'}</span>
                 : <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${guardado === 'error' ? 'bg-red-100 text-red-800' : guardado === 'guardando' ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}`} role="status">{guardado === 'guardando' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar' : 'Guardado'}</span>}
             </div>
           </div>
@@ -855,8 +856,16 @@ const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) 
 // ---------- Biblioteca de planes ----------
 const fechaCorta = (iso: string) => new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+const NUEVA_ORG = '__nueva__';
+const hayBorrador = () => { try { return !!localStorage.getItem(CLAVE_BORRADOR); } catch { return false; } };
+const cargarBorrador = (): Plan => {
+  try { const s = localStorage.getItem(CLAVE_BORRADOR); if (s) return JSON.parse(s) as Plan; } catch { /* sin almacenamiento */ }
+  return planVacio({ establecimiento: '' });
+};
+
 const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = ({ onBack, currentUser }) => {
-  const [abierto, setAbierto] = useState<{ id: string | null; plan: Plan } | null>(null);
+  const [abierto, setAbierto] = useState<{ id: string | null; plan: Plan; claveLocal?: string; etiqueta?: string } | null>(null);
+  const [nombreNuevo, setNombreNuevo] = useState('');
   const [planes, setPlanes] = useState<FilaPlan[]>([]);
   const [orgs, setOrgs] = useState<Organizacion[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -877,20 +886,23 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
     try { setAbierto({ id, plan: await circularidadService.abrir(id) }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
   const crear = async () => {
-    const org = orgs.find((o) => o.id === orgNueva); if (!org) return;
+    const esNueva = orgNueva === NUEVA_ORG;
+    if (esNueva ? !nombreNuevo.trim() : !orgs.find((o) => o.id === orgNueva)) return;
     setCreando(true); setError('');
     try {
+      const org = esNueva ? await huellaService.crearOrganizacion({ nombre: nombreNuevo.trim() }) : orgs.find((o) => o.id === orgNueva)!;
       const centros = await huellaService.centros(org.id).catch(() => []);
       const uno = centros.length === 1 ? centros[0] : undefined;
       const plan = planVacio({ establecimiento: org.nombre, empresa: org.nombre, direccion: uno?.direccion ?? org.direccion ?? '', habitaciones: uno?.unidades_alojamiento ?? undefined });
       const fila = await circularidadService.crear(org.id, plan);
+      setNombreNuevo(''); setOrgNueva('');
       setAbierto({ id: fila.id, plan: fila.plan });
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setCreando(false); }
   };
   const salir = () => { setAbierto(null); void recargar(); };
 
-  if (abierto) return <Editor key={abierto.id ?? 'demo'} plan0={abierto.plan} demo={abierto.id === null} currentUser={currentUser} onSalir={salir} onGuardar={abierto.id ? (p) => circularidadService.guardar(abierto.id!, p) : undefined} />;
+  if (abierto) return <Editor key={abierto.id ?? abierto.claveLocal ?? 'demo'} plan0={abierto.plan} demo={abierto.id === null} claveLocal={abierto.claveLocal} etiqueta={abierto.etiqueta} currentUser={currentUser} onSalir={salir} onGuardar={abierto.id ? (p) => circularidadService.guardar(abierto.id!, p) : undefined} />;
 
   const sinPlan = orgs.filter((o) => !planes.some((p) => p.organizacion_id === o.id));
   const nombreOrg = (id: string) => orgs.find((o) => o.id === id)?.nombre;
@@ -909,10 +921,12 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
             <select className={`${input} flex-1 min-w-[220px]`} value={orgNueva} onChange={(e) => setOrgNueva(e.target.value)} aria-label="Organización">
               <option value="">Elija la organización…</option>
               {sinPlan.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              <option value={NUEVA_ORG}>＋ Nueva organización (empezar desde cero)…</option>
             </select>
-            <button className={btnP} disabled={!orgNueva || creando} onClick={() => void crear()}>{creando ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear plan</button>
+            {orgNueva === NUEVA_ORG && <input className={`${input} flex-1 min-w-[220px]`} value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} placeholder="Nombre del establecimiento o empresa" aria-label="Nombre de la nueva organización" autoFocus onKeyDown={(e) => { if (e.key === 'Enter') void crear(); }} />}
+            <button className={btnP} disabled={!orgNueva || (orgNueva === NUEVA_ORG && !nombreNuevo.trim()) || creando} onClick={() => void crear()}>{creando ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear plan</button>
           </div>
-          <p className="text-xs text-slate-500 mt-2">Se crea un plan por establecimiento, con la ficha rellenada con los datos de la organización. Las organizaciones son las de Huella de carbono.</p>
+          <p className="text-xs text-slate-500 mt-2">Se crea un plan por establecimiento. Si la organización ya existe (son las de Huella de carbono), la ficha se rellena con sus datos; si es nueva, se crea la organización y el plan parte de cero, y los datos se completan en la configuración del establecimiento (engranaje).</p>
         </div>
         <div className={card}>
           <h2 className="font-bold mb-3">Planes guardados</h2>
@@ -927,6 +941,10 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
         <div className={`${card} flex flex-wrap items-center gap-3`}>
           <div className="flex-1 min-w-[220px]"><h2 className="font-bold">Ejemplo de demostración</h2><p className="text-xs text-slate-600">Establecimiento ficticio con datos de 2022 a 2024 para presentar el módulo. Se guarda solo en este navegador.</p></div>
           <button className={btnS} onClick={() => setAbierto({ id: null, plan: cargar() })}>Ver ejemplo</button>
+        </div>
+        <div className={`${card} flex flex-wrap items-center gap-3`}>
+          <div className="flex-1 min-w-[220px]"><h2 className="font-bold">Borrador desde cero, sin guardar en la base</h2><p className="text-xs text-slate-600">Para practicar o preparar un plan antes de crearlo de verdad. Se guarda solo en este navegador.</p></div>
+          <button className={btnS} onClick={() => setAbierto({ id: null, plan: cargarBorrador(), claveLocal: CLAVE_BORRADOR, etiqueta: 'Borrador local' })}>{hayBorrador() ? 'Continuar el borrador' : 'Empezar en blanco'}</button>
         </div>
       </div>
     </div>

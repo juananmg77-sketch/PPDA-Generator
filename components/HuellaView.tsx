@@ -278,7 +278,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
                   {esConsultor && pasoCierre === 'cierre'
                     ? <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
-                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />
+                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} onIr={(d) => setTab(d)} />
                     : <PanelInforme soloLectura={!esConsultor} org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />}
                 </div>
@@ -1042,7 +1042,9 @@ const PanelFacturas: React.FC<{
   const pendientes = docs.filter((d) => d.estado === 'leido' && d.extraccion);
   const evaluadas = useMemo(() => new Map(pendientes.map((d) => [d.id, evaluarDoc(d, factores, inv.anio, docs)])), [docs, factores, inv.anio]); // eslint-disable-line
   const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, contadorDoc), [docs]); // eslint-disable-line
-  const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido'), [docs]);
+  // Subidas pero sin lectura utilizable (fallo de lectura): cuentan como pendientes en el cierre y antes quedaban ocultas entre las confirmadas
+  const sinLeerDocs = useMemo(() => docs.filter((d) => d.estado === 'subido' || (d.estado === 'leido' && !d.extraccion)), [docs]);
+  const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido' && d.estado !== 'subido'), [docs]);
   const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, contadorDoc), [docsArchivo]);
   // Paquetes por tipología (electricidad, gas natural…), cada uno con sus contadores dentro
   const paquetes = useMemo(() => {
@@ -1142,6 +1144,13 @@ const PanelFacturas: React.FC<{
         )}
       </div>
 
+      {rol === 'consultor' && sinLeerDocs.length > 0 && (
+        <div className={`${card} border-red-200`}>
+          <h2 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-2"><AlertTriangle size={15} /> Subidas sin leer ({sinLeerDocs.length})</h2>
+          <p className="text-xs text-slate-600 mb-2">No se pudo leer su contenido y impiden cerrar el cálculo. Ábralas con «Ver» para comprobarlas; lo normal es eliminarlas y volver a subirlas (o introducir sus datos a mano en Consumos).</p>
+          {listaFacturas(sinLeerDocs)}
+        </div>
+      )}
       {pendientes.length > 0 && rol === 'cliente' && (
         <div className={`${card} text-sm text-slate-700`}><Eye size={15} className="inline mr-2 text-slate-500" />{pendientes.length} factura(s) pendientes de revisión por su consultor.</div>
       )}
@@ -1517,8 +1526,8 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
 // ───────────────────────────── Cierre del cálculo ─────────────────────────────
 const PanelCierre: React.FC<{
   inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
-  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
-}> = ({ inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
+  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void; onIr: (destino: 'facturas' | 'consumos' | 'centros') => void;
+}> = ({ inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
@@ -1563,10 +1572,10 @@ const PanelCierre: React.FC<{
     if (!factores || !calculo || previo === undefined) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
+      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
-      fallosCalculo: calculo.fallos.length,
+      fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,
       centrosSinIndice: centros.filter((c) => !(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad > 0)).map((c) => c.nombre),
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
@@ -1633,7 +1642,22 @@ const PanelCierre: React.FC<{
         <h2 className="text-sm font-bold text-slate-800 mb-3">Lista de comprobación previa al cierre</h2>
         {!evaluacion ? <p className="text-sm text-slate-600"><Loader2 size={14} className="inline animate-spin mr-2" />Calculando…</p> : (
           <>
-            <ul className="space-y-1.5">{evaluacion.items.map((i, k) => <li key={k} className="flex items-start gap-2 text-xs text-slate-800">{icono(i.nivel)}<span>{i.mensaje}</span></li>)}</ul>
+            <ul className="space-y-2">{evaluacion.items.map((i, k) => (
+              <li key={k} className="flex items-start gap-2 text-xs text-slate-800">{icono(i.nivel)}
+                <div className="flex-1 min-w-0">
+                  <p>{i.mensaje}</p>
+                  {i.detalle && i.detalle.length > 0 && (
+                    <details className="mt-1" open={i.nivel === 'error' && i.detalle.length <= 8}>
+                      <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900">Ver las {i.detalle.length} afectadas</summary>
+                      <ul className="mt-1 ml-1 border-l-2 border-slate-200 pl-3 space-y-0.5 max-h-48 overflow-auto">
+                        {i.detalle.map((x, n) => <li key={n} className="text-[11px] text-slate-700"><strong>{x.texto}</strong>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                  {i.ir && abierto && <button className="mt-1 text-[11px] font-bold text-brand-700 underline hover:text-brand-900" onClick={() => onIr(i.ir!)}>{i.irEtiqueta ?? 'Resolver'} →</button>}
+                </div>
+              </li>
+            ))}</ul>
             {abierto && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button className={btnP} onClick={cerrar} disabled={!evaluacion.puedeCerrar || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} Cerrar cálculo {inv.anio}</button>

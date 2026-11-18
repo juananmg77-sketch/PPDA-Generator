@@ -437,8 +437,9 @@ const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) 
   const word = async () => {
     setGenerando(true);
     try {
-      const [{ informeADocx }, { svgAPng }, green, group] = await Promise.all([import('../huella/informeDocx'), import('../huella/svgPng'), imagenBytes('/logo-hsgreen-recortado.png'), imagenBytes('/logo-hs-group.png')]);
-      descargar(await informeADocx(modelo, { green, group }, svgAPng), `${modelo.meta.codigo}_Plan_circularidad_${anio}_V${String(plan.version).padStart(2, '0')}.docx`);
+      const [{ informeADocx }, { svgAPng }, { cargarMarca }] = await Promise.all([import('../huella/informeDocx'), import('../huella/svgPng'), import('../huella/marca')]);
+      const marca = await cargarMarca();
+      descargar(await informeADocx(modelo, marca, svgAPng), `${modelo.meta.codigo}_Plan_circularidad_${anio}_V${String(plan.version).padStart(2, '0')}.docx`);
     } finally { setGenerando(false); }
   };
   return (

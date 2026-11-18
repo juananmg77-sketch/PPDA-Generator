@@ -117,7 +117,7 @@ export function svgBarrasHorizontales(datos: Array<{ nombre: string; t: number }
 }
 
 /** Barras agrupadas: grupos (Alcance 1, Alcance 2, Total) × series (año anterior, año actual), en t CO₂e. */
-export function svgBarrasAgrupadas(grupos: string[], series: Array<{ nombre: string; valores: number[] }>, titulo: string): Grafico {
+export function svgBarrasAgrupadas(grupos: string[], series: Array<{ nombre: string; valores: number[] }>, titulo: string, unidad = 't CO₂e'): Grafico {
   const W = 640, H = 300, izq = 52, der = 16, sup = 22, inf = 56;
   const hz = W - izq - der, vt = H - sup - inf;
   const max = Math.max(...series.flatMap((x) => x.valores), 0);
@@ -135,7 +135,7 @@ export function svgBarrasAgrupadas(grupos: string[], series: Array<{ nombre: str
     });
     s += `<text x="${px(izq + bloque * i + bloque / 2)}" y="${H - inf + 16}" text-anchor="middle" fill="${TEXTO}" font-size="11">${esc(g)}</text>`;
   });
-  s += `<line x1="${izq}" y1="${y(0)}" x2="${W - der}" y2="${y(0)}" stroke="${EJE}"/><text x="${izq}" y="${sup - 8}" fill="${SUAVE}" font-size="10">t CO₂e</text>`;
+  s += `<line x1="${izq}" y1="${y(0)}" x2="${W - der}" y2="${y(0)}" stroke="${EJE}"/><text x="${izq}" y="${sup - 8}" fill="${SUAVE}" font-size="10">${esc(unidad)}</text>`;
   let lx = izq; const ly = H - 14;
   series.forEach((ser, k) => { s += `<rect x="${lx}" y="${ly - 10}" width="11" height="11" rx="2" fill="${k === series.length - 1 ? PALETA[0] : '#B7C4D6'}"/><text x="${lx + 16}" y="${ly}" fill="${TEXTO}" font-size="11">${esc(ser.nombre)}</text>`; lx += 40 + ser.nombre.length * 6.4; });
   return { svg: s + '</svg>', ancho: W, alto: H };

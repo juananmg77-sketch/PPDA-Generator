@@ -15,6 +15,7 @@ import { RegistrosView } from './components/RegistrosView';
 import { pesajesService } from './services/pesajesService';
 import { LoginView } from './components/Login';
 const HuellaView = React.lazy(() => import('./components/HuellaView'));
+const CircularidadView = React.lazy(() => import('./components/CircularidadView'));
 import { ChevronRight, ChevronLeft, Save, Leaf, LayoutDashboard, Maximize, Minimize, Home, Plus, Trash2, Clock, FileJson, Download, RefreshCw, CloudDownload, CloudUpload, X, LogOut, Database, Link, GitBranch, Users, Briefcase, KeyRound, Eye, EyeOff, FileSpreadsheet, Building2, ScanSearch, Target, Scale, FileText, History, MapPin, CheckSquare, Salad, Recycle, Cloud } from 'lucide-react';
 import { UserManagement } from './components/UserManagement';
 import { ClientDashboard } from './components/ClientDashboard';
@@ -134,7 +135,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('consultor');
   const [currentUserHotel, setCurrentUserHotel] = useState<string>('');
-  const [view, setView] = useState<'dashboard' | 'wizard' | 'users' | 'registros' | 'huella'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'wizard' | 'users' | 'registros' | 'huella' | 'circularidad'>('dashboard');
 
   // Estado para la vista de registros
   const [registrosPlanId,   setRegistrosPlanId]   = useState<string>('');
@@ -825,6 +826,15 @@ const App: React.FC = () => {
     );
   }
 
+  // RENDER: PLAN DE CIRCULARIDAD (solo usuarios internos; versión de demostración)
+  if (view === 'circularidad') {
+    return (
+      <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-slate-600 text-sm">Cargando…</div>}>
+        <CircularidadView onBack={() => setView('dashboard')} currentUser={currentUser || ''} />
+      </Suspense>
+    );
+  }
+
   // RENDER: USER MANAGEMENT VIEW (admin only)
   if (view === 'users') {
     return <UserManagement onBack={() => setView('dashboard')} />;
@@ -898,13 +908,16 @@ const App: React.FC = () => {
                   <p className="text-[11px] text-slate-500 mt-2 leading-snug">Ley 1/2025 · Ley 7/2022</p>
                   <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Abrir biblioteca de planes <ChevronRight size={11} /></span>
                 </button>
-                <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm opacity-80">
-                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-3"><Recycle size={22} className="text-blue-700" /></div>
-                  <h3 className="text-sm font-bold text-slate-800">Circularidad</h3>
+                <button
+                  onClick={() => setView('circularidad')}
+                  className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-left hover:border-brand-500 hover:shadow-lg transition-all"
+                >
+                  <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors"><Recycle size={22} className="text-blue-700" /></div>
+                  <h3 className="text-sm font-bold text-slate-800 group-hover:text-brand-700 transition-colors">Circularidad</h3>
                   <p className="text-xs text-slate-500 mt-0.5">Plan de circularidad turística</p>
                   <p className="text-[11px] text-slate-500 mt-2 leading-snug">Ley 3/2022 Illes Balears · Ley 7/2022</p>
-                  <span className="inline-block mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-600">Próximamente</span>
-                </div>
+                  <span className="inline-flex items-center gap-1 mt-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-brand-100 text-brand-700">Ver ejemplo <ChevronRight size={11} /></span>
+                </button>
                 <button
                   onClick={() => setView('huella')}
                   className="group bg-white rounded-2xl border border-slate-200 p-5 shadow-sm text-left hover:border-brand-500 hover:shadow-lg transition-all"

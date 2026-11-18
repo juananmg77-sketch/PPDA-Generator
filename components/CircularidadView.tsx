@@ -89,9 +89,9 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
 
   const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; badge?: number }> = [
     { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
-    { k: 'indicadores', nombre: 'Indicadores', icono: <Gauge size={17} /> },
     { k: 'plan', nombre: 'Plan de acción', icono: <ListChecks size={17} /> },
     { k: 'seguimiento', nombre: 'Seguimiento', icono: <ClipboardCheck size={17} /> },
+    { k: 'indicadores', nombre: 'Indicadores', icono: <Gauge size={17} /> },
     { k: 'cumplimiento', nombre: 'Cumplimiento legal', icono: <Scale size={17} />, badge: rc.alertas },
     { k: 'informe', nombre: 'Informe', icono: <FileCheck size={17} /> },
   ];
@@ -291,6 +291,15 @@ const FichaPanel: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void
 };
 
 // ───────────────────────────── Indicadores ─────────────────────────────
+/** Encabezado de un grupo por área prioritaria (misma agrupación en indicadores, plan de acción y seguimiento). */
+const CabeceraArea: React.FC<{ area: Area; detalle?: string }> = ({ area, detalle }) => (
+  <div className="flex items-center gap-2.5 pt-3 pb-0.5" role="heading" aria-level={2}>
+    <span className="w-1.5 h-6 rounded-full" style={{ background: AREAS[area].color }} />
+    <span className="text-sm font-extrabold uppercase tracking-wide" style={{ color: AREAS[area].color }}>{AREAS[area].nombre}</span>
+    {detalle && <span className="text-[11px] font-semibold text-slate-500">{detalle}</span>}
+    <span className="flex-1 border-t border-slate-200" />
+  </div>
+);
 const celda = 'w-full bg-slate-50 border border-transparent focus:bg-white focus:border-brand-300 rounded px-2 py-1.5 text-xs text-slate-700 transition-all';
 const Equipo: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void }> = ({ plan, cambiar }) => {
   const equipo = plan.ficha.equipo ?? [];
@@ -355,7 +364,7 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
       </div>
       <p className="text-xs text-slate-600">Introduzca los datos del año {anio}; el valor del indicador se calcula solo. El kg CO₂e por pernoctación procede del cálculo de Huella y los residuos de los pesajes del PPDA (conexión prevista; por ahora se introducen a mano).</p>
       {ORDEN_AREAS.map((a) => (
-        <details key={a} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open={a === 'energia'}>
+        <details key={a} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open={a === 'energia'} style={{ borderLeft: `4px solid ${AREAS[a].color}` }}>
           <summary className="cursor-pointer px-5 py-3.5 flex items-center gap-3"><span className="w-3 h-3 rounded-full" style={{ background: AREAS[a].color }} /><span className="text-sm font-bold text-slate-800 flex-1">{AREAS[a].nombre}</span><span className="text-[11px] font-semibold text-slate-500">{comp[a].con}/{comp[a].total} con dato</span></summary>
           <div className="px-5 pb-4 space-y-3">
             {INDICADORES.filter((i) => i.area === a).map((i) => {
@@ -461,7 +470,7 @@ const AvanceObjetivo: React.FC<{ plan: Plan; anios: number[] }> = ({ plan, anios
           const dec = ind?.decimales ?? 0;
           return (
             <li key={o.id} className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-x-4 gap-y-1 items-center">
-              <div className="min-w-0"><p className="text-xs font-semibold text-slate-800 leading-tight"><span className="text-slate-500">{o.codigo} ·</span> {o.descripcion}</p><p className="text-[11px] text-slate-500">{ind?.nombre} · plazo {o.plazo}</p></div>
+              <div className="min-w-0"><p className="text-xs font-semibold text-slate-800 leading-tight"><span className="text-slate-500">{o.codigo} ·</span> {o.descripcion}</p><p className="text-[11px] text-slate-500"><span className="font-bold" style={{ color }}>{AREAS[o.area].nombre}</span> · {ind?.nombre} · plazo {o.plazo}</p></div>
               {meta === undefined ? <p className="text-[11px] text-slate-500 italic">Sin valor objetivo: indíquelo en el Plan de acción para ver el avance.</p> : (
                 <div>
                   <div className="relative h-3 rounded-full bg-slate-100" role="img" aria-label={`Avance ${prog === undefined ? 'sin datos' : Math.round(prog * 100) + ' %'}`}>
@@ -528,8 +537,11 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
       <div className="flex flex-wrap gap-2"><button className={btnP} onClick={onCatalogo}><Plus size={15} /> Añadir objetivo del catálogo</button></div>
       {plan.objetivos.length > 0 && <AvanceObjetivo plan={plan} anios={Object.keys(plan.datos).map(Number).sort((a, b) => a - b)} />}
       {plan.objetivos.length === 0 && <div className={`${card} text-sm text-slate-600`}>Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas (energía, agua, residuos, alimentos y gobernanza).</div>}
-      {plan.objetivos.map((o) => (
-        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
+        <React.Fragment key={area}>
+        <CabeceraArea area={area} detalle={`${os.length} ${os.length === 1 ? 'objetivo' : 'objetivos'} · ${os.reduce((n, o) => n + o.acciones.length, 0)} acciones`} />
+        {os.map((o) => (
+        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm" style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
           <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3">
             <span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} />
             <span className="text-sm font-bold text-slate-800 flex-1 min-w-[220px]">{o.codigo}. {o.descripcion}</span>
@@ -563,6 +575,8 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
             </div>
           </div>
         </details>
+        ))}
+        </React.Fragment>
       ))}
     </div>
   );
@@ -603,8 +617,11 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
         {cerrado && <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-green-100 text-green-800 inline-flex items-center gap-1"><Lock size={12} /> Año cerrado</span>}
         <button className={cerrado ? btnS : btnP} onClick={alternarCierre}>{cerrado ? <><Unlock size={14} /> Reabrir {anio}</> : <><Lock size={14} /> Cerrar seguimiento {anio}</>}</button>
       </div>
-      {plan.objetivos.map((o) => (
-        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open>
+      {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
+        <React.Fragment key={area}>
+        <CabeceraArea area={area} detalle={`Avance ${anio}: ${pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)}`} />
+        {os.map((o) => (
+        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
           <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} /><span className="text-sm font-bold text-slate-800 flex-1 min-w-[200px]">{o.codigo}. {o.descripcion}</span><span className="w-32"><Barra valor={progresoObjetivo(plan, o, anio)} color={AREAS[o.area].color} /></span><span className="text-xs font-bold text-slate-700 w-10 text-right">{pc(progresoObjetivo(plan, o, anio))}</span></summary>
           <div className="px-5 pb-4 overflow-x-auto">
             <table className="w-full text-xs">
@@ -625,6 +642,8 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
             </table>
           </div>
         </details>
+        ))}
+        </React.Fragment>
       ))}
     </div>
   );

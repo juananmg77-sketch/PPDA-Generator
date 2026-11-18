@@ -147,12 +147,12 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
           {errorGuardar && <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{errorGuardar}</span></div>}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]"><h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1><p className="text-sm text-slate-600">{titulos[tab][1]}</p></div>
-            {['resumen', 'indicadores', 'seguimiento', 'informe'].includes(tab) && selectorAnio}
+            {['resumen', 'seguimiento', 'informe'].includes(tab) && selectorAnio}
           </div>
 
           {tab === 'resumen' && <Resumen plan={plan} anio={anio} filasC={filasC} irA={setTab} />}
           {tab === 'ficha' && <FichaPanel plan={plan} cambiar={cambiar} />}
-          {tab === 'indicadores' && <IndicadoresPanel plan={plan} anio={anio} cambiar={cambiar} aniosOpc={aniosOpc} />}
+          {tab === 'indicadores' && <IndicadoresPanel plan={plan} anio={anio} cambiar={cambiar} aniosOpc={aniosOpc} setAnio={setAnio} />}
           {tab === 'plan' && <PlanPanel plan={plan} anio={anio} cambiar={cambiar} onCatalogo={() => setModalMedida(true)} />}
           {tab === 'seguimiento' && <SeguimientoPanel plan={plan} anio={anio} cambiar={cambiar} cerrado={cerradoAnio} />}
           {tab === 'cumplimiento' && <CumplimientoPanel plan={plan} anio={anio} filasC={filasC} cambiar={cambiar} />}
@@ -300,12 +300,25 @@ const Equipo: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void }> 
   );
 };
 
-const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; aniosOpc: number[] }> = ({ plan, anio, cambiar }) => {
+const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; aniosOpc: number[]; setAnio: (a: number) => void }> = ({ plan, anio, cambiar, setAnio }) => {
   const ant = anio - 1;
+  const anios = [...new Set([...Object.keys(plan.datos).map(Number), anio])].sort((a, b) => a - b);
+  const siguiente = anios[anios.length - 1] + 1;
+  const dentroVigencia = siguiente <= plan.ficha.vigenciaHasta;
+  const nuevoAnio = () => { cambiar((p) => ({ ...p, datos: { ...p.datos, [siguiente]: p.datos[siguiente] ?? {} } })); setAnio(siguiente); };
   const setDato = (campo: string, v: string) => cambiar((p) => ({ ...p, datos: { ...p.datos, [anio]: { ...(p.datos[anio] ?? {}), [campo]: v === '' ? undefined : Number(v) } } }));
   const comp = completitud(plan, anio);
   return (
     <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Año de evaluación">
+        {anios.map((a) => (
+          <button key={a} role="tab" aria-selected={a === anio} onClick={() => setAnio(a)}
+            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${a === anio ? 'text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
+            style={a === anio ? { background: '#0002C9' } : undefined}>{a}</button>
+        ))}
+        <button onClick={nuevoAnio} disabled={!dentroVigencia} title={dentroVigencia ? `Añadir ${siguiente} y entrar sus datos por área` : `El plan termina en ${plan.ficha.vigenciaHasta}: renueve el plan para seguir`}
+          className="px-3 py-2 rounded-lg text-sm font-bold bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 disabled:opacity-40 inline-flex items-center gap-1"><Plus size={15} /> {siguiente}</button>
+      </div>
       <p className="text-xs text-slate-600">Introduzca los datos del año {anio}; el valor del indicador se calcula solo. El kg CO₂e por pernoctación procede del cálculo de Huella y los residuos de los pesajes del PPDA (conexión prevista; por ahora se introducen a mano).</p>
       {ORDEN_AREAS.map((a) => (
         <details key={a} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open={a === 'energia'}>

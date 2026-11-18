@@ -368,34 +368,41 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
       </div>
       <p className="text-xs text-slate-600">Introduzca los datos del año {anio}; el valor del indicador se calcula solo. El kg CO₂e por pernoctación procede del cálculo de Huella y los residuos de los pesajes del PPDA (conexión prevista; por ahora se introducen a mano).</p>
       {ORDEN_AREAS.map((a) => (
-        <details key={a} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open={a === 'energia'} style={{ borderLeft: `4px solid ${AREAS[a].color}` }}>
-          <summary className="cursor-pointer px-5 py-3.5 flex items-center gap-3"><span className="w-3 h-3 rounded-full" style={{ background: AREAS[a].color }} /><span className="text-sm font-bold text-slate-800 flex-1">{AREAS[a].nombre}</span><span className="text-[11px] font-semibold text-slate-500">{comp[a].con}/{comp[a].total} con dato</span></summary>
-          <div className="px-5 pb-4 space-y-3">
-            {INDICADORES.filter((i) => i.area === a).map((i) => {
-              const v = valorIndicador(plan, i.id, anio), va = valorIndicador(plan, i.id, ant);
-              return (
-                <div key={i.id} className="rounded-xl border border-slate-200 p-3">
-                  <div className="flex flex-wrap items-baseline gap-x-3"><p className="text-sm font-semibold text-slate-800 flex-1 min-w-[220px]">{i.nombre}</p><p className="text-lg font-extrabold tabular-nums" style={{ color: '#00093D' }}>{nf(v, i.decimales)} <span className="text-xs font-semibold text-slate-500">{i.unidad}</span></p></div>
-                  <p className="text-[11px] text-slate-500 mb-2">{i.formula}{va !== undefined && <> · {ant}: {nf(va, i.decimales)} {i.unidad}</>}</p>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {i.campos.map((c) => (
-                      <label key={c.id} className="text-[11px] font-semibold text-slate-600">{c.etiqueta} ({c.unidad})
-                        <input type="number" className={`${input} mt-0.5`} value={plan.datos[anio]?.[c.id] ?? ''} onChange={(e) => setDato(c.id, e.target.value)} />
-                        {c.ayuda && <span className="block text-[10px] font-normal text-slate-500">{c.ayuda}</span>}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+        <details key={a} className="no-glass bg-white rounded-2xl border border-slate-300 shadow-sm" open style={{ borderLeft: `4px solid ${AREAS[a].color}` }}>
+          <summary className="cursor-pointer px-4 py-2.5 flex items-center gap-3"><span className="w-3 h-3 rounded-full" style={{ background: AREAS[a].color }} /><span className="text-sm font-bold text-slate-800 flex-1">{AREAS[a].nombre}</span><span className="text-[11px] font-semibold text-slate-500">{comp[a].con}/{comp[a].total} con dato</span></summary>
+          <div className="px-4 pb-3 space-y-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead><tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 border-b border-slate-200"><th className="py-1.5 pr-3 font-bold">Indicador</th><th className="py-1.5 pr-3 font-bold">Datos de {anio}</th><th className="py-1.5 pr-3 font-bold text-right w-28">Resultado</th><th className="py-1.5 font-bold text-right w-24">{ant}</th></tr></thead>
+                <tbody>
+                  {INDICADORES.filter((i) => i.area === a).map((i) => {
+                    const v = valorIndicador(plan, i.id, anio), va = valorIndicador(plan, i.id, ant);
+                    return (
+                      <tr key={i.id} className="border-b border-slate-100 align-middle">
+                        <td className="py-1.5 pr-3 font-semibold text-slate-800" title={i.formula}>{i.nombre}<span className="block text-[10px] font-normal text-slate-500">{i.unidad}</span></td>
+                        <td className="py-1.5 pr-3"><div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {i.campos.map((c) => (
+                            <label key={c.id} className="text-[10px] font-semibold text-slate-500" title={c.ayuda ? `${c.etiqueta}. ${c.ayuda}` : c.etiqueta}>
+                              <span className="block max-w-[150px] truncate">{c.etiqueta} <span className="font-normal">({c.unidad})</span></span>
+                              <input type="number" className="mt-0.5 w-32 border border-slate-300 rounded-md px-2 py-1 text-xs text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" value={plan.datos[anio]?.[c.id] ?? ''} onChange={(e) => setDato(c.id, e.target.value)} />
+                            </label>
+                          ))}
+                        </div></td>
+                        <td className="py-1.5 pr-3 text-right font-extrabold tabular-nums" style={{ color: '#00093D' }}>{nf(v, i.decimales)}</td>
+                        <td className="py-1.5 text-right tabular-nums text-slate-500">{nf(va, i.decimales)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {a === 'energia' && (
-              <label className="text-[11px] font-semibold text-slate-600 block">Letra del certificado energético ({anio})
-                <input className={`${input} mt-0.5 max-w-[100px]`} maxLength={1} value={plan.letraCertificado[anio] ?? ''} onChange={(e) => cambiar((p) => ({ ...p, letraCertificado: { ...p.letraCertificado, [anio]: e.target.value.toUpperCase() } }))} /></label>
+              <label className="text-[11px] font-semibold text-slate-600 inline-flex items-center gap-2">Letra del certificado energético ({anio})
+                <input className="w-14 border border-slate-300 rounded-md px-2 py-1 text-xs text-center bg-white" maxLength={1} value={plan.letraCertificado[anio] ?? ''} onChange={(e) => cambiar((p) => ({ ...p, letraCertificado: { ...p.letraCertificado, [anio]: e.target.value.toUpperCase() } }))} /></label>
             )}
             {a === 'gobernanza' && (
-              <label className="text-xs font-semibold text-slate-700 block">Acciones realizadas con los clientes (una por línea)
-                <textarea rows={4} className={`${input} mt-1`} value={plan.accionesClientes.join('\n')} onChange={(e) => cambiar((p) => ({ ...p, accionesClientes: e.target.value.split('\n').filter((x) => x.trim() !== '' || e.target.value.endsWith('\n')) }))} />
-                <span className="text-[11px] font-normal text-slate-500">Comunicaciones con recomendaciones sobre ahorro de energía y agua, buffet, separación de residuos o cambio de toallas.</span></label>
+              <label className="text-[11px] font-semibold text-slate-600 block">Acciones realizadas con los clientes (una por línea)
+                <textarea rows={3} className="mt-1 w-full max-w-2xl border border-slate-300 rounded-md px-2 py-1.5 text-xs text-slate-900 bg-white" value={plan.accionesClientes.join('\n')} onChange={(e) => cambiar((p) => ({ ...p, accionesClientes: e.target.value.split('\n').filter((x) => x.trim() !== '' || e.target.value.endsWith('\n')) }))} placeholder="Comunicaciones con recomendaciones de ahorro, buffet, separación de residuos, cambio de toallas…" /></label>
             )}
           </div>
         </details>

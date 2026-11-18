@@ -643,7 +643,10 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
   const volcar = (hs: HotelSuite[], sobrescribir: boolean) => {
     const o = hs[0] ? organizacionDesdeHotel(hs[0]) : null;
     if (!o) return;
-    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (o.cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (o.direccion ?? p.direccion) : p.direccion }));
+    // Con un solo hotel la dirección de la organización es la del hotel (aunque pertenezca a una cadena); con varios no hay una única dirección
+    const direccion = hs.length === 1 ? (hs[0].direccion_completa?.trim() || o.direccion) : o.direccion;
+    const cif = hs.map((h) => h.cif?.trim()).find((x) => !!x) ?? o.cif;
+    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (direccion ?? p.direccion) : p.direccion }));
   };
   const cargarVinculados = async (sobrescribir: boolean) => {
     const ids = centrosOrg.map((c) => c.suite_hotel_id).filter((x): x is string => !!x).slice(0, 25);
@@ -709,6 +712,7 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
           )}
           {deSuite.length > 0 && (
             <div className="mt-3">
+              {!deSuite.some((h) => h.cif?.trim()) && <p className="text-[11px] text-amber-700 font-semibold mb-1">HS Suite no tiene CIF registrado para {deSuite.length === 1 ? 'este hotel' : 'estos hoteles'}: escríbalo a mano (y complételo en HS Suite para la próxima vez).</p>}
               <p className="text-[11px] text-slate-600 mb-1">{deSuite.length} hotel{deSuite.length === 1 ? '' : 'es'} · <strong>{deSuite.reduce((a, h) => a + (h.num_habitaciones ?? 0), 0).toLocaleString('es-ES')}</strong> habitaciones · <strong>{deSuite.reduce((a, h) => a + (h.num_plazas ?? 0), 0).toLocaleString('es-ES')}</strong> plazas</p>
               <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-36 overflow-auto">
                 {deSuite.map((h) => (

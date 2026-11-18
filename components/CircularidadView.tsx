@@ -637,9 +637,8 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
   };
   if (plan.objetivos.length === 0) return <div className={`${card} text-sm text-slate-600`}>Defina antes los objetivos en «Plan de acción».</div>;
   return (
-    <div className="space-y-3">
-      <div className={`${card} flex flex-wrap items-center gap-3`}>
-        <div className="flex-1 min-w-[220px]"><p className="text-xs font-semibold text-slate-500">Avance global {anio}</p><p className="text-2xl font-extrabold" style={{ color: '#00093D' }}>{pc(progresoPlan(plan, anio))}</p><div className="mt-1.5 max-w-xs"><Barra valor={progresoPlan(plan, anio)} /></div></div>
+    <div className="no-glass bg-slate-50 rounded-2xl border border-slate-300 p-4 md:p-5 space-y-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         {cerrado && <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-green-100 text-green-800 inline-flex items-center gap-1"><Lock size={12} /> Año cerrado</span>}
         <button className={cerrado ? btnS : btnP} onClick={alternarCierre}>{cerrado ? <><Unlock size={14} /> Reabrir {anio}</> : <><Lock size={14} /> Cerrar seguimiento {anio}</>}</button>
       </div>
@@ -647,7 +646,7 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
         <React.Fragment key={area}>
         <CabeceraArea area={area} detalle={`Avance ${anio}: ${pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)}`} />
         {os.map((o) => (
-        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm" open style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
+        <details key={o.id} className="no-glass bg-white rounded-2xl border border-slate-300 shadow-sm" open style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
           <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} /><span className="text-sm font-bold text-slate-800 flex-1 min-w-[200px]">{o.codigo}. {o.descripcion}</span><span className="w-32"><Barra valor={progresoObjetivo(plan, o, anio)} color={AREAS[o.area].color} /></span><span className="text-xs font-bold text-slate-700 w-10 text-right">{pc(progresoObjetivo(plan, o, anio))}</span></summary>
           <div className="px-5 pb-4 overflow-x-auto">
             <table className="w-full text-xs">

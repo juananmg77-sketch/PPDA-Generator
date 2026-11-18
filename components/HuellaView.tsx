@@ -12,6 +12,7 @@ import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreD
 import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { aplicarGas, modoAutomatico, resolverGas } from '../huella/gas';
+import { conMezclas, normalizarGas } from '../huella/mezclas';
 import { aplicarEnvases, esEnvase, fuenteGlp, KG_BOMBONA_BUTANO } from '../huella/glp';
 import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
@@ -49,7 +50,7 @@ function opcionesFuente(f: ConjuntoFactores | null, cat: Categoria): string[] {
 
 function fuentePorDefecto(e: ExtraccionFactura, f: ConjuntoFactores | null): string {
   if (e.tipo === 'gas_natural') return 'Gas natural (kWhPCS)*';
-  if (e.tipo === 'refrigerante') return e.producto && f?.pcaRefrigerantes[e.producto] !== undefined ? e.producto : '';
+  if (e.tipo === 'refrigerante') { const g = normalizarGas(e.producto); return g && f?.pcaRefrigerantes[g] !== undefined ? g : ''; }
   if (e.tipo === 'glp') { const k = fuenteGlp(e.producto, e.unidad); if (k && f?.combustibles[k]) return k; }
   if (e.tipo === 'electricidad' || !e.producto) return '';
   const sa = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -84,7 +85,8 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   const [docs, setDocs] = useState<Documento[]>([]);
   const [actividad, setActividad] = useState<Actividad[]>([]);
   const [elegido, setElegido] = useState<ConjuntoElegido | null>(null);
-  const factores = elegido?.conjunto ?? null;
+  // Se añaden al conjunto las mezclas de refrigerantes que la calculadora no trae (p. ej. R-448A), con su nota
+  const factores = useMemo(() => (elegido ? conMezclas(elegido.conjunto) : null), [elegido]);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
   const [modalOrg, setModalOrg] = useState<'nueva' | 'editar' | null>(null);

@@ -176,7 +176,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
       ['Fuente de los potenciales', f.gwp.fuente], ['Mix eléctrico balear', `${f.mixElectrico} kg CO₂e/kWh`],
     ] },
     { k: 'p', texto: RESOLUCIONES[anio] ?? `Resolución anual de factores de emisión correspondiente al año ${anio}: pendiente de citar.` },
-    ...(f.notas.length ? [{ k: 'lista' as const, items: f.notas.map((n) => `Ajuste manual justificado: ${n}`) }] : []),
+    ...(f.notas.length ? [{ k: 'lista' as const, items: f.notas.map((n) => `Nota sobre los factores: ${n}`) }] : []),
     ...(usados.length ? [{ k: 'tabla' as const, cab: ['Fuente', 'Unidad', 'CO₂ (kg/ud)', 'CH₄ (g/ud)', 'N₂O (g/ud)'], filas: usados.map((k) => [k, dash(f.unidades[k]), String(f.combustibles[k].co2 ?? '—'), String(f.combustibles[k].ch4 ?? '—'), String(f.combustibles[k].n2o ?? '—')]), numericas: [2, 3, 4] }] : []),
     ...(gasesUsados.length ? [{ k: 'tabla' as const, cab: ['Gas refrigerante', 'PCA'], filas: gasesUsados.map((k) => [k, num(f.pcaRefrigerantes[k], 0)]), numericas: [1] }] : []),
     { k: 'h', texto: '7.4 CO₂ biogénico y absorciones' },

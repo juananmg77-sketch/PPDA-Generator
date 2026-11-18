@@ -2,6 +2,7 @@
 // Un mismo año puede tener valores distintos según la edición del documento (p. ej. gasóleo C 2023: 2,705 en la 2023.2 y 2,881 en la 2024.1),
 // por eso la versión usada se elige por inventario, se muestra y se guarda con él.
 import { construirConjunto } from './factores.ts';
+import { conMezclas } from './mezclas.ts';
 import type { ConjuntoFactores, DatosCalculadora } from './tipos.ts';
 
 export interface VersionFactores {
@@ -66,7 +67,7 @@ export async function cargarConjunto(anio: number, version?: string): Promise<Co
   const conjuntos: Record<string, ConjuntoFactores> = {};
   for (const v of VERSIONES) {
     const datos = await v.cargar();
-    if (cubreAnio(datos, anio)) conjuntos[v.id] = construirConjunto(datos, { anioInventario: anio });
+    if (cubreAnio(datos, anio)) conjuntos[v.id] = conMezclas(construirConjunto(datos, { anioInventario: anio }));
   }
   const disponibles = Object.keys(conjuntos).sort().reverse();
   if (disponibles.length === 0) throw new Error(`Ninguna versión de factores cubre el año ${anio}: hay que incorporar la calculadora o la resolución correspondiente.`);

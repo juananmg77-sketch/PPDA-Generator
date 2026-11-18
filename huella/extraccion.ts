@@ -2,6 +2,7 @@
 // La lectura automática (IA) solo PROPONE datos; todo pasa por estas comprobaciones y por una revisión humana obligatoria.
 import type { ConjuntoFactores, LineaActividad } from './tipos.ts';
 import { esEnvase, fuenteGlp } from './glp.ts';
+import { normalizarGas } from './mezclas.ts';
 
 export type TipoFactura = 'electricidad' | 'gas_natural' | 'gasoleo' | 'glp' | 'combustible_vehiculo' | 'refrigerante' | 'otro';
 
@@ -173,7 +174,7 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
       || (e.tipo === 'glp' && !!c.factores.combustibles[fuenteGlp(e.producto, e.unidad)]);
     if (!encontrado) add('aviso', 'producto_sin_factor', `No hay un factor claro para «${e.producto}» en el conjunto ${c.factores.id}: elija el combustible de la lista.`);
   }
-  if (e.tipo === 'refrigerante' && e.producto && !(e.producto in c.factores.pcaRefrigerantes)) {
+  if (e.tipo === 'refrigerante' && e.producto && !(normalizarGas(e.producto) in c.factores.pcaRefrigerantes)) {
     add('error', 'gas_sin_pca', `No hay potencial de calentamiento para «${e.producto}» en el conjunto ${c.factores.id}.`);
   }
 

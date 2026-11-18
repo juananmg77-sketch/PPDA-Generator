@@ -3,9 +3,12 @@ import { variacionAnual } from './extraccion.ts';
 import { agruparPorTipoYContador, mesesTocados, NOMBRES_MES } from './mensual.ts';
 
 export type Nivel = 'error' | 'aviso' | 'info' | 'ok';
-export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string }
+export type DestinoCierre = 'facturas' | 'consumos' | 'centros';
+/** Elemento concreto al que se refiere una comprobación (p. ej. una factura), para poder localizarlo. */
+export interface DetalleCierre { texto: string; nota?: string }
+export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string; /** Qué elementos concretos afecta. */ detalle?: DetalleCierre[]; /** Pantalla donde se resuelve. */ ir?: DestinoCierre; irEtiqueta?: string }
 
-export interface DocCierre { estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null }
+export interface DocCierre { nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -14,6 +17,8 @@ export interface EntradaCierre {
   actividadConfirmada: number;
   actividadManual: number;
   fallosCalculo: number;
+  /** Descripción de cada dato que no se puede calcular (opcional). */
+  fallosDetalle?: string[];
   centrosSinIndice: string[];
   factoresId: string;
   factoresFijados: boolean;
@@ -52,25 +57,29 @@ export function evaluarExclusionesEstimadas(ex: Array<{ porcentaje: number | nul
 
 export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCerrar: boolean } {
   const items: ItemCierre[] = [];
-  const add = (nivel: Nivel, codigo: string, mensaje: string) => items.push({ nivel, codigo, mensaje });
+  const add = (nivel: Nivel, codigo: string, mensaje: string, extra: Partial<Pick<ItemCierre, 'detalle' | 'ir' | 'irEtiqueta'>> = {}) => items.push({ nivel, codigo, mensaje, ...extra });
+  const nom = (d: DocCierre) => d.nombre ?? 'Factura sin nombre';
 
-  const pendientes = e.docs.filter((d) => d.estado === 'subido' || d.estado === 'leido').length;
-  if (pendientes > 0) add('error', 'facturas_pendientes', `${pendientes} factura(s) sin revisar: confírmelas o recházelas antes de cerrar.`);
+  const pend = e.docs.filter((d) => d.estado === 'subido' || d.estado === 'leido');
+  const pendientes = pend.length;
+  if (pendientes > 0) add('error', 'facturas_pendientes', `${pendientes} factura(s) sin revisar: confírmelas, recházelas o elimínelas antes de cerrar.`, {
+    detalle: pend.map((d) => ({ texto: nom(d), nota: d.estado === 'subido' ? 'subida pero sin leer (elimínela y vuelva a subirla)' : 'leída, pendiente de confirmar' })), ir: 'facturas', irEtiqueta: 'Ir a las facturas pendientes' });
   else add('ok', 'facturas_pendientes', 'No hay facturas pendientes de revisar.');
 
-  if (e.actividadConfirmada === 0) add('error', 'sin_actividad', 'No hay ningún dato de actividad confirmado.');
+  if (e.actividadConfirmada === 0) add('error', 'sin_actividad', 'No hay ningún dato de actividad confirmado.', { ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
   else add('ok', 'actividad', `${e.actividadConfirmada} dato(s) de actividad confirmados.`);
 
-  if (e.fallosCalculo > 0) add('error', 'fallos_calculo', `${e.fallosCalculo} dato(s) no se pueden calcular (falta el factor): corríjalos o elimínelos.`);
+  if (e.fallosCalculo > 0) add('error', 'fallos_calculo', `${e.fallosCalculo} dato(s) no se pueden calcular (falta el factor): corríjalos o elimínelos.`, { detalle: (e.fallosDetalle ?? []).map((texto) => ({ texto })), ir: 'consumos', irEtiqueta: 'Ir a Consumos' });
   if (e.actividadManual > 0) add('info', 'datos_manuales', `${e.actividadManual} dato(s) introducidos a mano sin factura: el verificador pedirá su evidencia.`);
 
-  if (e.centrosSinIndice.length > 0) add('aviso', 'indice_actividad', `Sin índice de actividad (estancias) en: ${e.centrosSinIndice.join(', ')}. Los ratios no se calcularán para ellos (válido si el centro estuvo cerrado).`);
+  if (e.centrosSinIndice.length > 0) add('aviso', 'indice_actividad', `Sin índice de actividad (estancias) en: ${e.centrosSinIndice.join(', ')}. Los ratios no se calcularán para ellos (válido si el centro estuvo cerrado).`, { ir: 'centros', irEtiqueta: 'Indicar las estancias' });
 
   // Origen de la electricidad: se pregunta aquí, una sola vez, y no en cada factura
-  const sinOrigen = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida')).length;
-  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, corríjalo en esa factura antes de cerrar.`);
+  const sinOrigenDocs = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida'));
+  const sinOrigen = sinOrigenDocs.length;
+  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
-  for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`);
+  for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, { ir: 'facturas', irEtiqueta: 'Subir facturas' });
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;

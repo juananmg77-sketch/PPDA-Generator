@@ -147,9 +147,18 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
           {errorGuardar && <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{errorGuardar}</span></div>}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]"><h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1><p className="text-sm text-slate-600">{titulos[tab][1]}</p></div>
-            {['resumen', 'seguimiento', 'informe'].includes(tab) && selectorAnio}
+            {['seguimiento', 'informe'].includes(tab) && selectorAnio}
           </div>
 
+          {tab === 'resumen' && aniosDatos.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Año del resumen">
+              {aniosDatos.map((a) => (
+                <button key={a} role="tab" aria-selected={a === anio} onClick={() => setAnio(a)}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${a === anio ? 'text-white shadow-sm' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'}`}
+                  style={a === anio ? { background: '#0002C9' } : undefined}>{a}</button>
+              ))}
+            </div>
+          )}
           {tab === 'resumen' && <Resumen plan={plan} anio={anio} filasC={filasC} irA={setTab} />}
           {tab === 'ficha' && <FichaPanel plan={plan} cambiar={cambiar} />}
           {tab === 'indicadores' && <IndicadoresPanel plan={plan} anio={anio} cambiar={cambiar} aniosOpc={aniosOpc} setAnio={setAnio} />}

@@ -27,7 +27,14 @@ const nf = (v: number | undefined, d = 0) => (v === undefined ? '—' : v.toLoca
 const pc = (x: number) => `${Math.round(x * 100)} %`;
 
 function cargar(): Plan {
-  try { const s = localStorage.getItem(CLAVE); if (s) return JSON.parse(s) as Plan; } catch { /* sin almacenamiento */ }
+  try {
+    const s = localStorage.getItem(CLAVE);
+    if (s) {
+      // Ejemplos guardados antes de existir el valor objetivo: se completa desde el ejemplo vigente.
+      const p = JSON.parse(s) as Plan; const base = planDemo();
+      return { ...p, objetivos: p.objetivos.map((o) => (o.metaValor === undefined ? { ...o, metaValor: base.objetivos.find((b) => b.id === o.id)?.metaValor } : o)) };
+    }
+  } catch { /* sin almacenamiento */ }
   return planDemo();
 }
 
@@ -325,14 +332,14 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
   const anios = [...new Set([...Object.keys(plan.datos).map(Number), anio])].sort((a, b) => a - b);
   const siguiente = anios[anios.length - 1] + 1;
   const dentroVigencia = siguiente <= plan.ficha.vigenciaHasta;
-  const [vista, setVista] = useState<'datos' | 'evolucion'>('datos');
+  const [vista, setVista] = useState<'datos' | 'evolucion'>('evolucion');
   const nuevoAnio = () => { cambiar((p) => ({ ...p, datos: { ...p.datos, [siguiente]: p.datos[siguiente] ?? {} } })); setAnio(siguiente); };
   const setDato = (campo: string, v: string) => cambiar((p) => ({ ...p, datos: { ...p.datos, [anio]: { ...(p.datos[anio] ?? {}), [campo]: v === '' ? undefined : Number(v) } } }));
   const comp = completitud(plan, anio);
   return (
     <div className="space-y-3">
       <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white text-sm font-semibold" role="tablist" aria-label="Vista de indicadores">
-        {([['datos', 'Introducción de datos'], ['evolucion', 'Evolución anual']] as const).map(([k, n]) => (
+        {([['evolucion', 'Evolución anual'], ['datos', 'Introducción de datos']] as const).map(([k, n]) => (
           <button key={k} role="tab" aria-selected={vista === k} onClick={() => setVista(k)} className={`px-4 py-2 transition-colors ${vista === k ? 'text-white' : 'text-slate-700 hover:bg-slate-50'}`} style={vista === k ? { background: '#0002C9' } : undefined}>{n}</button>
         ))}
       </div>
@@ -505,7 +512,6 @@ const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
           ])}</tbody>
         </table></div>
       </div>
-      <AvanceObjetivo plan={plan} anios={anios} />
     </div>
   );
 };
@@ -520,6 +526,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2"><button className={btnP} onClick={onCatalogo}><Plus size={15} /> Añadir objetivo del catálogo</button></div>
+      {plan.objetivos.length > 0 && <AvanceObjetivo plan={plan} anios={Object.keys(plan.datos).map(Number).sort((a, b) => a - b)} />}
       {plan.objetivos.length === 0 && <div className={`${card} text-sm text-slate-600`}>Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas (energía, agua, residuos, alimentos y gobernanza).</div>}
       {plan.objetivos.map((o) => (
         <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm">

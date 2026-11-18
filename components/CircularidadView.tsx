@@ -296,8 +296,10 @@ const FichaPanel: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void
 
 // ───────────────────────────── Indicadores ─────────────────────────────
 /** Encabezado de un grupo por área prioritaria (misma agrupación en indicadores, plan de acción y seguimiento). */
-const CabeceraArea: React.FC<{ area: Area; detalle?: string }> = ({ area, detalle }) => (
-  <div className="flex items-center gap-2.5 pt-3 pb-0.5" role="heading" aria-level={2}>
+const CabeceraArea: React.FC<{ area: Area; detalle?: string; abierto?: boolean; onClick?: () => void }> = ({ area, detalle, abierto, onClick }) => (
+  <div className={`flex items-center gap-2.5 pt-3 pb-0.5 ${onClick ? 'cursor-pointer select-none' : ''}`} role={onClick ? 'button' : 'heading'} aria-level={onClick ? undefined : 2} aria-expanded={onClick ? abierto : undefined} tabIndex={onClick ? 0 : undefined}
+    onClick={onClick} onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined} title={onClick ? (abierto ? 'Plegar todos los objetivos del área' : 'Desplegar todos los objetivos del área') : undefined}>
+    {onClick && <span className="text-slate-500 text-xs w-3">{abierto ? '▾' : '▸'}</span>}
     <span className="w-1.5 h-6 rounded-full" style={{ background: AREAS[area].color }} />
     <span className="text-sm font-extrabold uppercase tracking-wide" style={{ color: AREAS[area].color }}>{AREAS[area].nombre}</span>
     {detalle && <span className="text-[11px] font-semibold text-slate-500">{detalle}</span>}
@@ -634,6 +636,10 @@ const CatalogoMedidas: React.FC<{ onCerrar: () => void; onElegir: (m: (typeof ME
 // ───────────────────────────── Seguimiento ─────────────────────────────
 const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; cerrado: boolean }> = ({ plan, anio, cambiar, cerrado }) => {
   const seg = plan.seguimiento[anio];
+  const [abiertos, setAbiertos] = useState<Record<string, boolean>>({});
+  const estaAbierto = (id: string) => abiertos[id] ?? true;
+  /** Pulsar el título del área despliega todos sus objetivos; si ya lo están todos, los pliega. */
+  const alternarArea = (ids: string[]) => { const abrir = ids.some((id) => !estaAbierto(id)); setAbiertos((m) => ({ ...m, ...Object.fromEntries(ids.map((id) => [id, abrir])) })); };
   const setSeg = (aid: string, f: (s: ReturnType<typeof vacioSeg>) => ReturnType<typeof vacioSeg>) => cambiar((p) => {
     const a = p.seguimiento[anio] ?? { cerrado: false, acciones: {} };
     return { ...p, seguimiento: { ...p.seguimiento, [anio]: { ...a, acciones: { ...a.acciones, [aid]: f(a.acciones[aid] ?? vacioSeg()) } } } };
@@ -651,9 +657,9 @@ const SeguimientoPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
       </div>
       {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
         <React.Fragment key={area}>
-        <CabeceraArea area={area} detalle={`Avance ${anio}: ${pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)}`} />
+        <CabeceraArea area={area} detalle={`Avance ${anio}: ${pc(os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length)}`} abierto={os.every((o) => estaAbierto(o.id))} onClick={() => alternarArea(os.map((o) => o.id))} />
         {os.map((o) => (
-        <details key={o.id} className="no-glass bg-white rounded-2xl border border-slate-300 shadow-sm" open style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
+        <details key={o.id} className="no-glass bg-white rounded-2xl border border-slate-300 shadow-sm" open={estaAbierto(o.id)} onToggle={(e) => { const ab = (e.currentTarget as HTMLDetailsElement).open; if (ab !== estaAbierto(o.id)) setAbiertos((m) => ({ ...m, [o.id]: ab })); }} style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
           <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3"><span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} /><span className="text-sm font-bold text-slate-800 flex-1 min-w-[200px]">{o.codigo}. {o.descripcion}</span><span className="w-32"><Barra valor={progresoObjetivo(plan, o, anio)} color={AREAS[o.area].color} /></span><span className="text-xs font-bold text-slate-700 w-10 text-right">{pc(progresoObjetivo(plan, o, anio))}</span></summary>
           <div className="px-5 pb-4 overflow-x-auto">
             <table className="w-full text-xs">

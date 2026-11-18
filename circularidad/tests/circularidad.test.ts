@@ -4,6 +4,7 @@ import { camasElevablesExigidas } from '../catalogo.ts';
 import { planDemo } from '../demo.ts';
 import { camas, completitud, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, resumenCumplimiento, valorIndicador, migrarPlan, responsableDelPlan, periodoAccion } from '../plan.ts';
 import { construirInformeCirculardad } from '../informe.ts';
+import { construirInformeRevision } from '../revision.ts';
 import { informeAHtml } from '../../huella/informeHtml.ts';
 
 test('los indicadores se calculan con las fórmulas de la guía', () => {
@@ -94,4 +95,18 @@ test('la ficha de la acción lleva indicadores, recursos, inversión y periodo',
   assert.equal(periodoAccion({ ...a, inicio: '2024-03-01', fin: '2024-12-31' }), '01/03/2024 – 31/12/2024');
   const html = informeAHtml(construirInformeCirculardad(m, { anioEvaluacion: 2024, hoy: '2026-11-18' }));
   assert.match(html, /Indicadores relacionados/); assert.match(html, /Periodo/);
+});
+
+test('el informe de revisión anual compara con el año anterior y recoge el registro del plan', () => {
+  const p = migrarPlan(planDemo());
+  p.historial = [{ id: 'r1', fecha: '2024-06-10', tipo: 'modificacion', version: '2', descripcion: 'Se añade el objetivo de km 0', autor: 'Calidad' }];
+  p.revisiones = { 2024: { conclusiones: 'Buen avance en energía.', propuestas: 'Reforzar la formación.' } };
+  const m = construirInformeRevision(p, { anioEvaluacion: 2024, hoy: '2025-01-15' });
+  assert.equal(m.pendientes.length, 0 + (p.seguimiento[2024]?.cerrado ? 0 : 1));
+  const html = informeAHtml(m);
+  assert.match(html, /frente a 2023/); assert.match(html, /Se añade el objetivo de km 0/); assert.match(html, /Buen avance en energía/); assert.match(html, /Variación/);
+  const plan = informeAHtml(construirInformeCirculardad(p, { anioEvaluacion: 2024, hoy: '2025-01-15' }));
+  assert.match(plan, /Registro de modificaciones/); assert.match(plan, /Disponibilidad del plan/);
+  const sin = construirInformeRevision(migrarPlan(planDemo()), { anioEvaluacion: 2022, hoy: '2025-01-15' });
+  assert.ok(sin.pendientes.some((x) => /No hay datos de 2021/.test(x)));
 });

@@ -43,6 +43,15 @@ export interface Trimestre { cumple: boolean; evidencia: string }
 export interface SeguimientoAccion { t1: Trimestre; t2: Trimestre; t3: Trimestre; t4: Trimestre; notas: string }
 export interface SeguimientoAnio { cerrado: boolean; acciones: Record<string, SeguimientoAccion> }
 export interface EstadoRequisito { estado: EstadoReq; evidencia: string; nota: string }
+/** Registro de versiones: elaboración, revisiones anuales, modificaciones y renovaciones del plan (exigido por la guía). */
+export type TipoRegistro = 'elaboracion' | 'revision' | 'modificacion' | 'renovacion';
+export const TIPOS_REGISTRO: Record<TipoRegistro, string> = { elaboracion: 'Elaboración', revision: 'Revisión anual', modificacion: 'Modificación', renovacion: 'Renovación' };
+export interface Registro { id: string; fecha: string; tipo: TipoRegistro; version: string; descripcion: string; autor: string }
+/** Cómo se pone el plan a disposición de quien debe poder consultarlo. */
+export interface Disponibilidad { inspeccion: string; representantes: string; trabajadores: string }
+/** Texto libre de la revisión anual de un año. */
+export interface RevisionAnual { conclusiones: string; propuestas: string }
+
 export interface Plan {
   id: string; version: number; ficha: Ficha;
   /** Datos de entrada de los indicadores: año → campo → valor. */
@@ -55,6 +64,9 @@ export interface Plan {
   seguimiento: Record<number, SeguimientoAnio>;
   requisitos: Record<string, EstadoRequisito>;
   cerrado: boolean;
+  historial?: Registro[];
+  disponibilidad?: Disponibilidad;
+  revisiones?: Record<number, RevisionAnual>;
 }
 
 export const TRIMESTRES = ['t1', 't2', 't3', 't4'] as const;

@@ -3,6 +3,7 @@ import type { Bloque, ModeloInforme, Seccion } from '../huella/informe.ts';
 import { svgBarrasAgrupadas } from '../huella/graficos.ts';
 import { AREAS, CATEGORIAS_HOTEL, INDICADORES, ORDEN_AREAS, tablaCamas } from './catalogo.ts';
 import type { Plan } from './plan.ts';
+import { TIPOS_REGISTRO } from './plan.ts';
 import { TRIMESTRES, periodoAccion, camas, cumplimiento, evolucion, progresoAccion, progresoObjetivo, progresoPlan, valorIndicador, nombreArea, responsableDelPlan } from './plan.ts';
 
 const num = (v: number, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -37,6 +38,16 @@ export function construirInformeCirculardad(plan: Plan, o: OpcionesInformeCirc):
     ...((f.equipo ?? []).length
       ? [{ k: 'tabla' as const, cab: ['Departamento', 'Nombre', 'Cargo', 'Función en el plan', 'Contacto'], filas: f.equipo.map((m) => [m.departamento || '—', m.nombre || '—', m.cargo || '—', m.funcion, m.email || '—']) }]
       : [{ k: 'nota' as const, texto: 'Sin definir: añada el equipo responsable en la ficha del establecimiento.' }]),
+    { k: 'h', texto: 'Disponibilidad del plan' },
+    { k: 'tabla', cab: ['A disposición de', 'Cómo y dónde'], filas: [
+      ['Inspección de la administración turística', plan.disponibilidad?.inspeccion || '—'],
+      ['Representantes legales de las personas trabajadoras', plan.disponibilidad?.representantes || '—'],
+      ['Personas trabajadoras (consulta)', plan.disponibilidad?.trabajadores || '—'],
+    ] },
+    { k: 'h', texto: 'Registro de modificaciones, revisiones y renovaciones' },
+    ...((plan.historial ?? []).length
+      ? [{ k: 'tabla' as const, cab: ['Fecha', 'Tipo', 'Versión', 'Descripción', 'Responsable'], filas: [...(plan.historial ?? [])].sort((a, b) => a.fecha.localeCompare(b.fecha)).map((r) => [fechaEs(r.fecha), TIPOS_REGISTRO[r.tipo], r.version || '—', r.descripcion, r.autor || '—']) }]
+      : [{ k: 'nota' as const, texto: 'Aún no hay registros. Anote la elaboración del plan y cada revisión, modificación o renovación.' }]),
   ] };
 
   // ── 3 Evaluación circular
@@ -113,6 +124,7 @@ export function construirInformeCirculardad(plan: Plan, o: OpcionesInformeCirc):
     secciones: [s1, s2, s3, s4, s5, s6, s7],
     pendientes: [
       ...(plan.objetivos.length === 0 ? ['No hay objetivos definidos en la planificación.'] : []),
+      ...(plan.disponibilidad?.inspeccion && plan.disponibilidad?.representantes && plan.disponibilidad?.trabajadores ? [] : ['Indique cómo está el plan a disposición de la inspección, los representantes de los trabajadores y los trabajadores.']),
       ...INDICADORES.filter((i) => valorIndicador(plan, i.id, o.anioEvaluacion) === undefined).map((i) => `Falta el dato del indicador «${i.nombre}» en ${o.anioEvaluacion}.`),
     ],
   };

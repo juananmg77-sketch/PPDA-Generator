@@ -10,6 +10,11 @@ const seg = (a: boolean, b: boolean, c: boolean, d: boolean, notas = '', ev: str
 export function planDemo(): Plan {
   return {
     id: 'demo', version: 1, cerrado: false,
+    disponibilidad: { inspeccion: 'Copia en Dirección y en formato electrónico en la carpeta de Calidad', representantes: 'Copia entregada al comité de empresa', trabajadores: 'Intranet del hotel y tablón de personal' },
+    historial: [
+      { id: 'r1', fecha: '2023-04-28', tipo: 'elaboracion', version: '1', descripcion: 'Elaboración del plan de circularidad 2023-2028 y evaluación circular inicial', autor: 'Calidad' },
+      { id: 'r2', fecha: '2024-02-12', tipo: 'revision', version: '1', descripcion: 'Revisión anual de 2023: indicadores recalculados y seguimiento cerrado', autor: 'Calidad' },
+    ],
     ficha: {
       establecimiento: 'Hotel Mediterráneo Playa (ejemplo)', empresa: 'Hoteles Ejemplo Baleares, S.A.', direccion: 'Av. de la Platja, s/n · Alcúdia (Mallorca)',
       actividad: 'Alojamiento turístico en régimen de todo incluido. Restaurante con cocina propia, lavandería, 2 piscinas y spa.',

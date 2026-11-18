@@ -9,6 +9,9 @@ import { planDemo } from '../circularidad/demo';
 import { construirInformeCirculardad } from '../circularidad/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import type { Accion } from '../circularidad/plan';
+import { TIPOS_REGISTRO } from '../circularidad/plan';
+import type { TipoRegistro } from '../circularidad/plan';
+import { construirInformeRevision } from '../circularidad/revision';
 import { FUNCIONES_PLAN, FUNCION_RESPONSABLE, migrarPlan, miembroVacio, planVacio, responsableDelPlan } from '../circularidad/plan';
 import { circularidadService } from '../services/circularidadService';
 import type { FilaPlan } from '../services/circularidadService';
@@ -175,7 +178,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
           {tab === 'plan' && <PlanPanel plan={plan} anio={anio} cambiar={cambiar} onCatalogo={() => setModalMedida(true)} />}
           {tab === 'seguimiento' && <SeguimientoPanel plan={plan} anio={anio} cambiar={cambiar} cerrado={cerradoAnio} />}
           {tab === 'cumplimiento' && <CumplimientoPanel plan={plan} anio={anio} filasC={filasC} cambiar={cambiar} />}
-          {tab === 'informe' && <InformePanel plan={plan} anio={anio} cambiar={cambiar} />}
+          {tab === 'informe' && <InformePanel plan={plan} anio={anio} cambiar={cambiar} usuario={currentUser} />}
         </div>
       </main>
       {config && (
@@ -490,6 +493,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
   const delObj = (o: Objetivo) => { if (confirm(`¿Eliminar el objetivo «${o.descripcion}» y sus acciones?`)) cambiar((p) => ({ ...p, objetivos: p.objetivos.filter((x) => x.id !== o.id) })); };
   return (
     <div className="space-y-3">
+      <datalist id="circ-equipo">{(plan.ficha.equipo ?? []).filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={[m.nombre, m.cargo].filter(Boolean).join(' · ')} />)}</datalist>
       <div className="flex flex-wrap gap-2"><button className={btnP} onClick={onCatalogo}><Plus size={15} /> Añadir objetivo del catálogo</button></div>
       {plan.objetivos.length === 0 && <div className={`${card} text-sm text-slate-600`}>Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas (energía, agua, residuos, alimentos y gobernanza).</div>}
       {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
@@ -506,7 +510,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
             <div className="grid md:grid-cols-2 gap-3">
               <Campo etiqueta="Objetivo" ancho><input className={input} value={o.descripcion} onChange={(e) => setObj(o.id, 'descripcion', e.target.value)} /></Campo>
               <Campo etiqueta="Indicador asociado"><select className={input} value={o.indicadorId} onChange={(e) => setObj(o.id, 'indicadorId', e.target.value)}>{INDICADORES.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}</select></Campo>
-              <Campo etiqueta="Responsable"><input className={input} value={o.responsable} onChange={(e) => setObj(o.id, 'responsable', e.target.value)} /></Campo>
+              <Campo etiqueta="Responsable"><input className={input} list="circ-equipo" value={o.responsable} onChange={(e) => setObj(o.id, 'responsable', e.target.value)} placeholder="Elija del equipo o escriba" /></Campo>
               <Campo etiqueta="Línea base"><input className={input} value={o.lineaBase} onChange={(e) => setObj(o.id, 'lineaBase', e.target.value)} placeholder="Valor de partida del indicador" /></Campo>
               <Campo etiqueta="Meta"><input className={input} value={o.meta} onChange={(e) => setObj(o.id, 'meta', e.target.value)} placeholder="p. ej. −5 % en 2028" /></Campo>
               <Campo etiqueta={`Valor que se quiere alcanzar (${INDICADORES.find((i) => i.id === o.indicadorId)?.unidad ?? 'unidad del indicador'})`}><input type="number" className={input} value={o.metaValor ?? ''} onChange={(e) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, metaValor: e.target.value === '' ? undefined : Number(e.target.value) } : x)) }))} placeholder="Para dibujar la línea de meta" /></Campo>
@@ -521,7 +525,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
                     <div className="grid grid-cols-12 gap-2 items-center">
                       <span className="col-span-1 text-xs font-bold text-slate-600">{a.codigo}</span>
                       <input className={`${input} col-span-7`} value={a.descripcion} onChange={(e) => setAcc(o.id, a.id, { descripcion: e.target.value })} aria-label="Acción" placeholder="Descripción de la acción" />
-                      <input className={`${input} col-span-3`} value={a.responsable} placeholder="Responsable" onChange={(e) => setAcc(o.id, a.id, { responsable: e.target.value })} aria-label="Responsable de la acción" />
+                      <input className={`${input} col-span-3`} list="circ-equipo" value={a.responsable} placeholder="Responsable" onChange={(e) => setAcc(o.id, a.id, { responsable: e.target.value })} aria-label="Responsable de la acción" />
                       <button className="col-span-1 p-1.5 text-slate-500 hover:text-red-600" onClick={() => delAcc(o.id, a.id)} aria-label={`Eliminar la acción ${a.codigo}`}><Trash2 size={14} /></button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -672,26 +676,80 @@ const CumplimientoPanel: React.FC<{ plan: Plan; anio: number; filasC: ReturnType
 const descargar = (blob: Blob, nombre: string) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); };
 const imagenBytes = async (url: string) => { try { const r = await fetch(url); return r.ok ? new Uint8Array(await r.arrayBuffer()) : undefined; } catch { return undefined; } };
 
-const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void }> = ({ plan, anio, cambiar }) => {
+/** Control de versiones y disponibilidad del plan (lo exige la guía AETIB). */
+const ControlPlan: React.FC<{ plan: Plan; cambiar: (f: (p: Plan) => Plan) => void; usuario: string }> = ({ plan, cambiar, usuario }) => {
+  const [nuevo, setNuevo] = useState<{ tipo: TipoRegistro; descripcion: string; version: string }>({ tipo: 'revision', descripcion: '', version: String(plan.version) });
+  const hist = [...(plan.historial ?? [])].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const disp = plan.disponibilidad ?? { inspeccion: '', representantes: '', trabajadores: '' };
+  const setDisp = (k: keyof typeof disp, v: string) => cambiar((p) => ({ ...p, disponibilidad: { ...disp, ...(p.disponibilidad ?? {}), [k]: v } }));
+  const anotar = () => {
+    if (!nuevo.descripcion.trim()) return;
+    cambiar((p) => ({ ...p, historial: [...(p.historial ?? []), { id: `r${Date.now()}`, fecha: HOY, tipo: nuevo.tipo, version: nuevo.version, descripcion: nuevo.descripcion.trim(), autor: usuario }] }));
+    setNuevo({ ...nuevo, descripcion: '' });
+  };
+  return (
+    <details className={card}>
+      <summary className="cursor-pointer text-sm font-bold text-slate-800">Control del plan: versiones y disponibilidad <span className="text-xs font-semibold text-slate-500">· {hist.length} {hist.length === 1 ? 'registro' : 'registros'}</span></summary>
+      <div className="mt-3 grid lg:grid-cols-2 gap-5">
+        <div>
+          <p className="text-xs font-bold text-slate-700 mb-1">Registro de modificaciones, revisiones y renovaciones</p>
+          <div className="grid grid-cols-12 gap-2 mb-2">
+            <select className={`${input} col-span-5`} value={nuevo.tipo} onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value as TipoRegistro })} aria-label="Tipo de registro">{(Object.keys(TIPOS_REGISTRO) as TipoRegistro[]).map((t) => <option key={t} value={t}>{TIPOS_REGISTRO[t]}</option>)}</select>
+            <input className={`${input} col-span-3`} value={nuevo.version} onChange={(e) => setNuevo({ ...nuevo, version: e.target.value })} placeholder="Versión" aria-label="Versión" />
+            <button className={`${btnP} col-span-4 justify-center`} onClick={anotar} disabled={!nuevo.descripcion.trim()}><Plus size={14} /> Anotar</button>
+            <input className={`${input} col-span-12`} value={nuevo.descripcion} onChange={(e) => setNuevo({ ...nuevo, descripcion: e.target.value })} placeholder="Qué se ha hecho o cambiado" aria-label="Descripción del registro" onKeyDown={(e) => { if (e.key === 'Enter') anotar(); }} />
+          </div>
+          {hist.length === 0 ? <p className="text-xs text-slate-500 italic">Aún no hay registros. Anote la elaboración del plan y cada revisión, modificación o renovación.</p>
+            : <ul className="divide-y divide-slate-100 text-xs">{hist.map((r) => (
+              <li key={r.id} className="py-1.5 flex gap-2"><span className="text-slate-500 tabular-nums shrink-0">{new Date(r.fecha).toLocaleDateString('es-ES')}</span><span className="font-bold text-slate-700 shrink-0">{TIPOS_REGISTRO[r.tipo]}{r.version ? ` v${r.version}` : ''}</span><span className="flex-1 text-slate-700">{r.descripcion}{r.autor && <span className="text-slate-400"> · {r.autor}</span>}</span>
+                <button className="text-slate-300 hover:text-red-500" aria-label="Quitar el registro" onClick={() => { if (confirm('¿Quitar este registro?')) cambiar((p) => ({ ...p, historial: (p.historial ?? []).filter((x) => x.id !== r.id) })); }}><Trash2 size={13} /></button></li>))}</ul>}
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-slate-700">Disponibilidad del plan</p>
+          <label className="text-[11px] font-semibold text-slate-600 block">Inspección de la administración turística<input className={`${input} mt-0.5`} value={disp.inspeccion} onChange={(e) => setDisp('inspeccion', e.target.value)} placeholder="p. ej. Copia en Dirección y en formato electrónico" /></label>
+          <label className="text-[11px] font-semibold text-slate-600 block">Representantes legales de las personas trabajadoras<input className={`${input} mt-0.5`} value={disp.representantes} onChange={(e) => setDisp('representantes', e.target.value)} placeholder="p. ej. Copia entregada al comité de empresa" /></label>
+          <label className="text-[11px] font-semibold text-slate-600 block">Personas trabajadoras (consulta)<input className={`${input} mt-0.5`} value={disp.trabajadores} onChange={(e) => setDisp('trabajadores', e.target.value)} placeholder="p. ej. Intranet y tablón de personal" /></label>
+        </div>
+      </div>
+    </details>
+  );
+};
+
+const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; usuario: string }> = ({ plan, anio, cambiar, usuario }) => {
   const marco = useRef<HTMLIFrameElement>(null);
   const [generando, setGenerando] = useState(false);
-  const modelo = useMemo(() => construirInformeCirculardad(plan, { anioEvaluacion: anio, hoy: HOY }), [plan, anio]);
+  const [doc, setDoc] = useState<'plan' | 'revision'>('plan');
+  const modelo = useMemo(() => (doc === 'plan' ? construirInformeCirculardad(plan, { anioEvaluacion: anio, hoy: HOY }) : construirInformeRevision(plan, { anioEvaluacion: anio, hoy: HOY })), [plan, anio, doc]);
   const html = useMemo(() => informeAHtml(modelo, { baseUrl: window.location.origin }), [modelo]);
+  const rev = plan.revisiones?.[anio] ?? { conclusiones: '', propuestas: '' };
+  const setRev = (k: 'conclusiones' | 'propuestas', v: string) => cambiar((p) => ({ ...p, revisiones: { ...(p.revisiones ?? {}), [anio]: { ...rev, ...(p.revisiones?.[anio] ?? {}), [k]: v } } }));
   const word = async () => {
     setGenerando(true);
     try {
       const [{ informeADocx }, { svgAPng }, { cargarMarca }] = await Promise.all([import('../huella/informeDocx'), import('../huella/svgPng'), import('../huella/marca')]);
       const marca = await cargarMarca();
-      descargar(await informeADocx(modelo, marca, svgAPng), `${modelo.meta.codigo}_Plan_circularidad_${anio}_V${String(plan.version).padStart(2, '0')}.docx`);
+      descargar(await informeADocx(modelo, marca, svgAPng), doc === 'plan' ? `${modelo.meta.codigo}_Plan_circularidad_${anio}_V${String(plan.version).padStart(2, '0')}.docx` : `${modelo.meta.codigo}_Revision_anual_circularidad_${anio}.docx`);
     } finally { setGenerando(false); }
   };
   return (
     <div className="space-y-3">
+      <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white text-sm font-semibold" role="tablist" aria-label="Documento">
+        {([['plan', 'Plan de circularidad'], ['revision', 'Revisión anual']] as const).map(([k, n]) => (
+          <button key={k} role="tab" aria-selected={doc === k} onClick={() => setDoc(k)} className={`px-4 py-2 transition-colors ${doc === k ? 'text-white' : 'text-slate-700 hover:bg-slate-50'}`} style={doc === k ? { background: '#0002C9' } : undefined}>{n}</button>
+        ))}
+      </div>
+      {doc === 'plan' && <ControlPlan plan={plan} cambiar={cambiar} usuario={usuario} />}
+      {doc === 'revision' && (
+        <div className={`${card} grid md:grid-cols-2 gap-3`}>
+          <label className="text-xs font-semibold text-slate-700">Conclusiones de la revisión de {anio}<textarea rows={4} className={`${input} mt-1`} value={rev.conclusiones} onChange={(e) => setRev('conclusiones', e.target.value)} placeholder="Qué ha ido bien, qué no, y por qué" /></label>
+          <label className="text-xs font-semibold text-slate-700">Propuestas de mejora para {anio + 1}<textarea rows={4} className={`${input} mt-1`} value={rev.propuestas} onChange={(e) => setRev('propuestas', e.target.value)} placeholder="Cambios en objetivos, acciones o indicadores" /></label>
+        </div>
+      )}
       <div className={`${card} flex flex-wrap items-center gap-3`}>
         <div className="flex-1 min-w-[220px]"><p className="text-sm font-bold text-slate-800">{modelo.meta.titulo} · {anio}</p><p className="text-xs text-slate-600">{modelo.meta.estado} · {modelo.meta.edicion}</p></div>
         <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
         <button className={btnP} onClick={word} disabled={generando}>{generando ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Descargar Word</button>
-        <button className={btnS} onClick={() => cambiar((p) => ({ ...p, cerrado: !p.cerrado, version: p.cerrado ? p.version : p.version }))}>{plan.cerrado ? <><Unlock size={14} /> Volver a borrador</> : <><CheckCircle2 size={14} /> Marcar como aprobado</>}</button>
+        {doc === 'plan' && <button className={btnS} onClick={() => cambiar((p) => ({ ...p, cerrado: !p.cerrado }))}>{plan.cerrado ? <><Unlock size={14} /> Volver a borrador</> : <><CheckCircle2 size={14} /> Marcar como aprobado</>}</button>}
       </div>
       {modelo.pendientes.length > 0 && (
         <details className={`${card} border-amber-200`}><summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><AlertTriangle size={15} className="text-amber-600" /> {modelo.pendientes.length} dato(s) por completar antes de entregarlo</summary>
@@ -701,8 +759,6 @@ const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) 
     </div>
   );
 };
-
-
 
 // ---------- Biblioteca de planes ----------
 const fechaCorta = (iso: string) => new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });

@@ -401,51 +401,100 @@ const MiniEvolucion: React.FC<{ fila: ReturnType<typeof evolucion>[number]; anio
   );
 };
 
+/** Línea pequeña de la evolución de un indicador (una fila de la tabla). */
+const Spark: React.FC<{ valores: Array<number | undefined>; color: string; mejora: boolean | null }> = ({ valores, color, mejora }) => {
+  const W = 86, H = 24, P = 3;
+  const pts = valores.map((v, i) => (v === undefined ? null : { i, v })).filter((x): x is { i: number; v: number } => x !== null);
+  if (pts.length < 2) return <span className="text-[10px] text-slate-400">—</span>;
+  const mn = Math.min(...pts.map((p) => p.v)), mx = Math.max(...pts.map((p) => p.v)), rg = mx - mn || 1;
+  const X = (i: number) => P + (i * (W - 2 * P)) / Math.max(valores.length - 1, 1), Y = (v: number) => H - P - ((v - mn) / rg) * (H - 2 * P);
+  const ult = pts[pts.length - 1];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden="true">
+      <polyline points={pts.map((p) => `${X(p.i)},${Y(p.v)}`).join(' ')} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={X(ult.i)} cy={Y(ult.v)} r="2.8" fill={mejora === null ? color : mejora ? '#00A63E' : '#E5004C'} />
+    </svg>
+  );
+};
+
+/** Avance de un objetivo: del valor de partida al valor que se quiere alcanzar, con el valor actual marcado. */
+const AvanceObjetivo: React.FC<{ plan: Plan; anios: number[] }> = ({ plan, anios }) => {
+  const ultimo = anios[anios.length - 1];
+  const filas = plan.objetivos.map((o) => {
+    const ind = INDICADORES.find((x) => x.id === o.indicadorId);
+    const conDato = anios.filter((a) => ind && valorIndicador(plan, ind.id, a) !== undefined);
+    const aIni = conDato[0], aAct = conDato[conDato.length - 1];
+    const base = ind && aIni !== undefined ? valorIndicador(plan, ind.id, aIni) : undefined;
+    const act = ind && aAct !== undefined ? valorIndicador(plan, ind.id, aAct) : undefined;
+    const meta = o.metaValor;
+    let prog: number | undefined;
+    if (base !== undefined && act !== undefined && meta !== undefined && meta !== base) prog = (act - base) / (meta - base);
+    return { o, ind, aIni, aAct, base, act, meta, prog };
+  });
+  return (
+    <div className={card}>
+      <h2 className="text-sm font-bold text-slate-800 mb-1">Avance de los objetivos</h2>
+      <p className="text-[11px] text-slate-500 mb-3">Del valor de partida (primer año con datos) al valor que se quiere alcanzar. El círculo marca dónde estamos en {ultimo}.</p>
+      {filas.length === 0 && <p className="text-sm text-slate-600">Todavía no hay objetivos en el plan de acción.</p>}
+      <ul className="space-y-3">
+        {filas.map(({ o, ind, aIni, aAct, base, act, meta, prog }) => {
+          const color = AREAS[o.area].color;
+          const p = prog === undefined ? 0 : Math.max(0, Math.min(prog, 1));
+          const dec = ind?.decimales ?? 0;
+          return (
+            <li key={o.id} className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-x-4 gap-y-1 items-center">
+              <div className="min-w-0"><p className="text-xs font-semibold text-slate-800 leading-tight"><span className="text-slate-500">{o.codigo} ·</span> {o.descripcion}</p><p className="text-[11px] text-slate-500">{ind?.nombre} · plazo {o.plazo}</p></div>
+              {meta === undefined ? <p className="text-[11px] text-slate-500 italic">Sin valor objetivo: indíquelo en el Plan de acción para ver el avance.</p> : (
+                <div>
+                  <div className="relative h-3 rounded-full bg-slate-100" role="img" aria-label={`Avance ${prog === undefined ? 'sin datos' : Math.round(prog * 100) + ' %'}`}>
+                    <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${p * 100}%`, background: color }} />
+                    {prog !== undefined && <div className="absolute top-1/2 w-4 h-4 -mt-2 -ml-2 rounded-full border-2 border-white shadow" style={{ left: `${p * 100}%`, background: color }} />}
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-600 mt-0.5 tabular-nums"><span>{nf(base, dec)} <span className="text-slate-400">({aIni})</span></span><span className="font-bold text-slate-800">{prog === undefined ? 'sin datos' : prog >= 1 ? 'Meta alcanzada' : `${Math.round(prog * 100)} %`}</span><span>{nf(meta, dec)} <span className="text-slate-400">({o.plazo})</span></span></div>
+                  {act !== undefined && <p className="text-[10px] text-slate-500 text-center">Actual {aAct}: {nf(act, dec)} {ind?.unidad}</p>}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+};
+
 const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
-  const [modo, setModo] = useState<'tabla' | 'graficos'>('tabla');
+  const [abierto, setAbierto] = useState<string | null>(null);
   const anios = Object.keys(plan.datos).map(Number).sort((a, b) => a - b).filter((a) => a <= anio);
   const ev = evolucion(plan, anios);
   return (
-    <div className={card}>
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-800 flex-1">Evolución anual de los indicadores</h2>
-        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden bg-white text-xs font-semibold" role="group" aria-label="Forma de verlo">
-          {([['tabla', 'Tabla'], ['graficos', 'Gráficos']] as const).map(([k, n]) => (
-            <button key={k} aria-pressed={modo === k} onClick={() => setModo(k)} className={`px-3 py-1.5 ${modo === k ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>{n}</button>
-          ))}
-        </div>
-      </div>
-      {modo === 'tabla' ? (
+    <div className="space-y-4">
+      <div className={card}>
+        <h2 className="text-sm font-bold text-slate-800 mb-1">Evolución anual de los indicadores</h2>
+        <p className="text-[11px] text-slate-500 mb-2">Pulse un indicador para ver su gráfico grande, con la línea de meta si el plan de acción tiene un valor objetivo.</p>
         <div className="overflow-x-auto"><table className="w-full text-xs">
-          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Indicador</th><th>Unidad</th>{anios.map((a) => <th key={a} className="text-right">{a}</th>)}<th className="text-right">Tendencia</th></tr></thead>
+          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Indicador</th><th>Unidad</th>{anios.map((a) => <th key={a} className="text-right">{a}</th>)}<th className="pl-3">Evolución</th><th className="text-right">Tendencia</th></tr></thead>
           <tbody>{ORDEN_AREAS.flatMap((a) => [
-            <tr key={`h${a}`}><td colSpan={anios.length + 3} className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: AREAS[a].color }}>{AREAS[a].nombre}</td></tr>,
-            ...ev.filter((x) => x.area === a).map((x) => <tr key={x.id} className="border-b border-slate-100"><td className="py-1.5 pr-2">{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>{anios.map((y) => <td key={y} className="text-right tabular-nums">{nf(x.valores[y], x.decimales)}</td>)}<td className="text-right"><Tendencia t={x.tendencia} /></td></tr>),
+            <tr key={`h${a}`}><td colSpan={anios.length + 4} className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: AREAS[a].color }}>{AREAS[a].nombre}</td></tr>,
+            ...ev.filter((x) => x.area === a).flatMap((x) => {
+              const sirve = anios.some((y) => x.valores[y] !== undefined);
+              const o = plan.objetivos.find((q) => q.indicadorId === x.id && q.metaValor !== undefined);
+              const mejora = x.tendencia === 'mejora' ? true : x.tendencia === 'empeora' ? false : null;
+              return [
+                <tr key={x.id} className={`border-b border-slate-100 ${sirve ? 'cursor-pointer hover:bg-slate-50' : ''}`} onClick={() => sirve && setAbierto(abierto === x.id ? null : x.id)} aria-expanded={sirve ? abierto === x.id : undefined}>
+                  <td className="py-1.5 pr-2">{sirve && <span className="text-slate-400 mr-1">{abierto === x.id ? '▾' : '▸'}</span>}{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>
+                  {anios.map((y) => <td key={y} className="text-right tabular-nums">{nf(x.valores[y], x.decimales)}</td>)}
+                  <td className="pl-3"><Spark valores={anios.map((y) => x.valores[y])} color={AREAS[a].color} mejora={mejora} /></td><td className="text-right"><Tendencia t={x.tendencia} /></td>
+                </tr>,
+                ...(abierto === x.id ? [<tr key={`g${x.id}`}><td colSpan={anios.length + 4} className="py-3"><div className="max-w-md mx-auto rounded-xl border border-slate-200 p-3 bg-white">
+                  <p className="text-xs font-semibold text-slate-800 mb-1">{x.nombre} <span className="font-normal text-slate-500">({x.unidad})</span></p>
+                  <MiniEvolucion fila={x} anios={anios} color={AREAS[a].color} meta={o ? { valor: o.metaValor!, anio: Number(o.plazo) || plan.ficha.vigenciaHasta } : undefined} />
+                </div></td></tr>] : []),
+              ];
+            }),
           ])}</tbody>
         </table></div>
-      ) : (<>
-        <p className="text-[11px] text-slate-500 mb-3">Si el plan de acción tiene un valor objetivo para el indicador, aparece como línea de meta punteada.</p>
-        {ORDEN_AREAS.map((a) => {
-          const filas = ev.filter((x) => x.area === a && anios.some((y) => x.valores[y] !== undefined));
-          if (filas.length === 0) return null;
-          return (
-            <div key={a} className="mb-4">
-              <p className="text-xs font-bold text-slate-700 flex items-center gap-2 mb-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: AREAS[a].color }} />{AREAS[a].nombre}</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {filas.map((x) => {
-                  const o = plan.objetivos.find((q) => q.indicadorId === x.id && q.metaValor !== undefined);
-                  return (
-                    <div key={x.id} className="rounded-xl border border-slate-200 p-3">
-                      <div className="flex items-start gap-2"><p className="text-xs font-semibold text-slate-800 flex-1 leading-tight">{x.nombre} <span className="font-normal text-slate-500">({x.unidad})</span></p><Tendencia t={x.tendencia} /></div>
-                      <MiniEvolucion fila={x} anios={anios} color={AREAS[a].color} meta={o ? { valor: o.metaValor!, anio: Number(o.plazo) || plan.ficha.vigenciaHasta } : undefined} />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </>)}
+      </div>
+      <AvanceObjetivo plan={plan} anios={anios} />
     </div>
   );
 };

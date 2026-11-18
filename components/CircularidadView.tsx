@@ -140,7 +140,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
       </aside>
 
       <main className="flex-1 min-w-0 p-4 md:p-8">
-        <div className="max-w-5xl space-y-4">
+        <div className={`${tab === 'plan' ? 'max-w-6xl' : 'max-w-5xl'} space-y-4`}>
           <div className={`${card} flex flex-wrap items-center gap-3 cursor-pointer`} aria-label="Establecimiento" onClick={() => setConfig(true)}>
             <div className="w-11 h-11 rounded-lg bg-green-100 text-green-800 flex items-center justify-center text-lg font-bold shrink-0">{(plan.ficha.establecimiento || '?').trim().charAt(0).toUpperCase()}</div>
             <div className="flex-1 min-w-0">
@@ -485,86 +485,128 @@ const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
 };
 
 // ───────────────────────────── Plan de acción ─────────────────────────────
-const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; onCatalogo: () => void }> = ({ plan, anio, cambiar, onCatalogo }) => {
-  const setObj = (id: string, k: keyof Objetivo, v: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === id ? { ...o, [k]: v } : o)) }));
-  const setAcc = (oid: string, aid: string, patch: Partial<Accion>) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.map((a) => (a.id === aid ? { ...a, ...patch, ...(patch.fin !== undefined ? { plazo: patch.fin.slice(0, 4) } : {}) } : a)) } : o)) }));
-  const addAcc = (o: Objetivo) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, acciones: [...x.acciones, { id: `${o.id}-${Date.now()}`, codigo: `${o.codigo}${String.fromCharCode(65 + o.acciones.length)}`, descripcion: '', responsable: '', plazo: String(anio), indicadores: o.indicadorId ? [o.indicadorId] : [], recursos: '', inversion: '', inicio: '', fin: '' }] } : x)) }));
-  const delAcc = (oid: string, aid: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.filter((a) => a.id !== aid) } : o)) }));
-  const delObj = (o: Objetivo) => { if (confirm(`¿Eliminar el objetivo «${o.descripcion}» y sus acciones?`)) cambiar((p) => ({ ...p, objetivos: p.objetivos.filter((x) => x.id !== o.id) })); };
-  return (
-    <div className="space-y-3">
-      <datalist id="circ-equipo">{(plan.ficha.equipo ?? []).filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={[m.nombre, m.cargo].filter(Boolean).join(' · ')} />)}</datalist>
-      <div className="flex flex-wrap gap-2"><button className={btnP} onClick={onCatalogo}><Plus size={15} /> Añadir objetivo del catálogo</button></div>
-      {plan.objetivos.length === 0 && <div className={`${card} text-sm text-slate-600`}>Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas (energía, agua, residuos, alimentos y gobernanza).</div>}
-      {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
-        <React.Fragment key={area}>
-        <CabeceraArea area={area} detalle={`${os.length} ${os.length === 1 ? 'objetivo' : 'objetivos'} · ${os.reduce((n, o) => n + o.acciones.length, 0)} acciones`} />
-        {os.map((o) => (
-        <details key={o.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm" style={{ borderLeft: `4px solid ${AREAS[area].color}` }}>
-          <summary className="cursor-pointer px-5 py-3.5 flex flex-wrap items-center gap-3">
-            <span className="w-3 h-3 rounded-full shrink-0" style={{ background: AREAS[o.area].color }} />
-            <span className="text-sm font-bold text-slate-800 flex-1 min-w-[220px]">{o.codigo}. {o.descripcion}</span>
-            <span className="text-[11px] font-semibold text-slate-500">{nombreArea(o.area)} · {o.acciones.length} acciones · {pc(progresoObjetivo(plan, o, anio))} en {anio}</span>
-          </summary>
-          <div className="px-5 pb-5 space-y-3">
-            <div className="grid md:grid-cols-2 gap-3">
-              <Campo etiqueta="Objetivo" ancho><input className={input} value={o.descripcion} onChange={(e) => setObj(o.id, 'descripcion', e.target.value)} /></Campo>
-              <Campo etiqueta="Indicador asociado"><select className={input} value={o.indicadorId} onChange={(e) => setObj(o.id, 'indicadorId', e.target.value)}>{INDICADORES.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}</select></Campo>
-              <Campo etiqueta="Responsable"><input className={input} list="circ-equipo" value={o.responsable} onChange={(e) => setObj(o.id, 'responsable', e.target.value)} placeholder="Elija del equipo o escriba" /></Campo>
-              <Campo etiqueta="Línea base"><input className={input} value={o.lineaBase} onChange={(e) => setObj(o.id, 'lineaBase', e.target.value)} placeholder="Valor de partida del indicador" /></Campo>
-              <Campo etiqueta="Meta"><input className={input} value={o.meta} onChange={(e) => setObj(o.id, 'meta', e.target.value)} placeholder="p. ej. −5 % en 2028" /></Campo>
-              <Campo etiqueta={`Valor que se quiere alcanzar (${INDICADORES.find((i) => i.id === o.indicadorId)?.unidad ?? 'unidad del indicador'})`}><input type="number" className={input} value={o.metaValor ?? ''} onChange={(e) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, metaValor: e.target.value === '' ? undefined : Number(e.target.value) } : x)) }))} placeholder="Para dibujar la línea de meta" /></Campo>
-              <Campo etiqueta="Recursos necesarios"><input className={input} value={o.recursos} onChange={(e) => setObj(o.id, 'recursos', e.target.value)} /></Campo>
-              <Campo etiqueta="Inversión"><input className={input} value={o.inversion} onChange={(e) => setObj(o.id, 'inversion', e.target.value)} /></Campo>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-700 mb-1">Acciones</p>
-              <div className="space-y-2.5">
-                {o.acciones.map((a) => (
-                  <div key={a.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2">
-                    <div className="grid grid-cols-12 gap-2 items-center">
-                      <span className="col-span-1 text-xs font-bold text-slate-600">{a.codigo}</span>
-                      <input className={`${input} col-span-7`} value={a.descripcion} onChange={(e) => setAcc(o.id, a.id, { descripcion: e.target.value })} aria-label="Acción" placeholder="Descripción de la acción" />
-                      <input className={`${input} col-span-3`} list="circ-equipo" value={a.responsable} placeholder="Responsable" onChange={(e) => setAcc(o.id, a.id, { responsable: e.target.value })} aria-label="Responsable de la acción" />
-                      <button className="col-span-1 p-1.5 text-slate-500 hover:text-red-600" onClick={() => delAcc(o.id, a.id)} aria-label={`Eliminar la acción ${a.codigo}`}><Trash2 size={14} /></button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <label className="text-[11px] font-semibold text-slate-600">Inicio<input type="date" className={`${input} mt-0.5`} value={a.inicio ?? ''} onChange={(e) => setAcc(o.id, a.id, { inicio: e.target.value })} /></label>
-                      <label className="text-[11px] font-semibold text-slate-600">Fin<input type="date" className={`${input} mt-0.5`} value={a.fin ?? ''} min={a.inicio || undefined} onChange={(e) => setAcc(o.id, a.id, { fin: e.target.value })} /></label>
-                      <label className="text-[11px] font-semibold text-slate-600">Recursos<input className={`${input} mt-0.5`} value={a.recursos ?? ''} placeholder="Humanos, materiales…" onChange={(e) => setAcc(o.id, a.id, { recursos: e.target.value })} /></label>
-                      <label className="text-[11px] font-semibold text-slate-600">Inversión<input className={`${input} mt-0.5`} value={a.inversion ?? ''} placeholder="p. ej. 12.000 €" onChange={(e) => setAcc(o.id, a.id, { inversion: e.target.value })} /></label>
-                    </div>
-                    <IndicadoresAccion seleccion={a.indicadores ?? []} onChange={(ids) => setAcc(o.id, a.id, { indicadores: ids })} />
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-2"><button className={btnS} onClick={() => addAcc(o)}><Plus size={14} /> Añadir acción</button><button className={`${btnS} text-red-700`} onClick={() => delObj(o)}><Trash2 size={14} /> Eliminar objetivo</button></div>
-            </div>
-          </div>
-        </details>
-        ))}
-        </React.Fragment>
-      ))}
-    </div>
-  );
-};
-
-/** Indicadores relacionados con una acción: chips de los elegidos y lista, agrupada por área, para marcar o desmarcar. */
-const IndicadoresAccion: React.FC<{ seleccion: string[]; onChange: (ids: string[]) => void }> = ({ seleccion, onChange }) => (
-  <details className="text-xs">
-    <summary className="cursor-pointer flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] font-semibold text-slate-600">Indicadores relacionados</span>
-      {seleccion.length === 0 && <span className="text-[11px] text-slate-400">ninguno · pulse para elegir</span>}
-      {seleccion.map((id) => { const i = INDICADORES.find((x) => x.id === id); return i ? <span key={id} className="px-2 py-0.5 rounded-full text-[11px] font-semibold text-white" style={{ background: AREAS[i.area].color }}>{i.nombre}</span> : null; })}
+/** Celda de indicadores relacionados con una acción: códigos de los elegidos y lista desplegable para marcarlos. */
+const CeldaIndicadores: React.FC<{ seleccion: string[]; onChange: (ids: string[]) => void }> = ({ seleccion, onChange }) => (
+  <details className="relative">
+    <summary className="cursor-pointer list-none px-2 py-1.5 min-h-[30px] flex flex-wrap items-center gap-1 text-xs" title="Indicadores relacionados con la acción">
+      {seleccion.length === 0 ? <span className="text-slate-400">Indicadores…</span> : seleccion.map((id) => { const i = INDICADORES.find((x) => x.id === id); return i ? <span key={id} className="px-1.5 rounded text-[10px] font-bold text-white" style={{ background: AREAS[i.area].color }} title={i.nombre}>{id}</span> : null; })}
     </summary>
-    <div className="mt-2 grid sm:grid-cols-2 gap-x-4 gap-y-0.5 bg-white rounded-lg border border-slate-200 p-2">
+    <div className="no-glass absolute z-30 left-0 top-full mt-1 w-72 bg-white rounded-lg border border-slate-300 shadow-xl p-2 text-xs">
       {ORDEN_AREAS.flatMap((a) => INDICADORES.filter((i) => i.area === a).map((i) => (
-        <label key={i.id} className="flex items-center gap-2 py-0.5"><input type="checkbox" className="accent-green-600" checked={seleccion.includes(i.id)} onChange={(e) => onChange(e.target.checked ? [...seleccion, i.id] : seleccion.filter((x) => x !== i.id))} />
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: AREAS[a].color }} /><span>{i.nombre}</span></label>
+        <label key={i.id} className="flex items-center gap-2 py-0.5 cursor-pointer"><input type="checkbox" className="accent-green-600" checked={seleccion.includes(i.id)} onChange={(e) => onChange(e.target.checked ? [...seleccion, i.id] : seleccion.filter((x) => x !== i.id))} />
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: AREAS[a].color }} /><span className="font-bold w-8">{i.id}</span><span className="truncate">{i.nombre}</span></label>
       )))}
     </div>
   </details>
 );
+
+const celdaIn = 'w-full bg-transparent px-2 py-1.5 text-xs text-slate-900 focus:outline-none focus:bg-white focus:ring-2 focus:ring-inset focus:ring-brand-500 placeholder:text-slate-300';
+const etq = 'block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1';
+const campoPlan = 'w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500';
+const COLS_ACC = [['ID', 64], ['Descripción de la acción', 340], ['Indicadores', 150], ['Responsable', 170], ['Inicio', 128], ['Fin', 128], ['Recursos', 170], ['Inversión', 110], ['', 40]] as const;
+
+const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => Plan) => void; onCatalogo: () => void }> = ({ plan, anio, cambiar, onCatalogo }) => {
+  const [areaNueva, setAreaNueva] = useState<Area>('energia');
+  const patchObj = (oid: string, patch: Partial<Objetivo>) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, ...patch } : o)) }));
+  const setAcc = (oid: string, aid: string, patch: Partial<Accion>) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.map((a) => (a.id === aid ? { ...a, ...patch, ...(patch.fin !== undefined ? { plazo: patch.fin.slice(0, 4) } : {}) } : a)) } : o)) }));
+  const addAcc = (o: Objetivo, descripcion = '') => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, acciones: [...x.acciones, { id: `${o.id}-${Date.now()}`, codigo: `${o.codigo}${String.fromCharCode(65 + x.acciones.length)}`, descripcion, responsable: '', plazo: String(anio), indicadores: o.indicadorId ? [o.indicadorId] : [], recursos: '', inversion: '', inicio: '', fin: '' }] } : x)) }));
+  const delAcc = (oid: string, aid: string) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((o) => (o.id === oid ? { ...o, acciones: o.acciones.filter((a) => a.id !== aid) } : o)) }));
+  const delObj = (o: Objetivo) => { if (confirm(`¿Eliminar el objetivo «${o.descripcion || o.codigo}» y sus ${o.acciones.length} acciones?`)) cambiar((p) => ({ ...p, objetivos: p.objetivos.filter((x) => x.id !== o.id) })); };
+  const addObjVacio = () => cambiar((p) => ({ ...p, objetivos: [...p.objetivos, { id: `o${Date.now()}`, codigo: String(p.objetivos.length + 1), area: areaNueva, descripcion: '', indicadorId: INDICADORES.find((i) => i.area === areaNueva)?.id ?? '', lineaBase: '', meta: '', plazo: String(p.ficha.vigenciaHasta), responsable: '', recursos: '', inversion: '', acciones: [] }] }));
+  // Enter baja a la misma columna de la fila siguiente, como en una hoja de cálculo.
+  const alPulsar = (e: React.KeyboardEvent<HTMLElement>) => {
+    const t = e.target as HTMLElement;
+    if (e.key !== 'Enter' || t.tagName === 'TEXTAREA' || !t.dataset.col) return;
+    e.preventDefault();
+    const todos = [...(e.currentTarget.querySelectorAll(`[data-col="${t.dataset.col}"]`) as NodeListOf<HTMLElement>)];
+    todos[todos.indexOf(t) + 1]?.focus();
+  };
+  const grupos = ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length);
+  const sugerencias = (o: Objetivo) => [...new Set(MEDIDAS.filter((m) => m.indicador === o.indicadorId || m.area === o.area).flatMap((m) => m.acciones))].filter((x) => !o.acciones.some((a) => a.descripcion === x));
+  const ancho = COLS_ACC.reduce((n, [, w]) => n + w, 0);
+
+  return (
+    <div className="space-y-4">
+      <datalist id="circ-equipo">{(plan.ficha.equipo ?? []).filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={[m.nombre, m.cargo].filter(Boolean).join(' · ')} />)}</datalist>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={btnP} onClick={onCatalogo}><Plus size={15} /> Objetivo del catálogo</button>
+        <span className="text-xs text-slate-500">o en blanco en</span>
+        <select className="border border-slate-300 rounded-lg px-2 py-2 text-sm bg-white" value={areaNueva} onChange={(e) => setAreaNueva(e.target.value as Area)} aria-label="Área del objetivo en blanco">{ORDEN_AREAS.map((a) => <option key={a} value={a}>{AREAS[a].nombre}</option>)}</select>
+        <button className={btnS} onClick={addObjVacio}><Plus size={15} /> Objetivo en blanco</button>
+      </div>
+      {plan.objetivos.length === 0 && <div className="no-glass bg-white rounded-xl border border-slate-200 p-5 text-sm text-slate-600">Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas o en blanco.</div>}
+      {grupos.map(({ area, os }, gi) => {
+        const col = AREAS[area].color; const avance = os.reduce((x, o) => x + progresoObjetivo(plan, o, anio), 0) / os.length;
+        return (
+          <details key={area} open className="group">
+            <summary className="cursor-pointer list-none flex items-center gap-3 rounded-2xl border px-4 py-3" style={{ background: `${col}14`, borderColor: `${col}55` }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shrink-0" style={{ background: col }}>{gi + 1}</span>
+              <span className="flex-1 min-w-0"><span className="block text-[10px] font-black uppercase tracking-widest" style={{ color: col }}>Área prioritaria</span><span className="block text-base font-extrabold text-slate-900">{AREAS[area].nombre}</span></span>
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white border border-slate-200 text-slate-700">{os.length} {os.length === 1 ? 'objetivo' : 'objetivos'} · {os.reduce((n, o) => n + o.acciones.length, 0)} acciones</span>
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full text-white" style={{ background: col }}>{pc(avance)} en {anio}</span>
+            </summary>
+            <div className="mt-3 space-y-4 md:pl-6">
+              {os.map((o) => {
+                const ind = INDICADORES.find((i) => i.id === o.indicadorId); const sug = sugerencias(o);
+                return (
+                  <div key={o.id} className="no-glass bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: `${col}66` }}>
+                    <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 border-b border-slate-100">
+                      <input className="w-16 text-center text-xs font-black rounded-md border px-2 py-1 bg-slate-50" style={{ color: col, borderColor: `${col}66` }} value={o.codigo} onChange={(e) => patchObj(o.id, { codigo: e.target.value })} aria-label="Código del objetivo" />
+                      <input className="flex-1 min-w-[240px] text-base font-extrabold text-slate-900 bg-transparent px-1 py-1 rounded focus:outline-none focus:bg-slate-50 focus:ring-2 focus:ring-brand-500" value={o.descripcion} onChange={(e) => patchObj(o.id, { descripcion: e.target.value })} placeholder="Objetivo" aria-label="Objetivo" />
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-full border" style={{ color: col, borderColor: `${col}66`, background: `${col}12` }}>{AREAS[area].nombre}</span>
+                      <button className="p-1.5 text-slate-400 hover:text-red-600" onClick={() => delObj(o)} title="Eliminar el objetivo" aria-label={`Eliminar el objetivo ${o.codigo}`}><Trash2 size={15} /></button>
+                    </div>
+                    <div className="px-5 py-4 grid grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50/60">
+                      <label className="col-span-2"><span className={etq}>Indicador</span><select className={campoPlan} value={o.indicadorId} onChange={(e) => patchObj(o.id, { indicadorId: e.target.value })}>{INDICADORES.map((i) => <option key={i.id} value={i.id}>{i.id} · {i.nombre}</option>)}</select></label>
+                      <label><span className={etq}>Línea base</span><input className={campoPlan} value={o.lineaBase} onChange={(e) => patchObj(o.id, { lineaBase: e.target.value })} placeholder="Valor de partida" /></label>
+                      <label><span className={etq}>Meta</span><input className={campoPlan} value={o.meta} onChange={(e) => patchObj(o.id, { meta: e.target.value })} placeholder="p. ej. −5 % en 2028" /></label>
+                      <label><span className={etq}>Valor objetivo</span><input type="number" className={campoPlan} value={o.metaValor ?? ''} onChange={(e) => patchObj(o.id, { metaValor: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder={ind?.unidad ?? 'Número'} title={`Valor numérico a alcanzar${ind ? ` (${ind.unidad})` : ''}; dibuja la línea de meta en la evolución anual`} /></label>
+                      <label><span className={etq}>Plazo (año)</span><input className={campoPlan} value={o.plazo} onChange={(e) => patchObj(o.id, { plazo: e.target.value })} placeholder="2028" /></label>
+                      <label className="col-span-2"><span className={etq}>Responsable</span><input className={campoPlan} list="circ-equipo" value={o.responsable} onChange={(e) => patchObj(o.id, { responsable: e.target.value })} placeholder="Elija del equipo o escriba" /></label>
+                      <label className="col-span-2"><span className={etq}>Recursos</span><input className={campoPlan} value={o.recursos} onChange={(e) => patchObj(o.id, { recursos: e.target.value })} placeholder="Recursos necesarios" /></label>
+                      <label className="col-span-2"><span className={etq}>Inversión</span><input className={campoPlan} value={o.inversion} onChange={(e) => patchObj(o.id, { inversion: e.target.value })} placeholder="p. ej. 120.000 €" /></label>
+                    </div>
+                    <div className="px-5 pt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Sugerencias</span>
+                      <select className="flex-1 min-w-[220px] border border-slate-300 rounded-lg px-3 py-2 text-xs bg-white" value="" onChange={(e) => { if (e.target.value) addAcc(o, e.target.value); }} aria-label="Añadir acción recomendada">
+                        <option value="">Añadir acción recomendada…</option>{sug.map((x) => <option key={x} value={x}>{x}</option>)}
+                      </select>
+                    </div>
+                    <div className="px-5 pt-3 pb-4">
+                      <div className="flex items-center mb-2"><span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex-1">Plan de acción</span><button className="text-[11px] font-black uppercase tracking-wide px-3 py-1.5 rounded-lg bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 inline-flex items-center gap-1" onClick={() => addAcc(o)}><Plus size={13} /> Nueva acción</button></div>
+                      <div className="no-glass bg-white rounded-xl border border-slate-300 overflow-x-auto" onKeyDown={alPulsar}>
+                        <table className="text-xs border-collapse" style={{ minWidth: ancho, width: '100%', tableLayout: 'fixed' }}>
+                          <colgroup>{COLS_ACC.map(([n, w]) => <col key={n || 'x'} style={{ width: w }} />)}</colgroup>
+                          <thead><tr className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-600">{COLS_ACC.map(([n]) => <th key={n || 'x'} className="px-2 py-2 border border-slate-200 font-bold">{n}</th>)}</tr></thead>
+                          <tbody>
+                            {o.acciones.length === 0 && <tr><td colSpan={COLS_ACC.length} className="px-3 py-4 text-center text-slate-500 italic border border-slate-200">Sin acciones. Añada una recomendada o una nueva.</td></tr>}
+                            {o.acciones.map((a) => (
+                              <tr key={a.id} className="bg-white hover:bg-slate-50/80">
+                                <td className="border border-slate-200 px-2 py-1.5 text-center"><span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ color: col, background: `${col}1A` }}>{a.codigo}</span></td>
+                                <td className="border border-slate-200"><input className={celdaIn} data-col="desc" value={a.descripcion} onChange={(e) => setAcc(o.id, a.id, { descripcion: e.target.value })} placeholder="Acción" aria-label="Acción" /></td>
+                                <td className="border border-slate-200"><CeldaIndicadores seleccion={a.indicadores ?? []} onChange={(ids) => setAcc(o.id, a.id, { indicadores: ids })} /></td>
+                                <td className="border border-slate-200"><input className={celdaIn} data-col="resp" list="circ-equipo" value={a.responsable} onChange={(e) => setAcc(o.id, a.id, { responsable: e.target.value })} placeholder="Responsable" aria-label="Responsable de la acción" /></td>
+                                <td className="border border-slate-200"><input type="date" className={celdaIn} data-col="ini" value={a.inicio ?? ''} onChange={(e) => setAcc(o.id, a.id, { inicio: e.target.value })} aria-label="Inicio de la acción" /></td>
+                                <td className="border border-slate-200"><input type="date" className={celdaIn} data-col="fin" value={a.fin ?? ''} min={a.inicio || undefined} onChange={(e) => setAcc(o.id, a.id, { fin: e.target.value })} aria-label="Fin de la acción" /></td>
+                                <td className="border border-slate-200"><input className={celdaIn} data-col="rec" value={a.recursos ?? ''} onChange={(e) => setAcc(o.id, a.id, { recursos: e.target.value })} placeholder="Recursos" aria-label="Recursos de la acción" /></td>
+                                <td className="border border-slate-200"><input className={celdaIn} data-col="inv" value={a.inversion ?? ''} onChange={(e) => setAcc(o.id, a.id, { inversion: e.target.value })} placeholder="Inversión" aria-label="Inversión de la acción" /></td>
+                                <td className="border border-slate-200 text-center"><button className="p-1.5 text-slate-400 hover:text-red-600" onClick={() => delAcc(o.id, a.id)} title="Eliminar la acción" aria-label={`Eliminar la acción ${a.codigo}`}><Trash2 size={14} /></button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+};
 
 const CatalogoMedidas: React.FC<{ onCerrar: () => void; onElegir: (m: (typeof MEDIDAS)[number]) => void }> = ({ onCerrar, onElegir }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" role="dialog" aria-modal="true" aria-label="Catálogo de medidas">

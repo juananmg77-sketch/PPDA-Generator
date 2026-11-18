@@ -87,7 +87,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   else {
     const grandes = e.variaciones.map((m) => ({ ...m, ...variacionAnual(m.actual, m.anterior, umbral) })).filter((m) => m.analizar);
     if (grandes.length === 0) add('ok', 'variacion', 'Ninguna magnitud varía más del 20 % respecto al año anterior.');
-    else if ((e.analisisVariacion ?? '').trim().length < 15) add('error', 'variacion', `Variación superior al ${Math.round(umbral * 100)} % en ${grandes.map((m) => `${m.nombre} (${Math.round((m.variacion ?? 0) * 100)} %)`).join(', ')}: explique la causa en el análisis de variaciones.`);
+    else if ((e.analisisVariacion ?? '').trim().length < 15) add('error', 'variacion', `Variación superior al ${Math.round(umbral * 100)} % en ${grandes.map((m) => `${m.nombre} (${Math.round((m.variacion ?? 0) * 100)} %)`).join(', ')}: explique la causa en el cuadro «Análisis de variaciones», más abajo en esta pantalla.`);
     else add('ok', 'variacion', 'Variaciones grandes analizadas y justificadas.');
   }
 

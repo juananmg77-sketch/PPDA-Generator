@@ -176,8 +176,28 @@ const Resumen: React.FC<{ plan: Plan; anio: number; filasC: ReturnType<typeof cu
   const ev = evolucion(plan, Object.keys(plan.datos).map(Number).sort((a, b) => a - b).filter((a) => a <= anio));
   const clave = ['E1', 'AL1', 'A2', 'G2'].map((id) => ev.find((x) => x.id === id)!);
   const alertas = filasC.filter((f) => f.alerta);
+  const kpis = ['E1', 'E3', 'A2', 'R2', 'AL1', 'G2'].map((id) => {
+    const x = ev.find((e) => e.id === id)!; const v = x.valores[anio];
+    const prev = Object.keys(x.valores).map(Number).filter((y) => y < anio && x.valores[y] !== undefined).sort((p, q) => q - p)[0];
+    const pv = prev === undefined ? undefined : x.valores[prev];
+    const ind = INDICADORES.find((i) => i.id === id)!;
+    const delta = v !== undefined && pv !== undefined && pv !== 0 ? (v - pv) / Math.abs(pv) : undefined;
+    const bien = delta === undefined || Math.abs(delta) < 0.0005 ? null : (delta > 0) === ind.masEsMejor;
+    return { x, v, prev, delta, bien, area: AREAS[ind.area] };
+  });
   return (
     <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3" aria-label={`Indicadores clave ${anio}`}>
+        {kpis.map(({ x, v, prev, delta, bien, area }) => (
+          <div key={x.id} className={`${card} !p-4`} style={{ borderTop: `3px solid ${area.color}` }}>
+            <p className="text-[11px] font-semibold text-slate-500 leading-tight min-h-[28px]">{x.nombre}</p>
+            <p className="text-2xl font-extrabold mt-1 tabular-nums" style={{ color: '#00093D' }}>{nf(v, x.decimales)}<span className="text-[11px] font-semibold text-slate-500 ml-1">{v === undefined ? '' : x.unidad}</span></p>
+            <p className={`text-xs mt-1 font-semibold ${bien === null ? 'text-slate-500' : bien ? 'text-green-700' : 'text-red-700'}`}>
+              {v === undefined ? 'Sin datos en ' + anio : delta === undefined ? (prev === undefined ? 'Primer año con datos' : 'Sin variación calculable') : `${delta > 0 ? '▲' : delta < 0 ? '▼' : '='} ${Math.abs(delta * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })} % vs ${prev}`}
+            </p>
+          </div>
+        ))}
+      </div>
       <div className="grid sm:grid-cols-3 gap-3">
         <div className={card}><p className="text-xs font-semibold text-slate-500">Avance del plan de acción {anio}</p><p className="text-3xl font-extrabold mt-1" style={{ color: '#00093D' }}>{pc(prog)}</p><div className="mt-2"><Barra valor={prog} /></div></div>
         <div className={card}><p className="text-xs font-semibold text-slate-500">Requisitos obligatorios cumplidos</p><p className="text-3xl font-extrabold mt-1" style={{ color: rc.alertas ? '#CC0000' : '#006600' }}>{rc.cumplen}<span className="text-lg text-slate-400"> / {rc.exigibles}</span></p><p className="text-xs text-slate-600 mt-1">{rc.alertas ? `${rc.alertas} requieren atención` : 'Todo al día'}</p></div>

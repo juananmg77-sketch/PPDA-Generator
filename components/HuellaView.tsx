@@ -1896,8 +1896,8 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
 
       {porContador.length > 1 && (
         <details className={`${card} group`}>
-          <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Por contador / punto de suministro <span className="text-xs font-normal text-slate-500">({porContador.length})</span></summary>
-          <div className="mt-3"><Tabla filas={porContador} /></div>
+          <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Por contador / punto de suministro <span className="text-xs font-normal text-slate-500">({porContador.length}) · t CO₂e</span></summary>
+          <div className="mt-3"><Tabla filas={porContador} unidad="t CO₂e" /></div>
         </details>
       )}
 
@@ -1918,8 +1918,8 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   );
 };
 
-const Tabla: React.FC<{ filas: Array<[string, number]> }> = ({ filas }) => (
-  <table className="w-full text-sm"><tbody>{filas.map(([k, v]) => <tr key={k} className="border-b border-slate-100"><td className="py-1.5 text-slate-700">{k}</td><td className="py-1.5 text-right font-semibold tabular-nums">{t(v)}</td></tr>)}</tbody></table>
+const Tabla: React.FC<{ filas: Array<[string, number]>; unidad?: string }> = ({ filas, unidad }) => (
+  <table className="w-full text-sm"><tbody>{filas.map(([k, v]) => <tr key={k} className="border-b border-slate-100"><td className="py-1.5 text-slate-700">{k}</td><td className="py-1.5 text-right font-semibold tabular-nums">{t(v)}{unidad && <span className="ml-1 text-[11px] font-normal text-slate-500">{unidad}</span>}</td></tr>)}</tbody></table>
 );
 
 export default HuellaView;

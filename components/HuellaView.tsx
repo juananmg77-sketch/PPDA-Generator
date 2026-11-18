@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
@@ -1798,14 +1798,27 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   const acum: Record<string, number> = {};
   for (const r of resultados) { const k = `${r.linea.centro} · ${r.linea.contador || 'sin contador'}`; acum[k] = (acum[k] ?? 0) + r.kgCO2e; }
   const porContador = (Object.keys(acum) as string[]).map((k) => [k, acum[k]] as [string, number]);
+
+  // Datos de los gráficos (toneladas de CO₂e)
+  const porFuenteKg: Record<string, number> = {};
+  for (const r of resultados) { const k = r.linea.fuente ? r.linea.fuente.replace(/\s*\([^)]*\)\**/g, '').replace(/\*+$/, '').trim() : 'Electricidad'; porFuenteKg[k] = (porFuenteKg[k] ?? 0) + r.kgCO2e; }
+  const datosFuente = (Object.keys(porFuenteKg) as string[]).map((k) => ({ nombre: k, t: porFuenteKg[k] / 1000 })).filter((d) => d.t > 0).sort((a, b) => b.t - a.t);
+  const datosCentro = (Object.keys(totales.porCentro) as string[]).map((k) => ({ nombre: k, t: totales.porCentro[k] / 1000 })).sort((a, b) => b.t - a.t);
+  const totalT = totales.kgCO2eTotal / 1000;
+  const fmtT = (v: number) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 });
+
+  // Trazabilidad: solo cantidad y factor de emisión (kg CO₂e por unidad) para llegar a los kg de CO₂e
+  const filaTraza = (r: (typeof resultados)[number]) => {
+    const l = r.linea;
+    const ud = l.categoria === 'electricidad' ? 'kWh' : l.categoria === 'fugitiva' ? 'kg' : factores.unidades[l.fuente] ?? '';
+    const base = l.cantidad * (l.reparto?.proporcion ?? 1);
+    return { ud, factor: base > 0 ? r.kgCO2e / base : null };
+  };
   const kpi = (titulo: string, kg: number, sub?: string) => (
     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4"><p className="text-[11px] font-semibold text-slate-600">{titulo}</p><p className="text-2xl font-extrabold text-header mt-1 tabular-nums">{t(kg)}</p><p className="text-[11px] text-slate-500">{sub ?? 't CO₂e'}</p></div>
   );
   return (
     <div className="space-y-4">
-      <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-xs">
-        Resultado provisional del cálculo {inv.anio} ({inv.estado}). Factores: <strong>{factores.id}</strong> · GWP CH₄ {factores.gwp.ch4}, N₂O {factores.gwp.n2o} · mix eléctrico balear {factores.mixElectrico} kg CO₂e/kWh. Solo cuentan los datos confirmados.
-      </div>
       {fallos.length > 0 && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-xs space-y-1" role="alert">{fallos.map((f, i) => <p key={i}><AlertTriangle size={12} className="inline mr-1" />{f} (excluido del cálculo hasta corregirlo)</p>)}</div>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {kpi('Alcance 1 · emisiones directas', totales.kgCO2eAlcance1)}
@@ -1813,36 +1826,88 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
         {kpi('Total', totales.kgCO2eTotal)}
         {kpi('Por estancia', indice > 0 ? ratio(totales.kgCO2eTotal, indice) * 1000 : 0, indice > 0 ? `kg CO₂e/estancia (${num(indice)} estancias)` : 'Indique estancias en Centros')}
       </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className={card}>
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Reparto por fuente (t CO₂e)</h3>
+          {datosFuente.length === 0 ? <p className="text-sm text-slate-600">Aún no hay emisiones que representar.</p> : (
+            <div className="flex flex-wrap items-center gap-4">
+              <div style={{ width: 210, height: 210 }} role="img" aria-label="Gráfico de reparto de las emisiones por fuente">
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={datosFuente} dataKey="t" nameKey="nombre" innerRadius={55} outerRadius={95} paddingAngle={2} isAnimationActive={false}>
+                      {datosFuente.map((d, i) => <Cell key={d.nombre} fill={COLORES[i % COLORES.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => `${fmtT(v)} t CO₂e`} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <ul className="flex-1 min-w-[180px] space-y-1.5 text-sm">
+                {datosFuente.map((d, i) => (
+                  <li key={d.nombre} className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: COLORES[i % COLORES.length] }} />
+                    <span className="flex-1 text-slate-800">{d.nombre}</span>
+                    <span className="tabular-nums text-slate-700">{fmtT(d.t)} t</span>
+                    <span className="tabular-nums text-xs text-slate-500 w-12 text-right">{totalT > 0 ? `${((d.t / totalT) * 100).toLocaleString('es-ES', { maximumFractionDigits: 1 })} %` : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+        <GraficoActividad inv={inv} factores={factores} centros={centros} actividad={actividad} filtradas={actividad} fuentesDisp={[]} contadoresDisp={[]}
+          fCentro="" setFCentro={() => {}} fFuente="" setFFuente={() => {}} fContador="" setFContador={() => {}} metrica="co2e" setMetrica={() => {}} compacto />
+      </div>
+
+      {datosCentro.length > 1 && (
+        <div className={card}>
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Emisiones por centro (t CO₂e)</h3>
+          <div style={{ width: '100%', height: Math.max(140, datosCentro.length * 38 + 40) }} role="img" aria-label="Gráfico de emisiones por centro">
+            <ResponsiveContainer>
+              <BarChart data={datosCentro} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v: number) => fmtT(v)} />
+                <YAxis type="category" dataKey="nombre" width={150} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v: number) => `${fmtT(v)} t CO₂e`} />
+                <Bar dataKey="t" fill="#00BF46" radius={[0, 4, 4, 0]} isAnimationActive={false} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       <div className="grid md:grid-cols-2 gap-4">
         <div className={card}>
           <h3 className="text-sm font-bold text-slate-800 mb-2">Por gas (t CO₂e)</h3>
           <Tabla filas={[['CO₂', gas.co2], ['CH₄', gas.ch4_co2e], ['N₂O', gas.n2o_co2e], ['Fluorados (refrigerantes)', gas.fluorados_co2e]]} />
         </div>
         <div className={card}>
-          <h3 className="text-sm font-bold text-slate-800 mb-2">Por categoría y centro (t CO₂e)</h3>
-          <Tabla filas={[...Object.entries(totales.porCategoria).map(([k, v]) => [CATEGORIAS[k as Categoria] ?? k, v] as [string, number]), ...Object.entries(totales.porCentro).map(([k, v]) => [`Centro: ${k}`, v] as [string, number])]} />
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Electricidad: dos métodos (t CO₂e)</h3>
+          <Tabla filas={[['Basado en la ubicación (mix de red)', ubic], ['Basado en el mercado (garantías de origen / autoconsumo)', merc]]} />
+          <p className="text-[11px] text-slate-500 mt-1">Se informan por separado (ISO 14064-1, anexo E).</p>
         </div>
       </div>
-      <div className={card}>
-        <h3 className="text-sm font-bold text-slate-800 mb-1">Electricidad: dos métodos, informados por separado (ISO 14064-1, anexo E)</h3>
-        <Tabla filas={[['Basado en la ubicación (mix de red)', ubic], ['Basado en el mercado (garantías de origen / autoconsumo)', merc]]} />
-      </div>
+
       {porContador.length > 1 && (
-        <div className={card}>
-          <h3 className="text-sm font-bold text-slate-800 mb-2">Por contador / punto de suministro (t CO₂e)</h3>
-          <Tabla filas={porContador} />
-        </div>
+        <details className={`${card} group`}>
+          <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Por contador / punto de suministro <span className="text-xs font-normal text-slate-500">({porContador.length})</span></summary>
+          <div className="mt-3"><Tabla filas={porContador} /></div>
+        </details>
       )}
-      <div className={card}>
-        <h3 className="text-sm font-bold text-slate-800 mb-2">Trazabilidad por línea</h3>
-        <div className="overflow-x-auto"><table className="w-full text-xs">
-          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">kg CO₂e</th><th>Cálculo</th></tr></thead>
-          <tbody>{resultados.map((r) => (
-            <tr key={r.linea.id} className="border-b border-slate-100 align-top"><td className="py-1.5 pr-3">{r.linea.centro}</td><td className="pr-3">{r.linea.fuente || 'Electricidad'}</td><td className="pr-3">{r.linea.contador || '—'}</td>
-              <td className="pr-3 text-right tabular-nums">{num(r.linea.cantidad, 2)}</td><td className="pr-3 text-right tabular-nums">{num(r.kgCO2e, 1)}</td><td className="text-slate-600">{r.trazabilidad.factorUsado}</td></tr>
-          ))}</tbody>
+
+      <details className={`${card} group`}>
+        <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Trazabilidad por línea <span className="text-xs font-normal text-slate-500">({resultados.length})</span></summary>
+        <p className="text-xs text-slate-600 mt-2">Cantidad × factor de emisión = kg de CO₂e.</p>
+        <div className="overflow-x-auto mt-2"><table className="w-full text-xs">
+          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">Factor de emisión</th><th className="text-right">kg CO₂e</th></tr></thead>
+          <tbody>{resultados.map((r) => { const f = filaTraza(r); return (
+            <tr key={r.linea.id} className="border-b border-slate-100"><td className="py-1.5 pr-3">{r.linea.centro}</td><td className="pr-3">{r.linea.fuente || 'Electricidad'}</td><td className="pr-3">{r.linea.contador || '—'}</td>
+              <td className="pr-3 text-right tabular-nums">{num(r.linea.cantidad, 2)} {f.ud}</td>
+              <td className="pr-3 text-right tabular-nums">{f.factor === null ? '—' : <>{num(f.factor, 4)} <span className="text-slate-500">kg CO₂e/{f.ud || 'ud'}</span></>}</td>
+              <td className="text-right tabular-nums font-semibold">{num(r.kgCO2e, 1)}</td></tr>
+          ); })}</tbody>
         </table></div>
-      </div>
+      </details>
     </div>
   );
 };

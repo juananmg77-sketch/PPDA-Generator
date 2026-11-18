@@ -444,51 +444,6 @@ const Spark: React.FC<{ valores: Array<number | undefined>; color: string; mejor
   );
 };
 
-/** Avance de un objetivo: del valor de partida al valor que se quiere alcanzar, con el valor actual marcado. */
-const AvanceObjetivo: React.FC<{ plan: Plan; anios: number[] }> = ({ plan, anios }) => {
-  const ultimo = anios[anios.length - 1];
-  const filas = plan.objetivos.map((o) => {
-    const ind = INDICADORES.find((x) => x.id === o.indicadorId);
-    const conDato = anios.filter((a) => ind && valorIndicador(plan, ind.id, a) !== undefined);
-    const aIni = conDato[0], aAct = conDato[conDato.length - 1];
-    const base = ind && aIni !== undefined ? valorIndicador(plan, ind.id, aIni) : undefined;
-    const act = ind && aAct !== undefined ? valorIndicador(plan, ind.id, aAct) : undefined;
-    const meta = o.metaValor;
-    let prog: number | undefined;
-    if (base !== undefined && act !== undefined && meta !== undefined && meta !== base) prog = (act - base) / (meta - base);
-    return { o, ind, aIni, aAct, base, act, meta, prog };
-  });
-  return (
-    <div className={card}>
-      <h2 className="text-sm font-bold text-slate-800 mb-1">Avance de los objetivos</h2>
-      <p className="text-[11px] text-slate-500 mb-3">Del valor de partida (primer año con datos) al valor que se quiere alcanzar. El círculo marca dónde estamos en {ultimo}.</p>
-      {filas.length === 0 && <p className="text-sm text-slate-600">Todavía no hay objetivos en el plan de acción.</p>}
-      <ul className="space-y-3">
-        {filas.map(({ o, ind, aIni, aAct, base, act, meta, prog }) => {
-          const color = AREAS[o.area].color;
-          const p = prog === undefined ? 0 : Math.max(0, Math.min(prog, 1));
-          const dec = ind?.decimales ?? 0;
-          return (
-            <li key={o.id} className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-x-4 gap-y-1 items-center">
-              <div className="min-w-0"><p className="text-xs font-semibold text-slate-800 leading-tight"><span className="text-slate-500">{o.codigo} ·</span> {o.descripcion}</p><p className="text-[11px] text-slate-500"><span className="font-bold" style={{ color }}>{AREAS[o.area].nombre}</span> · {ind?.nombre} · plazo {o.plazo}</p></div>
-              {meta === undefined ? <p className="text-[11px] text-slate-500 italic">Sin valor objetivo: indíquelo en el Plan de acción para ver el avance.</p> : (
-                <div>
-                  <div className="relative h-3 rounded-full bg-slate-100" role="img" aria-label={`Avance ${prog === undefined ? 'sin datos' : Math.round(prog * 100) + ' %'}`}>
-                    <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${p * 100}%`, background: color }} />
-                    {prog !== undefined && <div className="absolute top-1/2 w-4 h-4 -mt-2 -ml-2 rounded-full border-2 border-white shadow" style={{ left: `${p * 100}%`, background: color }} />}
-                  </div>
-                  <div className="flex justify-between text-[10px] text-slate-600 mt-0.5 tabular-nums"><span>{nf(base, dec)} <span className="text-slate-400">({aIni})</span></span><span className="font-bold text-slate-800">{prog === undefined ? 'sin datos' : prog >= 1 ? 'Meta alcanzada' : `${Math.round(prog * 100)} %`}</span><span>{nf(meta, dec)} <span className="text-slate-400">({o.plazo})</span></span></div>
-                  {act !== undefined && <p className="text-[10px] text-slate-500 text-center">Actual {aAct}: {nf(act, dec)} {ind?.unidad}</p>}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-};
-
 const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
   const [abierto, setAbierto] = useState<string | null>(null);
   const anios = Object.keys(plan.datos).map(Number).sort((a, b) => a - b).filter((a) => a <= anio);
@@ -535,7 +490,6 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2"><button className={btnP} onClick={onCatalogo}><Plus size={15} /> Añadir objetivo del catálogo</button></div>
-      {plan.objetivos.length > 0 && <AvanceObjetivo plan={plan} anios={Object.keys(plan.datos).map(Number).sort((a, b) => a - b)} />}
       {plan.objetivos.length === 0 && <div className={`${card} text-sm text-slate-600`}>Aún no hay objetivos. Añada uno del catálogo de medidas sugeridas (energía, agua, residuos, alimentos y gobernanza).</div>}
       {ORDEN_AREAS.map((area) => ({ area, os: plan.objetivos.filter((o) => o.area === area) })).filter((g) => g.os.length).map(({ area, os }) => (
         <React.Fragment key={area}>

@@ -307,7 +307,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               )}
             </>
           )}
-          {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} onError={falla} />}
+          {modalOrg && <FormOrganizacion org={modalOrg === 'editar' ? org : undefined} centrosOrg={centros} usuario={currentUser} onGuardar={guardarOrg} onCerrar={() => setModalOrg(null)} onError={falla} />}
           {centroEditar && <FormCentro centro={centroEditar} onGuardar={guardarCentro} onCerrar={() => setCentroEditar(null)} onError={falla} />}
           {!org && orgs.length === 0 && <div className={`${card} text-sm text-slate-600`}>{esConsultor ? 'Todavía no hay organizaciones. Cree la primera con el botón + del menú.' : 'Todavía no tiene acceso a ninguna organización.'}</div>}
         </div>
@@ -631,11 +631,31 @@ const Campo: React.FC<{ etiqueta: string; children: React.ReactNode; ancho?: boo
   <label className={`text-xs font-semibold text-slate-700 ${ancho ? 'col-span-2' : ''}`}>{etiqueta}<div className="mt-1">{children}</div></label>
 );
 
-const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }, hoteles: HotelSuite[]) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ org, usuario, onGuardar, onCerrar, onError }) => {
+const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }, hoteles: HotelSuite[]) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ org, centrosOrg = [], usuario, onGuardar, onCerrar, onError }) => {
   const [cadenaSuite, setCadenaSuite] = useState<string | null>(org?.suite_cadena ?? null);
   const [hoteles, setHoteles] = useState<HotelSuite[]>([]);
   const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: org?.criterio_consolidacion ?? 'control', consultor: org?.consultor_email ?? usuario });
   const [guardando, setGuardando] = useState(false);
+  // Al editar: datos de los hoteles de HS Suite vinculados a los centros (o elegidos a mano), solo lectura salvo lo que se vuelca al formulario
+  const [deSuite, setDeSuite] = useState<HotelSuite[]>([]);
+  const [cargandoSuite, setCargandoSuite] = useState(false);
+  const [notaSuite, setNotaSuite] = useState('');
+  const volcar = (hs: HotelSuite[], sobrescribir: boolean) => {
+    const o = hs[0] ? organizacionDesdeHotel(hs[0]) : null;
+    if (!o) return;
+    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (o.cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (o.direccion ?? p.direccion) : p.direccion }));
+  };
+  const cargarVinculados = async (sobrescribir: boolean) => {
+    const ids = centrosOrg.map((c) => c.suite_hotel_id).filter((x): x is string => !!x).slice(0, 25);
+    if (!ids.length) return;
+    setCargandoSuite(true);
+    try {
+      const res = (await Promise.all(ids.map((id) => huellaService.buscarHoteles({ id }).then((r) => r[0] ?? null)))).filter((h): h is HotelSuite => !!h);
+      setDeSuite(res); volcar(res, sobrescribir);
+      setNotaSuite(sobrescribir ? 'Datos actualizados desde HS Suite: revíselos y pulse Guardar.' : '');
+    } catch (e) { onError?.(e); } finally { setCargandoSuite(false); }
+  };
+  useEffect(() => { if (org) void cargarVinculados(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
   const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }, hoteles); onCerrar(); } finally { setGuardando(false); } };
   return (
@@ -665,6 +685,36 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; usuario: string; onGuarda
                     <Building2 size={13} className="text-slate-500" />
                     <span className="flex-1 min-w-0 truncate"><strong>{h.nombre_hotel}</strong> · {[h.direccion_completa, h.municipio, h.isla].filter(Boolean).join(' · ')}</span>
                     <button className="p-1 text-slate-500 hover:text-red-600" aria-label={`Quitar ${h.nombre_hotel}`} onClick={() => setHoteles((l) => l.filter((x) => x.id !== h.id))}><XCircle size={14} /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      {org && (
+        <div className="mb-4 rounded-xl p-3" style={{ background: '#F4F7FA' }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-semibold text-slate-700 flex-1 min-w-[200px]">Datos en HS Suite{cargandoSuite && <Loader2 size={12} className="inline animate-spin ml-1" />}
+              {notaSuite && <span className="block text-green-700 mt-0.5">{notaSuite}</span>}</p>
+            {centrosOrg.some((c) => c.suite_hotel_id) && <button className={btnS} onClick={() => cargarVinculados(true)} disabled={cargandoSuite}><Search size={13} /> Actualizar desde HS Suite</button>}
+          </div>
+          {!centrosOrg.some((c) => c.suite_hotel_id) && (
+            <div className="mt-2">
+              <p className="text-[11px] text-slate-600 mb-2">Ningún centro está vinculado a HS Suite. Busque el hotel para traer su CIF, dirección y capacidad (no se crea nada).</p>
+              <BuscadorHoteles textoBoton="Traer datos" placeholder="Busque el hotel, la cadena o el titular" vinculados={new Set(deSuite.map((h) => h.id))}
+                onElegir={(h) => { setDeSuite([h]); volcar([h], true); setNotaSuite('Datos traídos de HS Suite: revíselos y pulse Guardar.'); }}
+                onCadena={async (cadena) => { try { const todos = (await huellaService.buscarHoteles({ cadena, limite: 200 })).filter((h) => h.activo !== false); setDeSuite(todos); volcar(todos, true); setNotaSuite('Datos traídos de la cadena en HS Suite: revíselos y pulse Guardar.'); } catch (e) { onError?.(e); } }} />
+            </div>
+          )}
+          {deSuite.length > 0 && (
+            <div className="mt-3">
+              <p className="text-[11px] text-slate-600 mb-1">{deSuite.length} hotel{deSuite.length === 1 ? '' : 'es'} · <strong>{deSuite.reduce((a, h) => a + (h.num_habitaciones ?? 0), 0).toLocaleString('es-ES')}</strong> habitaciones · <strong>{deSuite.reduce((a, h) => a + (h.num_plazas ?? 0), 0).toLocaleString('es-ES')}</strong> plazas</p>
+              <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-36 overflow-auto">
+                {deSuite.map((h) => (
+                  <li key={h.id} className="px-3 py-1.5 text-xs">
+                    <strong>{h.nombre_hotel}</strong>{h.titular ? ` · ${h.titular}` : ''}{h.cif ? ` · ${h.cif}` : ''}
+                    <span className="block text-slate-500">{[h.direccion_completa, h.municipio, h.isla].filter(Boolean).join(' · ')} · {h.num_habitaciones ?? '—'} hab. · {h.num_plazas ?? '—'} plazas</span>
                   </li>
                 ))}
               </ul>

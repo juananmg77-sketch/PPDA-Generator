@@ -219,7 +219,6 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     graficos.push({ k: 'grafico', titulo: `Evolución mensual de las emisiones ${anio} (t CO₂e)`, ...svgBarrasApiladas(NOMBRES_MES, seriesM, 'Evolución mensual de las emisiones'), pie: 'Cada consumo se reparte por meses en proporción a los días de su periodo de facturación.' });
   }
   const centrosT = Object.entries(tot.porCentro).map(([nombre, kg]) => ({ nombre, t: kg / 1000 }));
-  if (centrosT.length > 1) graficos.push({ k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro') });
   if (d.anterior) {
     graficos.push({ k: 'grafico', titulo: `Comparación con ${d.anterior.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Alcance 1', 'Alcance 2', 'Total'], [
       { nombre: String(d.anterior.anio), valores: [d.anterior.a1 / 1000, d.anterior.a2 / 1000, d.anterior.total / 1000] },
@@ -232,12 +231,16 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     ...graficos,
     { k: 'h', texto: '9.1 Resultados por categoría' },
     { k: 'tabla', cab: ['Categoría', 'Emisiones (t CO₂e)'], filas: [['1 · Emisiones directas (Alcance 1)', tn(tot.kgCO2eAlcance1)], ['2 · Energía importada (Alcance 2, criterio del registro)', tn(tot.kgCO2eAlcance2)], ['Total', tn(tot.kgCO2eTotal)]], numericas: [1], pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
+    { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales([{ nombre: '1 · Emisiones directas', t: tot.kgCO2eAlcance1 / 1000 }, { nombre: '2 · Energía importada', t: tot.kgCO2eAlcance2 / 1000 }], 'Emisiones por categoría'), pie: 'Alcance 1 (combustibles, refrigerantes) y Alcance 2 (electricidad) del inventario.' },
     { k: 'h', texto: '9.2 Resultados por gas' },
     { k: 'tabla', cab: ['Gas', 'Emisiones (t CO₂e)'], filas: [['CO₂', tn(g.co2)], ['CH₄', tn(g.ch4_co2e, 3)], ['N₂O', tn(g.n2o_co2e, 3)], ['Fluorados (refrigerantes)', tn(g.fluorados_co2e)]], numericas: [1] },
+    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales([{ nombre: 'CO₂', t: g.co2 / 1000 }, { nombre: 'CH₄', t: g.ch4_co2e / 1000 }, { nombre: 'N₂O', t: g.n2o_co2e / 1000 }, { nombre: 'Fluorados (refrigerantes)', t: g.fluorados_co2e / 1000 }], 'Emisiones por gas', 3), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
     { k: 'h', texto: '9.4 Resultados por centro' },
     { k: 'tabla', cab: ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; return [c.nombre, tn(kg), num(c.indice, 0), c.indice > 0 ? num(kg / 1000 / c.indice, 4) : 'n/a']; }), numericas: [1, 2, 3] },
+    { k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' },
+    ...(d.centros.filter((c) => c.indice > 0).length > 1 ? [{ k: 'grafico' as const, titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' }] : []),
     { k: 'p', texto: indiceTotal > 0 ? `Ratio global: ${num(tot.kgCO2eTotal / 1000 / indiceTotal, 4)} t CO₂e por estancia (${num(indiceTotal, 0)} estancias).` : 'No se calcula el ratio global: no hay índice de actividad.' },
   ];
   if (d.anterior) {

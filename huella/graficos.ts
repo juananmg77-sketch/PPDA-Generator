@@ -102,7 +102,7 @@ export function svgBarrasApiladas(categorias: string[], series: Array<{ nombre: 
 }
 
 /** Barras horizontales (p. ej. por centro), valores en t CO₂e con su etiqueta a la derecha. */
-export function svgBarrasHorizontales(datos: Array<{ nombre: string; t: number }>, titulo: string): Grafico {
+export function svgBarrasHorizontales(datos: Array<{ nombre: string; t: number }>, titulo: string, decimales = 2, unidad = 't'): Grafico {
   const util = [...datos].sort((a, b) => b.t - a.t).slice(0, 12);
   const fila = 28, W = 640, sup = 12, izq = 190, der = 90, H = Math.max(110, sup * 2 + util.length * fila);
   let s = abre(W, H, titulo);
@@ -111,7 +111,7 @@ export function svgBarrasHorizontales(datos: Array<{ nombre: string; t: number }
   util.forEach((d, i) => {
     const yy = sup + i * fila, ancho = ((W - izq - der) * d.t) / max;
     const nombre = d.nombre.length > 28 ? d.nombre.slice(0, 27) + '…' : d.nombre;
-    s += `<text x="${izq - 8}" y="${yy + 16}" text-anchor="end" fill="${TEXTO}" font-size="11">${esc(nombre)}</text><rect x="${izq}" y="${yy + 4}" width="${px(Math.max(ancho, 1))}" height="16" rx="2" fill="${PALETA[0]}"/><text x="${px(izq + ancho + 6)}" y="${yy + 16}" fill="${TEXTO}" font-size="11" font-weight="600">${nf(d.t, 2)} t</text>`;
+    s += `<text x="${izq - 8}" y="${yy + 16}" text-anchor="end" fill="${TEXTO}" font-size="11">${esc(nombre)}</text><rect x="${izq}" y="${yy + 4}" width="${px(Math.max(ancho, 1))}" height="16" rx="2" fill="${PALETA[0]}"/><text x="${px(izq + ancho + 6)}" y="${yy + 16}" fill="${TEXTO}" font-size="11" font-weight="600">${nf(d.t, decimales)} ${unidad}</text>`;
   });
   return { svg: s + '</svg>', ancho: W, alto: H };
 }

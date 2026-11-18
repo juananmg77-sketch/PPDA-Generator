@@ -92,8 +92,8 @@ test('el informe incluye gráficos en Resultados: reparto, evolución mensual (s
   const m = construirInforme(d);
   const r = m.secciones.find((s) => s.id === '9')!;
   const graf = r.bloques.filter((b) => b.k === 'grafico');
-  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Reparto de las emisiones por fuente', 'Evolución mensual de las emisiones 2023', 'Comparación con 2022']);
+  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Reparto de las emisiones por fuente', 'Evolución mensual de las emisiones 2023', 'Comparación con 2022', 'Emisiones por categoría', 'Emisiones por gas', 'Emisiones por centro']);
   for (const g of graf) assert.match((g as { svg: string }).svg, /^<svg/);
   const sinMensual = construirInforme({ ...base(), anterior: null }).secciones.find((s) => s.id === '9')!.bloques.filter((b) => b.k === 'grafico');
-  assert.equal(sinMensual.length, 1); // solo el reparto por fuente
+  assert.equal(sinMensual.length, 4); // reparto por fuente + categoría + gas + centro
 });

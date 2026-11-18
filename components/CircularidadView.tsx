@@ -357,16 +357,67 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
     </div>
   );
 };
+/** Gráfico de evolución de un indicador: barras por año y, si hay objetivo con valor, línea de meta punteada y marcador en su año. */
+const MiniEvolucion: React.FC<{ fila: ReturnType<typeof evolucion>[number]; anios: number[]; meta?: { valor: number; anio: number }; color: string }> = ({ fila, anios, meta, color }) => {
+  const W = 300, H = 150, L = 8, R = 8, T = 22, B = 22;
+  const slots = [...anios, ...(meta && !anios.includes(meta.anio) && meta.anio > anios[anios.length - 1] ? [meta.anio] : [])];
+  const vals = anios.map((a) => fila.valores[a]).filter((v): v is number => v !== undefined);
+  const max = Math.max(...vals, meta?.valor ?? 0, 1e-9) * 1.12;
+  const y = (v: number) => T + (H - T - B) * (1 - v / max);
+  const bw = (W - L - R) / Math.max(slots.length, 1);
+  const fmtV = (v: number) => nf(v, fila.decimales);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`Evolución de ${fila.nombre}`}>
+      <line x1={L} x2={W - R} y1={H - B} y2={H - B} stroke="#CBD5E1" />
+      {slots.map((a, i) => {
+        const v = fila.valores[a]; const x = L + i * bw + bw * 0.18; const w = bw * 0.64;
+        if (v === undefined) return <text key={a} x={L + i * bw + bw / 2} y={H - B - 6} textAnchor="middle" fontSize="9" fill="#94A3B8">{anios.includes(a) ? 'sin dato' : ''}</text>;
+        return <g key={a}><rect x={x} y={y(v)} width={w} height={H - B - y(v)} rx="3" fill={a === anios[anios.length - 1] ? color : `${color}99`} /><text x={x + w / 2} y={y(v) - 4} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#00093D">{fmtV(v)}</text></g>;
+      })}
+      {meta && (() => {
+        const idx = slots.indexOf(meta.anio); const yy = y(meta.valor);
+        return <g><line x1={L} x2={W - R} y1={yy} y2={yy} stroke="#F9416D" strokeWidth="1.4" strokeDasharray="5 3" />
+          {idx >= 0 && fila.valores[meta.anio] === undefined && <rect x={L + idx * bw + bw * 0.18} y={yy} width={bw * 0.64} height={H - B - yy} rx="3" fill="none" stroke="#F9416D" strokeDasharray="4 3" />}
+          <text x={W - R} y={yy - 4} textAnchor="end" fontSize="9" fontWeight="700" fill="#F9416D">Meta {meta.anio}: {fmtV(meta.valor)}</text></g>;
+      })()}
+      {slots.map((a, i) => <text key={`x${a}`} x={L + i * bw + bw / 2} y={H - 8} textAnchor="middle" fontSize="10" fill="#475569">{a}</text>)}
+    </svg>
+  );
+};
+
 const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
   const anios = Object.keys(plan.datos).map(Number).sort((a, b) => a - b).filter((a) => a <= anio);
   const ev = evolucion(plan, anios);
   return (
     <div className={card}>
-      <h2 className="text-sm font-bold text-slate-800 mb-2">Evolución anual de los indicadores</h2>
-      <div className="overflow-x-auto"><table className="w-full text-xs">
-        <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Indicador</th><th>Unidad</th>{anios.map((a) => <th key={a} className="text-right">{a}</th>)}<th className="text-right">Tendencia</th></tr></thead>
-        <tbody>{ev.map((x) => <tr key={x.id} className="border-b border-slate-100"><td className="py-1.5 pr-2">{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>{anios.map((a) => <td key={a} className="text-right tabular-nums">{nf(x.valores[a], x.decimales)}</td>)}<td className="text-right"><Tendencia t={x.tendencia} /></td></tr>)}</tbody>
-      </table></div>
+      <h2 className="text-sm font-bold text-slate-800 mb-1">Evolución anual de los indicadores</h2>
+      <p className="text-[11px] text-slate-500 mb-3">Cada gráfico muestra el indicador año a año. Si el plan de acción tiene un valor objetivo para ese indicador, aparece como línea de meta punteada.</p>
+      {ORDEN_AREAS.map((a) => {
+        const filas = ev.filter((x) => x.area === a && anios.some((y) => x.valores[y] !== undefined));
+        if (filas.length === 0) return null;
+        return (
+          <div key={a} className="mb-4">
+            <p className="text-xs font-bold text-slate-700 flex items-center gap-2 mb-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: AREAS[a].color }} />{AREAS[a].nombre}</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {filas.map((x) => {
+                const o = plan.objetivos.find((q) => q.indicadorId === x.id && q.metaValor !== undefined);
+                return (
+                  <div key={x.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex items-start gap-2"><p className="text-xs font-semibold text-slate-800 flex-1 leading-tight">{x.nombre} <span className="font-normal text-slate-500">({x.unidad})</span></p><Tendencia t={x.tendencia} /></div>
+                    <MiniEvolucion fila={x} anios={anios} color={AREAS[a].color} meta={o ? { valor: o.metaValor!, anio: Number(o.plazo) || plan.ficha.vigenciaHasta } : undefined} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <details className="mt-2"><summary className="cursor-pointer text-xs font-bold text-brand-700">Ver como tabla</summary>
+        <div className="overflow-x-auto mt-2"><table className="w-full text-xs">
+          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Indicador</th><th>Unidad</th>{anios.map((a) => <th key={a} className="text-right">{a}</th>)}<th className="text-right">Tendencia</th></tr></thead>
+          <tbody>{ev.map((x) => <tr key={x.id} className="border-b border-slate-100"><td className="py-1.5 pr-2">{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>{anios.map((a) => <td key={a} className="text-right tabular-nums">{nf(x.valores[a], x.decimales)}</td>)}<td className="text-right"><Tendencia t={x.tendencia} /></td></tr>)}</tbody>
+        </table></div>
+      </details>
     </div>
   );
 };
@@ -396,6 +447,7 @@ const PlanPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) => 
               <Campo etiqueta="Responsable"><input className={input} value={o.responsable} onChange={(e) => setObj(o.id, 'responsable', e.target.value)} /></Campo>
               <Campo etiqueta="Línea base"><input className={input} value={o.lineaBase} onChange={(e) => setObj(o.id, 'lineaBase', e.target.value)} placeholder="Valor de partida del indicador" /></Campo>
               <Campo etiqueta="Meta"><input className={input} value={o.meta} onChange={(e) => setObj(o.id, 'meta', e.target.value)} placeholder="p. ej. −5 % en 2028" /></Campo>
+              <Campo etiqueta={`Valor que se quiere alcanzar (${INDICADORES.find((i) => i.id === o.indicadorId)?.unidad ?? 'unidad del indicador'})`}><input type="number" className={input} value={o.metaValor ?? ''} onChange={(e) => cambiar((p) => ({ ...p, objetivos: p.objetivos.map((x) => (x.id === o.id ? { ...x, metaValor: e.target.value === '' ? undefined : Number(e.target.value) } : x)) }))} placeholder="Para dibujar la línea de meta" /></Campo>
               <Campo etiqueta="Recursos necesarios"><input className={input} value={o.recursos} onChange={(e) => setObj(o.id, 'recursos', e.target.value)} /></Campo>
               <Campo etiqueta="Inversión"><input className={input} value={o.inversion} onChange={(e) => setObj(o.id, 'inversion', e.target.value)} /></Campo>
             </div>

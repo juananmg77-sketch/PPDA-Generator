@@ -22,6 +22,8 @@ export interface Accion { id: string; codigo: string; descripcion: string; respo
 export interface Objetivo {
   id: string; codigo: string; area: Area; descripcion: string; indicadorId: string; lineaBase: string; meta: string; plazo: string;
   responsable: string; recursos: string; inversion: string; acciones: Accion[];
+  /** Valor numérico del indicador que se quiere alcanzar en el plazo (sirve para dibujar la línea de meta). */
+  metaValor?: number;
 }
 export interface Trimestre { cumple: boolean; evidencia: string }
 export interface SeguimientoAccion { t1: Trimestre; t2: Trimestre; t3: Trimestre; t4: Trimestre; notas: string }

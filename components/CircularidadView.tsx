@@ -305,11 +305,18 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
   const anios = [...new Set([...Object.keys(plan.datos).map(Number), anio])].sort((a, b) => a - b);
   const siguiente = anios[anios.length - 1] + 1;
   const dentroVigencia = siguiente <= plan.ficha.vigenciaHasta;
+  const [vista, setVista] = useState<'datos' | 'evolucion'>('datos');
   const nuevoAnio = () => { cambiar((p) => ({ ...p, datos: { ...p.datos, [siguiente]: p.datos[siguiente] ?? {} } })); setAnio(siguiente); };
   const setDato = (campo: string, v: string) => cambiar((p) => ({ ...p, datos: { ...p.datos, [anio]: { ...(p.datos[anio] ?? {}), [campo]: v === '' ? undefined : Number(v) } } }));
   const comp = completitud(plan, anio);
   return (
     <div className="space-y-3">
+      <div className="inline-flex rounded-xl border border-slate-300 overflow-hidden bg-white text-sm font-semibold" role="tablist" aria-label="Vista de indicadores">
+        {([['datos', 'Introducción de datos'], ['evolucion', 'Evolución anual']] as const).map(([k, n]) => (
+          <button key={k} role="tab" aria-selected={vista === k} onClick={() => setVista(k)} className={`px-4 py-2 transition-colors ${vista === k ? 'text-white' : 'text-slate-700 hover:bg-slate-50'}`} style={vista === k ? { background: '#0002C9' } : undefined}>{n}</button>
+        ))}
+      </div>
+      {vista === 'evolucion' ? <Evolucion plan={plan} anio={anios[anios.length - 1]} /> : <>
       <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Año de evaluación">
         {anios.map((a) => (
           <button key={a} role="tab" aria-selected={a === anio} onClick={() => setAnio(a)}
@@ -353,7 +360,7 @@ const IndicadoresPanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Pl
           </div>
         </details>
       ))}
-      <Evolucion plan={plan} anio={anio} />
+      </>}
     </div>
   );
 };
@@ -386,38 +393,50 @@ const MiniEvolucion: React.FC<{ fila: ReturnType<typeof evolucion>[number]; anio
 };
 
 const Evolucion: React.FC<{ plan: Plan; anio: number }> = ({ plan, anio }) => {
+  const [modo, setModo] = useState<'tabla' | 'graficos'>('tabla');
   const anios = Object.keys(plan.datos).map(Number).sort((a, b) => a - b).filter((a) => a <= anio);
   const ev = evolucion(plan, anios);
   return (
     <div className={card}>
-      <h2 className="text-sm font-bold text-slate-800 mb-1">Evolución anual de los indicadores</h2>
-      <p className="text-[11px] text-slate-500 mb-3">Cada gráfico muestra el indicador año a año. Si el plan de acción tiene un valor objetivo para ese indicador, aparece como línea de meta punteada.</p>
-      {ORDEN_AREAS.map((a) => {
-        const filas = ev.filter((x) => x.area === a && anios.some((y) => x.valores[y] !== undefined));
-        if (filas.length === 0) return null;
-        return (
-          <div key={a} className="mb-4">
-            <p className="text-xs font-bold text-slate-700 flex items-center gap-2 mb-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: AREAS[a].color }} />{AREAS[a].nombre}</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {filas.map((x) => {
-                const o = plan.objetivos.find((q) => q.indicadorId === x.id && q.metaValor !== undefined);
-                return (
-                  <div key={x.id} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex items-start gap-2"><p className="text-xs font-semibold text-slate-800 flex-1 leading-tight">{x.nombre} <span className="font-normal text-slate-500">({x.unidad})</span></p><Tendencia t={x.tendencia} /></div>
-                    <MiniEvolucion fila={x} anios={anios} color={AREAS[a].color} meta={o ? { valor: o.metaValor!, anio: Number(o.plazo) || plan.ficha.vigenciaHasta } : undefined} />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-      <details className="mt-2"><summary className="cursor-pointer text-xs font-bold text-brand-700">Ver como tabla</summary>
-        <div className="overflow-x-auto mt-2"><table className="w-full text-xs">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <h2 className="text-sm font-bold text-slate-800 flex-1">Evolución anual de los indicadores</h2>
+        <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden bg-white text-xs font-semibold" role="group" aria-label="Forma de verlo">
+          {([['tabla', 'Tabla'], ['graficos', 'Gráficos']] as const).map(([k, n]) => (
+            <button key={k} aria-pressed={modo === k} onClick={() => setModo(k)} className={`px-3 py-1.5 ${modo === k ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-50'}`}>{n}</button>
+          ))}
+        </div>
+      </div>
+      {modo === 'tabla' ? (
+        <div className="overflow-x-auto"><table className="w-full text-xs">
           <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-1.5">Indicador</th><th>Unidad</th>{anios.map((a) => <th key={a} className="text-right">{a}</th>)}<th className="text-right">Tendencia</th></tr></thead>
-          <tbody>{ev.map((x) => <tr key={x.id} className="border-b border-slate-100"><td className="py-1.5 pr-2">{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>{anios.map((a) => <td key={a} className="text-right tabular-nums">{nf(x.valores[a], x.decimales)}</td>)}<td className="text-right"><Tendencia t={x.tendencia} /></td></tr>)}</tbody>
+          <tbody>{ORDEN_AREAS.flatMap((a) => [
+            <tr key={`h${a}`}><td colSpan={anios.length + 3} className="pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: AREAS[a].color }}>{AREAS[a].nombre}</td></tr>,
+            ...ev.filter((x) => x.area === a).map((x) => <tr key={x.id} className="border-b border-slate-100"><td className="py-1.5 pr-2">{x.nombre}</td><td className="pr-2 text-slate-500">{x.unidad}</td>{anios.map((y) => <td key={y} className="text-right tabular-nums">{nf(x.valores[y], x.decimales)}</td>)}<td className="text-right"><Tendencia t={x.tendencia} /></td></tr>),
+          ])}</tbody>
         </table></div>
-      </details>
+      ) : (<>
+        <p className="text-[11px] text-slate-500 mb-3">Si el plan de acción tiene un valor objetivo para el indicador, aparece como línea de meta punteada.</p>
+        {ORDEN_AREAS.map((a) => {
+          const filas = ev.filter((x) => x.area === a && anios.some((y) => x.valores[y] !== undefined));
+          if (filas.length === 0) return null;
+          return (
+            <div key={a} className="mb-4">
+              <p className="text-xs font-bold text-slate-700 flex items-center gap-2 mb-2"><span className="w-2.5 h-2.5 rounded-full" style={{ background: AREAS[a].color }} />{AREAS[a].nombre}</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {filas.map((x) => {
+                  const o = plan.objetivos.find((q) => q.indicadorId === x.id && q.metaValor !== undefined);
+                  return (
+                    <div key={x.id} className="rounded-xl border border-slate-200 p-3">
+                      <div className="flex items-start gap-2"><p className="text-xs font-semibold text-slate-800 flex-1 leading-tight">{x.nombre} <span className="font-normal text-slate-500">({x.unidad})</span></p><Tendencia t={x.tendencia} /></div>
+                      <MiniEvolucion fila={x} anios={anios} color={AREAS[a].color} meta={o ? { valor: o.metaValor!, anio: Number(o.plazo) || plan.ficha.vigenciaHasta } : undefined} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </>)}
     </div>
   );
 };

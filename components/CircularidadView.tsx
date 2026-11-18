@@ -1,4 +1,4 @@
-// Plan de Circularidad (Ley 3/2022 Illes Balears) · HS GREEN. Versión de demostración: los datos viven en este navegador (localStorage) y arranca con un establecimiento de ejemplo.
+// Plan de Circularidad (Ley 3/2022 Illes Balears) · HS GREEN. Biblioteca de planes guardados en la base (circ_planes) y un ejemplo de demostración que vive en el navegador (localStorage).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Building2, Gauge, ListChecks, ClipboardCheck, Scale, FileCheck, LayoutDashboard, Plus, Trash2, CheckCircle2, AlertTriangle, Printer, Download, RotateCcw, Lock, Unlock, TrendingUp, TrendingDown, Minus, Loader2, X } from 'lucide-react';
 import { AREAS, CATEGORIAS_HOTEL, INDICADORES, MEDIDAS, ORDEN_AREAS, REQUISITOS, tablaCamas } from '../circularidad/catalogo';
@@ -8,6 +8,11 @@ import type { Objetivo, Plan } from '../circularidad/plan';
 import { planDemo } from '../circularidad/demo';
 import { construirInformeCirculardad } from '../circularidad/informe';
 import { informeAHtml } from '../huella/informeHtml';
+import { planVacio } from '../circularidad/plan';
+import { circularidadService } from '../services/circularidadService';
+import type { FilaPlan } from '../services/circularidadService';
+import { huellaService } from '../services/huellaService';
+import type { Organizacion } from '../services/huellaService';
 
 type Pestana = 'resumen' | 'ficha' | 'indicadores' | 'plan' | 'seguimiento' | 'cumplimiento' | 'informe';
 const CLAVE = 'hsgreen-circularidad-demo-v1';
@@ -38,14 +43,36 @@ const Tendencia: React.FC<{ t: string }> = ({ t }) => t === 'mejora' ? <span cla
 
 const ESTADOS: Array<[EstadoReq, string, string]> = [['cumple', 'Cumple', 'bg-green-100 text-green-800'], ['parcial', 'Parcial', 'bg-amber-100 text-amber-800'], ['no', 'No cumple', 'bg-red-100 text-red-800'], ['na', 'No aplica', 'bg-slate-100 text-slate-600'], ['pendiente', 'Pendiente', 'bg-slate-100 text-slate-700']];
 
-const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = ({ onBack, currentUser }) => {
-  const [plan, setPlan] = useState<Plan>(cargar);
+type Guardado = 'guardado' | 'guardando' | 'error';
+const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; currentUser: string; onGuardar?: (p: Plan) => Promise<void> }> = ({ plan0, demo, onSalir, currentUser, onGuardar }) => {
+  const onBack = onSalir;
+  const [plan, setPlan] = useState<Plan>(plan0);
+  const [guardado, setGuardado] = useState<Guardado>('guardado');
+  const [errorGuardar, setErrorGuardar] = useState('');
+  const sucio = useRef(false);
+  const ultimo = useRef(plan0);
   const [tab, setTab] = useState<Pestana>('resumen');
   const aniosDatos = useMemo(() => Object.keys(plan.datos).map(Number).sort((a, b) => a - b), [plan.datos]);
   const [anio, setAnio] = useState<number>(() => aniosDatos[aniosDatos.length - 1] ?? new Date().getFullYear());
   const [modalMedida, setModalMedida] = useState(false);
-  useEffect(() => { try { localStorage.setItem(CLAVE, JSON.stringify(plan)); } catch { /* ignorar */ } }, [plan]);
-  const cambiar = (f: (p: Plan) => Plan) => setPlan((p) => f(p));
+  const volcar = async (p: Plan) => {
+    if (demo) { try { localStorage.setItem(CLAVE, JSON.stringify(p)); } catch { /* ignorar */ } sucio.current = false; return; }
+    setGuardado('guardando');
+    try { await onGuardar!(p); if (ultimo.current === p) { sucio.current = false; setGuardado('guardado'); setErrorGuardar(''); } }
+    catch (e) { setGuardado('error'); setErrorGuardar(e instanceof Error ? e.message : String(e)); }
+  };
+  useEffect(() => {
+    ultimo.current = plan;
+    if (!sucio.current) return;
+    const t = setTimeout(() => { void volcar(plan); }, demo ? 0 : 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+  const cambiar = (f: (p: Plan) => Plan) => { sucio.current = true; setPlan((p) => f(p)); };
+  const salir = async () => {
+    if (!demo && sucio.current) { await volcar(ultimo.current); if (sucio.current && !confirm('No se ha podido guardar el último cambio. ¿Salir de todos modos?')) return; }
+    onSalir();
+  };
 
   const aniosOpc = useMemo(() => { const s = new Set<number>(aniosDatos); s.add(anio); for (let a = plan.ficha.vigenciaDesde; a <= plan.ficha.vigenciaHasta; a++) s.add(a); return [...s].sort((a, b) => a - b); }, [aniosDatos, anio, plan.ficha.vigenciaDesde, plan.ficha.vigenciaHasta]);
   const filasC = useMemo(() => cumplimiento(plan, HOY), [plan]);
@@ -81,7 +108,7 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
       <aside className="md:w-60 flex-shrink-0 flex flex-col md:border-r border-white/70" style={{ background: 'rgba(255,255,255,.66)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', backdropFilter: 'blur(14px) saturate(1.2)', color: '#00093D' }}>
         <div className="flex items-center gap-2 px-3 pt-4 pb-2">
-          <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-white/70" title="Volver" aria-label="Volver al inicio"><ArrowLeft size={17} /></button>
+          <button onClick={() => void salir()} className="p-1.5 rounded-lg hover:bg-white/70" title="Volver a la biblioteca" aria-label="Volver a la biblioteca de planes"><ArrowLeft size={17} /></button>
           <img src="/logo-hsgreen-recortado.png" alt="HS GREEN · Environment & Sustainability" className="h-10 w-auto object-contain" />
         </div>
         <p className="px-4 pb-3 text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'rgba(0,9,61,.6)' }}>Plan de circularidad</p>
@@ -96,7 +123,7 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
           ))}
         </nav>
         <div className="hidden md:block mt-auto px-4 py-4 border-t" style={{ borderColor: 'rgba(0,9,61,.12)' }}>
-          <button className="text-[11px] font-semibold underline mb-3 inline-flex items-center gap-1" style={{ color: 'rgba(0,9,61,.75)' }} onClick={() => { if (confirm('¿Restablecer el ejemplo? Se perderán los cambios de esta demostración.')) setPlan(planDemo()); }}><RotateCcw size={11} /> Restablecer ejemplo</button>
+          {demo && <button className="text-[11px] font-semibold underline mb-3 inline-flex items-center gap-1" style={{ color: 'rgba(0,9,61,.75)' }} onClick={() => { if (confirm('¿Restablecer el ejemplo? Se perderán los cambios de esta demostración.')) { sucio.current = true; setPlan(planDemo()); } }}><RotateCcw size={11} /> Restablecer ejemplo</button>}
           <img src="/logo-hs-group.png" alt="HS Consulting Group" className="h-9 w-auto object-contain" />
           <p className="text-[11px] mt-2 truncate" style={{ color: 'rgba(0,9,61,.65)' }}>{currentUser}</p>
         </div>
@@ -113,9 +140,11 @@ const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = 
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800">Plan {plan.ficha.vigenciaDesde}-{plan.ficha.vigenciaHasta}</span>
-              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">Demostración</span>
+              {demo ? <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">Demostración</span>
+                : <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${guardado === 'error' ? 'bg-red-100 text-red-800' : guardado === 'guardando' ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}`} role="status">{guardado === 'guardando' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar' : 'Guardado'}</span>}
             </div>
           </div>
+          {errorGuardar && <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{errorGuardar}</span></div>}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]"><h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1><p className="text-sm text-slate-600">{titulos[tab][1]}</p></div>
             {['resumen', 'indicadores', 'seguimiento', 'informe'].includes(tab) && selectorAnio}
@@ -455,6 +484,89 @@ const InformePanel: React.FC<{ plan: Plan; anio: number; cambiar: (f: (p: Plan) 
           <ul className="mt-2 text-xs text-slate-700 list-disc pl-5 space-y-0.5">{modelo.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul></details>
       )}
       <iframe ref={marco} title="Vista previa del informe" srcDoc={html} className="w-full rounded-lg border border-slate-200 bg-white" style={{ height: 720 }} />
+    </div>
+  );
+};
+
+
+
+// ---------- Biblioteca de planes ----------
+const fechaCorta = (iso: string) => new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+const CircularidadView: React.FC<{ onBack: () => void; currentUser: string }> = ({ onBack, currentUser }) => {
+  const [abierto, setAbierto] = useState<{ id: string | null; plan: Plan } | null>(null);
+  const [planes, setPlanes] = useState<FilaPlan[]>([]);
+  const [orgs, setOrgs] = useState<Organizacion[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  const [orgNueva, setOrgNueva] = useState('');
+  const [creando, setCreando] = useState(false);
+
+  const recargar = async () => {
+    setCargando(true); setError('');
+    try { const [p, o] = await Promise.all([circularidadService.listar(), huellaService.organizaciones()]); setPlanes(p); setOrgs(o); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setCargando(false); }
+  };
+  useEffect(() => { void recargar(); }, []);
+
+  const abrir = async (id: string) => {
+    setError('');
+    try { setAbierto({ id, plan: await circularidadService.abrir(id) }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+  };
+  const crear = async () => {
+    const org = orgs.find((o) => o.id === orgNueva); if (!org) return;
+    setCreando(true); setError('');
+    try {
+      const centros = await huellaService.centros(org.id).catch(() => []);
+      const uno = centros.length === 1 ? centros[0] : undefined;
+      const plan = planVacio({ establecimiento: org.nombre, empresa: org.nombre, direccion: uno?.direccion ?? org.direccion ?? '', habitaciones: uno?.unidades_alojamiento ?? undefined });
+      const fila = await circularidadService.crear(org.id, plan);
+      setAbierto({ id: fila.id, plan: fila.plan });
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setCreando(false); }
+  };
+  const salir = () => { setAbierto(null); void recargar(); };
+
+  if (abierto) return <Editor key={abierto.id ?? 'demo'} plan0={abierto.plan} demo={abierto.id === null} currentUser={currentUser} onSalir={salir} onGuardar={abierto.id ? (p) => circularidadService.guardar(abierto.id!, p) : undefined} />;
+
+  const sinPlan = orgs.filter((o) => !planes.some((p) => p.organizacion_id === o.id));
+  const nombreOrg = (id: string) => orgs.find((o) => o.id === id)?.nombre;
+  return (
+    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 p-4 md:p-8">
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-2 rounded-lg hover:bg-white" aria-label="Volver al inicio"><ArrowLeft size={18} /></button>
+          <img src="/logo-hsgreen-recortado.png" alt="HS GREEN" className="h-10 w-auto object-contain" />
+          <h1 className="text-xl font-extrabold">Planes de circularidad</h1>
+        </div>
+        {error && <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{error}</span></div>}
+        <div className={card}>
+          <h2 className="font-bold mb-3">Nuevo plan</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <select className={`${input} flex-1 min-w-[220px]`} value={orgNueva} onChange={(e) => setOrgNueva(e.target.value)} aria-label="Organización">
+              <option value="">Elija la organización…</option>
+              {sinPlan.map((o) => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+            </select>
+            <button className={btnP} disabled={!orgNueva || creando} onClick={() => void crear()}>{creando ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Crear plan</button>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">Se crea un plan por establecimiento, con la ficha rellenada con los datos de la organización. Las organizaciones son las de Huella de carbono.</p>
+        </div>
+        <div className={card}>
+          <h2 className="font-bold mb-3">Planes guardados</h2>
+          {cargando ? <p className="text-sm text-slate-600 inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Cargando…</p>
+            : planes.length === 0 ? <p className="text-sm text-slate-600">Todavía no hay planes. Cree el primero arriba o abra el ejemplo.</p>
+            : <ul className="divide-y divide-slate-100">{planes.map((p) => (
+              <li key={p.id}><button className="w-full flex items-center gap-3 py-3 text-left hover:bg-slate-50 rounded-lg px-2" onClick={() => void abrir(p.id)}>
+                <div className="flex-1 min-w-0"><p className="font-semibold truncate">{p.nombre}</p><p className="text-xs text-slate-500 truncate">{nombreOrg(p.organizacion_id) ?? 'Organización'} · Plan {p.vigencia_desde}-{p.vigencia_hasta} · actualizado {fechaCorta(p.updated_at)}</p></div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 capitalize">{p.estado}</span>
+              </button></li>))}</ul>}
+        </div>
+        <div className={`${card} flex flex-wrap items-center gap-3`}>
+          <div className="flex-1 min-w-[220px]"><h2 className="font-bold">Ejemplo de demostración</h2><p className="text-xs text-slate-600">Establecimiento ficticio con datos de 2022 a 2024 para presentar el módulo. Se guarda solo en este navegador.</p></div>
+          <button className={btnS} onClick={() => setAbierto({ id: null, plan: cargar() })}>Ver ejemplo</button>
+        </div>
+      </div>
     </div>
   );
 };

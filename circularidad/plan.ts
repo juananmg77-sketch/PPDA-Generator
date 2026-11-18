@@ -109,3 +109,15 @@ export function resumenCumplimiento(filas: FilaCumplimiento[]) {
 }
 
 export const nombreArea = (a: Area | 'general') => (a === 'general' ? 'General' : AREAS[a].nombre);
+
+/** Plan en blanco para un establecimiento nuevo (la ficha se completa con los datos que ya se conocen). */
+export function planVacio(base: Partial<Ficha> & { establecimiento: string }, anio = new Date().getFullYear()): Plan {
+  return {
+    id: '', version: 1, cerrado: false,
+    ficha: {
+      empresa: '', direccion: '', actividad: '', apertura: '', categoria: '4', categoriaTexto: '4 estrellas', responsablePlan: '', estructura: '',
+      vigenciaDesde: anio, vigenciaHasta: anio + 4, fechaPublicacion: '', ...base,
+    },
+    datos: {}, letraCertificado: {}, accionesClientes: [], camasElevablesInstaladas: {}, objetivos: [], seguimiento: {}, requisitos: {},
+  };
+}

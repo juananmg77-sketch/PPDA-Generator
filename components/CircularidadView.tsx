@@ -1,6 +1,6 @@
 // Plan de Circularidad (Ley 3/2022 Illes Balears) · HS GREEN. Biblioteca de planes guardados en la base (circ_planes) y un ejemplo de demostración que vive en el navegador (localStorage).
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Building2, Gauge, ListChecks, ClipboardCheck, Scale, FileCheck, LayoutDashboard, Plus, Trash2, CheckCircle2, AlertTriangle, Printer, Download, RotateCcw, Lock, Unlock, TrendingUp, TrendingDown, Minus, Loader2, X } from 'lucide-react';
+import { ArrowLeft, Building2, Settings, Gauge, ListChecks, ClipboardCheck, Scale, FileCheck, LayoutDashboard, Plus, Trash2, CheckCircle2, AlertTriangle, Printer, Download, RotateCcw, Lock, Unlock, TrendingUp, TrendingDown, Minus, Loader2, X } from 'lucide-react';
 import { AREAS, CATEGORIAS_HOTEL, INDICADORES, MEDIDAS, ORDEN_AREAS, REQUISITOS, tablaCamas } from '../circularidad/catalogo';
 import type { Area, CategoriaHotel, EstadoReq } from '../circularidad/catalogo';
 import { TRIMESTRES, camas, completitud, cumplimiento, evolucion, nombreArea, progresoAccion, progresoObjetivo, progresoPlan, progresoPorArea, resumenCumplimiento, valorIndicador, vacioSeg } from '../circularidad/plan';
@@ -14,7 +14,7 @@ import type { FilaPlan } from '../services/circularidadService';
 import { huellaService } from '../services/huellaService';
 import type { Organizacion } from '../services/huellaService';
 
-type Pestana = 'resumen' | 'ficha' | 'indicadores' | 'plan' | 'seguimiento' | 'cumplimiento' | 'informe';
+type Pestana = 'resumen' | 'indicadores' | 'plan' | 'seguimiento' | 'cumplimiento' | 'informe';
 const CLAVE = 'hsgreen-circularidad-demo-v1';
 const HOY = new Date().toISOString().slice(0, 10);
 
@@ -55,6 +55,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
   const aniosDatos = useMemo(() => Object.keys(plan.datos).map(Number).sort((a, b) => a - b), [plan.datos]);
   const [anio, setAnio] = useState<number>(() => aniosDatos[aniosDatos.length - 1] ?? new Date().getFullYear());
   const [modalMedida, setModalMedida] = useState(false);
+  const [config, setConfig] = useState(false);
   const volcar = async (p: Plan) => {
     if (demo) { try { localStorage.setItem(CLAVE, JSON.stringify(p)); } catch { /* ignorar */ } sucio.current = false; return; }
     setGuardado('guardando');
@@ -81,7 +82,6 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
 
   const nav: Array<{ k: Pestana; nombre: string; icono: React.ReactNode; badge?: number }> = [
     { k: 'resumen', nombre: 'Resumen', icono: <LayoutDashboard size={17} /> },
-    { k: 'ficha', nombre: 'Ficha', icono: <Building2 size={17} /> },
     { k: 'indicadores', nombre: 'Indicadores', icono: <Gauge size={17} /> },
     { k: 'plan', nombre: 'Plan de acción', icono: <ListChecks size={17} /> },
     { k: 'seguimiento', nombre: 'Seguimiento', icono: <ClipboardCheck size={17} /> },
@@ -90,7 +90,6 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
   ];
   const titulos: Record<Pestana, [string, string]> = {
     resumen: ['Resumen del plan', 'Estado del plan de circularidad, avance del plan de acción y cumplimiento legal.'],
-    ficha: ['Ficha del establecimiento', 'Datos de identificación y responsables del plan (Ley 3/2022).'],
     indicadores: ['Evaluación circular', 'Indicadores por área prioritaria; se recalculan cada año.'],
     plan: ['Plan de acción', 'Objetivos medibles y acciones con responsable, recursos y plazo (renovable cada 5 años).'],
     seguimiento: ['Seguimiento trimestral', 'Marque cada trimestre cumplido y adjunte la evidencia; cierre el año al terminar.'],
@@ -131,7 +130,7 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
 
       <main className="flex-1 min-w-0 p-4 md:p-8">
         <div className="max-w-5xl space-y-4">
-          <div className={`${card} flex flex-wrap items-center gap-3`} aria-label="Establecimiento">
+          <div className={`${card} flex flex-wrap items-center gap-3 cursor-pointer`} aria-label="Establecimiento" onClick={() => setConfig(true)}>
             <div className="w-11 h-11 rounded-lg bg-green-100 text-green-800 flex items-center justify-center text-lg font-bold shrink-0">{(plan.ficha.establecimiento || '?').trim().charAt(0).toUpperCase()}</div>
             <div className="flex-1 min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Establecimiento</p>
@@ -140,11 +139,15 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800">Plan {plan.ficha.vigenciaDesde}-{plan.ficha.vigenciaHasta}</span>
+              <button onClick={() => setConfig(true)} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800" title="Configuración del establecimiento" aria-label="Abrir la configuración del establecimiento"><Settings size={17} /></button>
               {demo ? <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-amber-100 text-amber-800">Demostración</span>
                 : <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${guardado === 'error' ? 'bg-red-100 text-red-800' : guardado === 'guardando' ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}`} role="status">{guardado === 'guardando' ? 'Guardando…' : guardado === 'error' ? 'Sin guardar' : 'Guardado'}</span>}
             </div>
           </div>
           {errorGuardar && <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert"><AlertTriangle size={16} className="mt-0.5 shrink-0" /><span className="flex-1">{errorGuardar}</span></div>}
+          {(!responsableDelPlan(plan.ficha).trim() || !plan.ficha.pernoctaciones) && (
+            <button onClick={() => setConfig(true)} className="w-full text-left flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-2.5 text-sm"><AlertTriangle size={15} className="shrink-0" /><span className="flex-1">Faltan datos básicos del establecimiento ({[!responsableDelPlan(plan.ficha).trim() && 'responsable del plan', !plan.ficha.pernoctaciones && 'pernoctaciones'].filter(Boolean).join(' y ')}).</span><span className="font-bold underline">Completar</span></button>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]"><h1 className="text-xl font-extrabold text-slate-900">{titulos[tab][0]}</h1><p className="text-sm text-slate-600">{titulos[tab][1]}</p></div>
             {['seguimiento', 'informe'].includes(tab) && selectorAnio}
@@ -160,7 +163,6 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
             </div>
           )}
           {tab === 'resumen' && <Resumen plan={plan} anio={anio} filasC={filasC} irA={setTab} />}
-          {tab === 'ficha' && <FichaPanel plan={plan} cambiar={cambiar} />}
           {tab === 'indicadores' && <IndicadoresPanel plan={plan} anio={anio} cambiar={cambiar} aniosOpc={aniosOpc} setAnio={setAnio} />}
           {tab === 'plan' && <PlanPanel plan={plan} anio={anio} cambiar={cambiar} onCatalogo={() => setModalMedida(true)} />}
           {tab === 'seguimiento' && <SeguimientoPanel plan={plan} anio={anio} cambiar={cambiar} cerrado={cerradoAnio} />}
@@ -168,6 +170,15 @@ const Editor: React.FC<{ plan0: Plan; demo: boolean; onSalir: () => void; curren
           {tab === 'informe' && <InformePanel plan={plan} anio={anio} cambiar={cambiar} />}
         </div>
       </main>
+      {config && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto bg-slate-900/60" role="dialog" aria-modal="true" aria-label="Configuración del establecimiento" onClick={(e) => { if (e.target === e.currentTarget) setConfig(false); }}>
+          <div className="no-glass bg-slate-100 rounded-2xl shadow-2xl w-full max-w-4xl my-6 border border-slate-200">
+            <div className="flex items-center gap-2 px-5 pt-4"><h2 className="text-lg font-extrabold text-slate-900 flex-1">Configuración del establecimiento</h2><button className={btnP} onClick={() => setConfig(false)}>Listo</button></div>
+            <p className="px-5 pb-3 text-xs text-slate-600">Datos básicos del establecimiento, vigencia del plan y equipo responsable. Se guardan solos.</p>
+            <div className="px-5 pb-5"><FichaPanel plan={plan} cambiar={cambiar} /></div>
+          </div>
+        </div>
+      )}
       {modalMedida && <CatalogoMedidas onCerrar={() => setModalMedida(false)} onElegir={(m) => {
         cambiar((p) => { const n = p.objetivos.length + 1; const id = `o${Date.now()}`; const obj: Objetivo = { id, codigo: String(n), area: m.area, descripcion: m.objetivo, indicadorId: m.indicador, lineaBase: '', meta: '', plazo: String(p.ficha.vigenciaHasta), responsable: '', recursos: '', inversion: '', acciones: m.acciones.map((a, i) => ({ id: `${id}-${i}`, codigo: `${n}${String.fromCharCode(65 + i)}`, descripcion: a, responsable: '', plazo: String(anio) })) }; return { ...p, objetivos: [...p.objetivos, obj] }; });
         setModalMedida(false);

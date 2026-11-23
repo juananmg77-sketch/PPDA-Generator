@@ -59,7 +59,10 @@ export interface Valoracion {
   /** Requisitos de clientes o normativos que obligan a cuantificarla. null = sin valorar. */
   requisitos: boolean | null;
 }
+export type MetodoEvaluacion = 'criterios' | 'no_aplica';
 export interface Evaluacion extends Valoracion {
+  /** «no_aplica»: la subcategoría se excluye directamente con una justificación, sin valorar los criterios. */
+  metodo?: MetodoEvaluacion;
   codigo: string; categoria: number; nombre: string;
   /** Resultado guardado; si el criterio lo determina puede recalcularse con `evaluarSignificancia`. */
   resultado: Resultado | null;
@@ -84,6 +87,12 @@ export function evaluarSignificancia(v: Valoracion, c: CriteriosSignificancia): 
   return { completa: true, resultado: motivos.length ? 'significativa' : 'no_significativa', motivos, sinValorar: [] };
 }
 
+/** Resultado de una evaluación guardada: con «no aplica» la subcategoría queda excluida (no significativa) sin necesidad de valorar los criterios. */
+export function evaluarEvaluacion(e: Evaluacion, c: CriteriosSignificancia): ReturnType<typeof evaluarSignificancia> {
+  if (e.metodo === 'no_aplica') return { completa: true, resultado: 'no_significativa', motivos: ['no aplica (excluida con justificación)'], sinValorar: [] };
+  return evaluarSignificancia(e, c);
+}
+
 export interface EstadoEvaluacion {
   /** Todas las subcategorías de la plantilla valoradas y las excluidas con su justificación. */
   completa: boolean;
@@ -102,7 +111,7 @@ export function estadoEvaluacion(plantilla: Array<Pick<SubcategoriaPlantilla, 'c
     const nombre = `${s.codigo} ${s.nombre}`;
     const e = evaluaciones.find((x) => x.codigo === s.codigo);
     if (!e) { sinValorar.push(nombre); continue; }
-    const r = evaluarSignificancia(e, c);
+    const r = evaluarEvaluacion(e, c);
     if (!r.completa) { sinValorar.push(nombre); continue; }
     if (r.resultado === 'no_significativa' && !(e.justificacion ?? '').trim()) excluidasSinJustificar.push(nombre);
     if (r.resultado === 'significativa' && !e.cuantificada) significativasSinCuantificar.push(nombre);
@@ -158,10 +167,28 @@ export function resumenPorCategoria(plantilla: Array<Pick<SubcategoriaPlantilla,
     const r = (out[s.categoria] ??= { total: 0, sinValorar: 0, significativas: 0, significativasSinCuantificar: 0, noSignificativas: 0, justificaciones: [] });
     r.total++;
     const e = evaluaciones.find((x) => x.codigo === s.codigo);
-    const res = e ? evaluarSignificancia(e, c) : null;
+    const res = e ? evaluarEvaluacion(e, c) : null;
     if (!e || !res || !res.completa) { r.sinValorar++; continue; }
     if (res.resultado === 'significativa') { r.significativas++; if (!e.cuantificada) r.significativasSinCuantificar++; }
     else { r.noSignificativas++; if ((e.justificacion ?? '').trim()) r.justificaciones.push(`${s.codigo}: ${e.justificacion!.trim()}`); }
   }
   return out;
 }
+
+// ── Exclusión directa («no aplica») con una justificación que cumpla la ISO 14064-1 ──
+export interface MotivoExclusion { id: string; titulo: string; texto: string }
+/** Motivos habituales de exclusión de una fuente indirecta (ISO 14064-1:2018, 5.2.3: significancia; 9.3.1 i: exclusiones y su razón). Configurables. */
+export const MOTIVOS_EXCLUSION_POR_DEFECTO: MotivoExclusion[] = [
+  { id: 'no_significativa', titulo: 'Contribución no significativa', texto: 'La contribución estimada de la fuente al total del inventario es no significativa respecto a las emisiones directas y de energía importada cuantificadas.' },
+  { id: 'sin_datos', titulo: 'Sin datos fiables y contribución no significativa', texto: 'No se dispone de datos de actividad fiables y su cuantificación mediante estimaciones no aportaría información relevante, dado que su contribución estimada no es significativa.' },
+  { id: 'sin_control', titulo: 'Fuera del control e influencia de la organización', texto: 'La organización no tiene control ni influencia razonable sobre la fuente, por lo que no puede reducir sus emisiones ni obtener datos de ella.' },
+  { id: 'no_aplica', titulo: 'No aplica a la actividad de la organización', texto: 'La fuente no existe en la actividad de la organización durante el periodo cubierto.' },
+];
+
+/** Redacta la justificación completa: el motivo elegido, el detalle concreto de la organización y la referencia a la norma. */
+export function redactarJustificacion(motivo: MotivoExclusion | undefined, detalle: string, referencia = 'ISO 14064-1:2018, 5.2.3 y 9.3.1 i)'): string {
+  const d = detalle.trim().replace(/\.*$/, '');
+  return `${(motivo?.texto ?? '').trim()}${d ? ` ${d}.` : ''} Se excluye del inventario conforme a la ${referencia}.`.trim();
+}
+/** Una justificación es válida si hay un motivo y un detalle propio de la organización (no solo la frase tipo). */
+export const justificacionValida = (motivo: MotivoExclusion | undefined, detalle: string, min = 15): boolean => !!motivo && detalle.trim().length >= min;

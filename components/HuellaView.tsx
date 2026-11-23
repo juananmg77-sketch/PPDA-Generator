@@ -8,7 +8,7 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
-import { PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
+import { MOTIVOS_EXCLUSION_POR_DEFECTO, justificacionValida, redactarJustificacion, PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
 import type { CriteriosSignificancia, Evaluacion, Influencia, SubcategoriaPlantilla, TextosDeclaracion, Valoracion } from '../huella/significancia';
 import { CNAE_HOTEL, centroDesdeHotel, coordenada, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
@@ -1708,7 +1708,7 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
 
 // ───────────────────────────── Cierre del cálculo ─────────────────────────────
 // ───────────────────────────── Significancia de las emisiones indirectas (ISO 14064-1, 5.2.3 y anexo H) ─────────────────────────────
-const aEvaluacion = (x: EvaluacionDB): Evaluacion => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: x.magnitud_pct == null ? null : Number(x.magnitud_pct), influencia: x.influencia, datos: x.datos, requisitos: x.requisitos, resultado: x.resultado, justificacion: x.justificacion, cuantificada: x.cuantificada });
+const aEvaluacion = (x: EvaluacionDB): Evaluacion => ({ metodo: x.metodo ?? 'criterios', codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: x.magnitud_pct == null ? null : Number(x.magnitud_pct), influencia: x.influencia, datos: x.datos, requisitos: x.requisitos, resultado: x.resultado, justificacion: x.justificacion, cuantificada: x.cuantificada });
 
 /** Plantilla del sector, evaluaciones del inventario, criterios de la organización y textos de la declaración. */
 function useSignificancia(org: Organizacion, inv: Inventario, falla: (e: unknown) => void) {
@@ -1737,7 +1737,7 @@ function useSignificancia(org: Organizacion, inv: Inventario, falla: (e: unknown
 const NIVELES: Record<string, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' };
 const CALIDAD: Record<string, string> = { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' };
 
-const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | undefined; criterios: CriteriosSignificancia; inv: Inventario; abierto: boolean; onGuardado: (r: EvaluacionDB) => void; falla: (e: unknown) => void }> = ({ s, e, criterios, inv, abierto, onGuardado, falla }) => {
+const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | undefined; criterios: CriteriosSignificancia; inv: Inventario; abierto: boolean; onGuardado: (r: EvaluacionDB) => void; onNoAplica: () => void; falla: (e: unknown) => void }> = ({ s, e, criterios, inv, abierto, onGuardado, onNoAplica, falla }) => {
   const [v, setV] = useState({ mag: e?.magnitud_pct != null ? String(e.magnitud_pct).replace('.', ',') : '', inf: e?.influencia ?? '', dat: e?.datos ?? '', req: e?.requisitos == null ? '' : e.requisitos ? 'si' : 'no', just: e?.justificacion ?? '', cuant: !!e?.cuantificada });
   const val = (x: typeof v): Valoracion => ({ magnitudPct: x.mag.trim() === '' ? null : Number(x.mag.replace(',', '.')), influencia: (x.inf || null) as Valoracion['influencia'], datos: (x.dat || null) as Valoracion['datos'], requisitos: x.req === '' ? null : x.req === 'si' });
   const r = evaluarSignificancia(val(v), criterios);
@@ -1745,11 +1745,24 @@ const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | 
     const va = val(x);
     if (va.magnitudPct != null && !(va.magnitudPct >= 0)) return;
     try {
-      onGuardado(await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: va.magnitudPct, influencia: va.influencia, datos: va.datos, requisitos: va.requisitos, resultado: evaluarSignificancia(va, criterios).resultado, justificacion: x.just.trim() || null, cuantificada: x.cuant }));
+      onGuardado(await huellaService.guardarEvaluacion({ metodo: 'criterios', inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: va.magnitudPct, influencia: va.influencia, datos: va.datos, requisitos: va.requisitos, resultado: evaluarSignificancia(va, criterios).resultado, justificacion: x.just.trim() || null, cuantificada: x.cuant }));
     } catch (err) { falla(err); }
   };
   const cambiar = (c: Partial<typeof v>, ahora = true) => { const n = { ...v, ...c }; setV(n); if (ahora) void guardar(n); };
   const sel = 'rounded-md border border-slate-300 px-1.5 py-1 text-[11px] bg-white w-full disabled:bg-slate-50';
+  const volverACriterios = async () => {
+    try { onGuardado(await huellaService.guardarEvaluacion({ metodo: 'criterios', inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: null, influencia: null, datos: null, requisitos: null, resultado: null, justificacion: e?.justificacion ?? null, cuantificada: false })); } catch (err) { falla(err); }
+  };
+  if (e?.metodo === 'no_aplica') {
+    return (
+      <tr className="border-b border-slate-100 align-top bg-slate-50/60">
+        <td className="py-2 pr-2 text-[11px]"><span className="font-semibold">{s.codigo}</span> {s.nombre}</td>
+        <td colSpan={4} className="pr-2 text-[11px] text-slate-600">{e.justificacion}</td>
+        <td className="pr-2"><span className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-200 text-slate-700">No aplica</span></td>
+        <td colSpan={2} className="text-right">{abierto && <button className="text-[11px] font-semibold text-brand-700 underline" onClick={volverACriterios}>Valorar con criterios</button>}</td>
+      </tr>
+    );
+  }
   return (
     <tr className="border-b border-slate-100 align-top">
       <td className="py-2 pr-2 text-[11px]"><span className="font-semibold">{s.codigo}</span> {s.nombre}</td>
@@ -1759,14 +1772,16 @@ const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | 
       <td className="pr-2 w-20">{criterios.activos.requisitos && <select className={sel} disabled={!abierto} value={v.req} aria-label={`Requisitos sobre ${s.nombre}`} onChange={(ev) => cambiar({ req: ev.target.value })}><option value="">—</option><option value="si">Sí</option><option value="no">No</option></select>}</td>
       <td className="pr-2 w-28"><span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.resultado === 'significativa' ? 'bg-amber-100 text-amber-800' : r.resultado === 'no_significativa' ? 'bg-slate-100 text-slate-700' : 'bg-red-50 text-red-700'}`} title={r.completa ? r.motivos.join('; ') || 'Ningún criterio alcanza el umbral' : `Falta: ${r.sinValorar.join(', ')}`}>{r.resultado === 'significativa' ? 'Significativa' : r.resultado === 'no_significativa' ? 'No significativa' : 'Sin valorar'}</span></td>
       <td className="pr-2 w-16 text-center">{r.resultado === 'significativa' && <input type="checkbox" disabled={!abierto} checked={v.cuant} aria-label={`${s.nombre} cuantificada`} onChange={(ev) => cambiar({ cuant: ev.target.checked })} />}</td>
-      <td><input className={`${sel} ${r.resultado === 'no_significativa' && !v.just.trim() ? 'border-red-400' : ''}`} disabled={!abierto} value={v.just} placeholder={r.resultado === 'no_significativa' ? 'Justificación obligatoria' : 'Justificación'} aria-label={`Justificación de ${s.nombre}`} onChange={(ev) => setV({ ...v, just: ev.target.value })} onBlur={() => void guardar(v)} /></td>
+      <td><input className={`${sel} ${r.resultado === 'no_significativa' && !v.just.trim() ? 'border-red-400' : ''}`} disabled={!abierto} value={v.just} placeholder={r.resultado === 'no_significativa' ? 'Justificación obligatoria' : 'Justificación'} aria-label={`Justificación de ${s.nombre}`} onChange={(ev) => setV({ ...v, just: ev.target.value })} onBlur={() => void guardar(v)} />{abierto && <button className="mt-1 text-[10px] font-semibold text-slate-500 underline hover:text-brand-700" onClick={onNoAplica}>Marcar «no aplica»</button>}</td>
     </tr>
   );
 };
 
 const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto: boolean; sig: ReturnType<typeof useSignificancia>; onOrg: (o: Organizacion) => void; falla: (e: unknown) => void }> = ({ org, inv, abierto, sig, onOrg, falla }) => {
   const [modal, setModal] = useState(false);
+  const [noAplica, setNoAplica] = useState<{ codigos: string[]; titulo: string } | null>(null);
   const [creando, setCreando] = useState(false);
+  const subcats = (cat?: number) => sig.plantilla.filter((x) => x.activa && (cat == null || x.categoria === cat));
   const faltan = sig.plantilla.filter((s) => s.activa && !sig.evals.some((e) => e.codigo === s.codigo));
   const crear = async () => {
     setCreando(true);
@@ -1781,6 +1796,16 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
         {abierto && faltan.length > 0 && <button className={btnP} onClick={crear} disabled={creando}>{creando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {sig.evals.length ? `Añadir ${faltan.length} subcategoría(s) de la plantilla` : 'Cargar la plantilla del sector'}</button>}
       </div>
       <p className="text-xs text-slate-600 mb-3">Valore cada subcategoría de las categorías 3 a 6 con los criterios de la organización. Una fuente no significativa se excluye y necesita su justificación; una significativa debe cuantificarse. Plantilla: <strong>{sig.sector === 'hoteles' ? 'hoteles' : 'sector sin plantilla'}</strong>.</p>
+      {abierto && sig.plantilla.length > 0 && (
+        <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-semibold text-slate-700 mb-1">¿No quiere valorar los criterios?</p>
+          <p className="text-[11px] text-slate-600 mb-2">Puede excluir directamente las emisiones indirectas que no apliquen, eligiendo el motivo y añadiendo el detalle de la organización: la justificación se redacta conforme a la ISO 14064-1.</p>
+          <div className="flex flex-wrap gap-2">
+            <button className={btnP} onClick={() => setNoAplica({ codigos: subcats().map((x) => x.codigo), titulo: 'todas las categorías 3 a 6' })}>Excluir todas las indirectas (3 a 6)</button>
+            {[3, 4, 5, 6].filter((n) => subcats(n).length).map((n) => <button key={n} className={btnS} onClick={() => setNoAplica({ codigos: subcats(n).map((x) => x.codigo), titulo: CATEGORIAS_ISO[n - 1].resumen })}>Excluir categoría {n}</button>)}
+          </div>
+        </div>
+      )}
       {sig.plantilla.length === 0 && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">No hay plantilla de subcategorías para este sector: un administrador debe crearla en «Criterios, plantilla y textos».</p>}
       {sig.plantilla.length > 0 && (
         <>
@@ -1789,7 +1814,7 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
             <tbody>{[3, 4, 5, 6].flatMap((cat) => {
               const lista = sig.plantilla.filter((s) => s.activa && s.categoria === cat);
               if (!lista.length) return [];
-              return [<tr key={`c${cat}`}><td colSpan={8} className="pt-3 pb-1 text-[11px] font-bold text-brand-700">{CATEGORIAS_ISO[cat - 1].resumen}</td></tr>, ...lista.map((s) => <FilaSignificancia key={s.codigo} s={s} e={sig.evals.find((x) => x.codigo === s.codigo)} criterios={sig.criterios} inv={inv} abierto={abierto} onGuardado={sig.aplicar} falla={falla} />)];
+              return [<tr key={`c${cat}`}><td colSpan={8} className="pt-3 pb-1 text-[11px] font-bold text-brand-700">{CATEGORIAS_ISO[cat - 1].resumen}</td></tr>, ...lista.map((s) => <FilaSignificancia key={s.codigo} s={s} e={sig.evals.find((x) => x.codigo === s.codigo)} criterios={sig.criterios} inv={inv} abierto={abierto} onGuardado={sig.aplicar} onNoAplica={() => setNoAplica({ codigos: [s.codigo], titulo: `${s.codigo} ${s.nombre}` })} falla={falla} />)];
             })}</tbody>
           </table></div>
           <p className={`mt-3 text-xs rounded-lg px-3 py-2 ${e && e.completa && e.significativasCuantificadas ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>
@@ -1797,8 +1822,43 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
           </p>
         </>
       )}
+      {noAplica && <ModalNoAplica alcance={noAplica} sig={sig} inv={inv} onCerrar={() => setNoAplica(null)} falla={falla} />}
       {modal && <ModalConfigSignificancia org={org} sig={sig} onOrg={onOrg} onCerrar={() => setModal(false)} falla={falla} />}
     </div>
+  );
+};
+
+const ModalNoAplica: React.FC<{ alcance: { codigos: string[]; titulo: string }; sig: ReturnType<typeof useSignificancia>; inv: Inventario; onCerrar: () => void; falla: (e: unknown) => void }> = ({ alcance, sig, inv, onCerrar, falla }) => {
+  const [motivoId, setMotivoId] = useState('');
+  const [detalle, setDetalle] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const motivo = MOTIVOS_EXCLUSION_POR_DEFECTO.find((m) => m.id === motivoId);
+  const texto = redactarJustificacion(motivo, detalle);
+  const valido = justificacionValida(motivo, detalle);
+  const aplicar = async () => {
+    setGuardando(true);
+    try {
+      for (const codigo of alcance.codigos) {
+        const p = sig.plantilla.find((x) => x.codigo === codigo)!;
+        sig.aplicar(await huellaService.guardarEvaluacion({ metodo: 'no_aplica', inventario_id: inv.id, categoria: p.categoria, codigo: p.codigo, nombre: p.nombre, magnitud_pct: null, influencia: null, datos: null, requisitos: null, resultado: 'no_significativa', justificacion: texto, cuantificada: false }));
+      }
+      onCerrar();
+    } catch (e) { falla(e); } finally { setGuardando(false); }
+  };
+  return (
+    <Modal titulo={`Excluir: ${alcance.titulo}`} onCerrar={onCerrar}>
+      <div className="space-y-3 text-xs">
+        <p className="text-slate-600">Se marcarán como «no aplica» {alcance.codigos.length} subcategoría(s) con la misma justificación. Es la exclusión que exige explicar el apartado 5.2.3 de la ISO 14064-1 y que recoge el informe (9.3.1 i).</p>
+        <label className="block font-semibold text-slate-600">Motivo *
+          <select className={`${input} mt-1`} value={motivoId} onChange={(e) => setMotivoId(e.target.value)} aria-label="Motivo de la exclusión"><option value="">Elegir…</option>{MOTIVOS_EXCLUSION_POR_DEFECTO.map((m) => <option key={m.id} value={m.id}>{m.titulo}</option>)}</select>
+        </label>
+        <label className="block font-semibold text-slate-600">Detalle propio de la organización * <span className="font-normal">(mínimo 15 caracteres)</span>
+          <textarea className={`${input} mt-1`} rows={3} value={detalle} placeholder="Ej.: El hotel no dispone de registros de los proveedores de transporte ni de los desplazamientos de clientes." onChange={(e) => setDetalle(e.target.value)} />
+        </label>
+        <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"><p className="font-semibold text-slate-700 mb-1">Justificación que constará en el informe</p><p className="text-slate-700">{motivo ? texto : 'Elija un motivo para ver la justificación.'}</p></div>
+      </div>
+      <div className="flex justify-end gap-2 mt-4"><button className={btnS} onClick={onCerrar}>Cancelar</button><button className={btnP} onClick={aplicar} disabled={!valido || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Marcar como no aplica</button></div>
+    </Modal>
   );
 };
 

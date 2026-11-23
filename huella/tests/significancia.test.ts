@@ -63,3 +63,25 @@ test('declaración: caso a) completa y cuantificada; caso b) en otro caso, con l
   assert.equal(cfg.texto, 'A 2025 Programa X');
   assert.doesNotMatch(b.texto, /\{|undefined|null|NaN/);
 });
+
+import { MOTIVOS_EXCLUSION_POR_DEFECTO, evaluarEvaluacion, justificacionValida, redactarJustificacion } from '../significancia.ts';
+test('«no aplica»: la subcategoría se excluye con justificación sin valorar los criterios', () => {
+  const sinCriterios = { codigo: '3.1', categoria: 3, nombre: 'x', magnitudPct: null, influencia: null, datos: null, requisitos: null, resultado: null, justificacion: 'j', cuantificada: false };
+  assert.equal(evaluarEvaluacion(sinCriterios, c).completa, false); // por criterios faltaría todo
+  const r = evaluarEvaluacion({ ...sinCriterios, metodo: 'no_aplica' }, c);
+  assert.equal(r.completa, true); assert.equal(r.resultado, 'no_significativa');
+  // evaluación completa con todas las subcategorías «no aplica» y justificadas → caso a)
+  const evs = plantilla.map((p) => ({ ...sinCriterios, codigo: p.codigo, metodo: 'no_aplica' as const, justificacion: 'Justificada.' }));
+  const e = estadoEvaluacion(plantilla, evs, c);
+  assert.equal(e.completa, true); assert.equal(declaracionConformidad(e, 2024).caso, 'a');
+  // sin justificación sigue siendo incidencia
+  const sin = estadoEvaluacion(plantilla, evs.map((x) => ({ ...x, justificacion: '' })), c);
+  assert.equal(sin.completa, false); assert.equal(sin.excluidasSinJustificar.length, 3);
+});
+test('la justificación de exclusión incluye el motivo, el detalle propio y la referencia a la norma', () => {
+  const m = MOTIVOS_EXCLUSION_POR_DEFECTO.find((x) => x.id === 'sin_datos')!;
+  const j = redactarJustificacion(m, 'El hotel no dispone de registros de proveedores de transporte.');
+  assert.match(j, /No se dispone de datos de actividad fiables/); assert.match(j, /registros de proveedores/); assert.match(j, /ISO 14064-1:2018, 5\.2\.3 y 9\.3\.1 i\)/);
+  assert.doesNotMatch(j, /\.\./);
+  assert.equal(justificacionValida(m, 'corto'), false); assert.equal(justificacionValida(undefined, 'Un detalle suficientemente largo.'), false); assert.equal(justificacionValida(m, 'Un detalle suficientemente largo.'), true);
+});

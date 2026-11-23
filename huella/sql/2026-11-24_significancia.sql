@@ -66,3 +66,6 @@ insert into public.hc_plantillas_subcategorias (sector, categoria, codigo, nombr
   ('hoteles',6,'6.1','Otras fuentes de emisiones indirectas',13)
 on conflict (sector, codigo) do nothing;
 insert into public.hc_configuracion (clave, valor) values ('declaracion', '{"programa": "Decreto 48/2021 del Registro balear de huella de carbono", "norma": "ISO 14064-1:2018", "a": "La organización declara que este inventario de GEI del año {anio} se ha elaborado conforme a la norma {norma} y a los requisitos del {programa}.", "b": "La organización declara que este inventario de GEI del año {anio} se ha elaborado conforme a los requisitos del {programa}, siguiendo la metodología de {norma}.", "falta": "No se declara la conformidad con {norma} porque la evaluación de la significancia de las emisiones indirectas no está completa: {motivos}."}'::jsonb) on conflict (clave) do nothing;
+
+-- «No aplica»: exclusión directa de una subcategoría con justificación, sin valorar los criterios
+alter table public.hc_evaluaciones_significancia add column if not exists metodo text not null default 'criterios' check (metodo in ('criterios','no_aplica'));

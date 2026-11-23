@@ -3,7 +3,7 @@
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
 import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
-import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria } from './significancia.ts';
+import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarEvaluacion, evaluarExclusionesDirectas, resumenPorCategoria } from './significancia.ts';
 import type { CriteriosSignificancia, DeclaracionConformidad, Evaluacion, SubcategoriaPlantilla, TextosDeclaracion } from './significancia.ts';
 import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
 import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
@@ -268,9 +268,10 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     { k: 'h', texto: '9.2 Emisiones indirectas por categoría (2 a 6)' },
     { k: 'tabla', cab: ['Categoría', 'Estado', 'Emisiones (t CO₂e)', 'Justificación'], filas: iso.indirectas.map((c) => [CATEGORIAS_ISO[c.n - 1].resumen, c.estado, fmt(c.toneladasCO2e, 'tCO2e'), c.justificacion ?? '—']), numericas: [2], pie: 'Cuantificada: con datos de actividad. No significativa: excluida por estar por debajo del umbral de significancia. Excluida: no cuantificada, con su justificación.' },
     ...(sig ? [{ k: 'tabla' as const, cab: ['Subcategoría', 'Magnitud estimada', 'Influencia', 'Datos', 'Requisitos', 'Resultado', 'Cuantificada', 'Justificación'], filas: sig.plantilla.filter((x) => x.activa).map((x) => {
-      const e = sig.evaluaciones.find((y) => y.codigo === x.codigo); const r = e ? evaluarSignificancia(e, criterios) : null;
+      const e = sig.evaluaciones.find((y) => y.codigo === x.codigo); const r = e ? evaluarEvaluacion(e, criterios) : null;
       const si = (v: boolean | null | undefined) => (v == null ? '—' : v ? 'Sí' : 'No');
-      return [`${x.codigo} ${x.nombre}`, pct(e?.magnitudPct), e?.influencia ? { alta: 'Alta', media: 'Media', baja: 'Baja' }[e.influencia] : '—', e?.datos ? { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' }[e.datos] : '—', si(e?.requisitos), r?.resultado ? (r.resultado === 'significativa' ? 'Significativa' : 'No significativa') : 'Sin valorar', r?.resultado === 'significativa' ? si(e?.cuantificada) : '—', e?.justificacion?.trim() || '—'];
+      const noAplica = e?.metodo === 'no_aplica';
+      return [`${x.codigo} ${x.nombre}`, noAplica ? '—' : pct(e?.magnitudPct), noAplica ? '—' : e?.influencia ? { alta: 'Alta', media: 'Media', baja: 'Baja' }[e.influencia] : '—', noAplica ? '—' : e?.datos ? { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' }[e.datos] : '—', noAplica ? '—' : si(e?.requisitos), r?.resultado ? (r.resultado === 'significativa' ? 'Significativa' : noAplica ? 'No aplica (excluida)' : 'No significativa') : 'Sin valorar', r?.resultado === 'significativa' ? si(e?.cuantificada) : '—', e?.justificacion?.trim() || '—'];
     }), pie: 'Evaluación de la significancia de las emisiones indirectas (ISO 14064-1:2018, apartado 5.2.3): magnitud estimada, nivel de influencia, calidad de los datos y requisitos de clientes o normativos.' }] : []),
     ...(catGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(catGraf, 'Emisiones por categoría'), pie: 'Categorías cuantificadas del inventario.' }] : []),
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },

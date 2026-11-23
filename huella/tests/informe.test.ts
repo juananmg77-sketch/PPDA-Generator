@@ -150,7 +150,7 @@ test('categorías 2 a 6: Cuantificada / No significativa / Excluida / Sin evalua
   const iso = resultadosIso(resultados, f, [{ fuente: 'Viajes', porcentaje: 0.3, justificacion: 'Escasos', categoriaIso: 3 }, { fuente: 'Compras', porcentaje: 6, justificacion: 'Sin datos', categoriaIso: 4 }], totales);
   assert.deepEqual(iso.indirectas.map((c) => [c.n, c.estado]), [[2, 'Cuantificada'], [3, 'No significativa'], [4, 'Excluida'], [5, 'Sin evaluar'], [6, 'Sin evaluar']]);
   const m = construirInforme({ ...base(), exclusiones: [], significancia: undefined });
-  assert.ok(m.pendientes.some((p) => /Categoría 5/.test(p)));
+  assert.ok(m.pendientes.some((p) => /Categoría\(s\) .*5/.test(p)));
 });
 test('si los totales no cuadran hay una incidencia bloqueante', () => {
   const malos = { ...totales, kgCO2eTotal: totales.kgCO2eTotal + 5 };
@@ -171,7 +171,7 @@ test('declaración de conformidad: caso a) con la evaluación completa; caso b) 
   assert.doesNotMatch(JSON.stringify(b.secciones.find((x) => x.id === '11')), /conforme a la norma ISO/);
   // una significativa sin cuantificar también pasa al caso b)
   const e = base(); e.significancia!.evaluaciones[0] = { ...e.significancia!.evaluaciones[0], requisitos: true, resultado: 'significativa', cuantificada: false };
-  assert.equal(construirInforme(e).declaracion.caso, 'b'); assert.ok(construirInforme(e).pendientes.some((p) => /significativa y no está cuantificada/.test(p)));
+  assert.equal(construirInforme(e).declaracion.caso, 'b'); assert.ok(construirInforme(e).pendientes.some((p) => /significativa\(s\) sin cuantificar/.test(p)));
   e.significancia!.evaluaciones[0].cuantificada = true; assert.equal(construirInforme(e).declaracion.caso, 'a');
   // textos desde la configuración
   const f2 = base(); f2.significancia!.textos = { programa: 'Programa Y', a: 'Conformidad {anio} con {programa}.' };

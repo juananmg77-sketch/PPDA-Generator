@@ -444,9 +444,15 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
   pendientes.push(...dir.incidencias);
-  if (estadoSig) for (const x of estadoSig.sinValorar) pendientes.push(`Significancia: falta valorar la subcategoría ${x}.`); else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
-  if (estadoSig) { for (const x of estadoSig.excluidasSinJustificar) pendientes.push(`Significancia: la subcategoría ${x} se excluye y falta su justificación.`); for (const x of estadoSig.significativasSinCuantificar) pendientes.push(`Significancia: la subcategoría ${x} es significativa y no está cuantificada.`); }
-  for (const c of iso.indirectas) if (c.estado === 'Sin evaluar') pendientes.push(`Categoría ${c.n} (${c.nombre}): indique si es no significativa o está excluida, con su justificación.`);
+  const codigos = (l: string[]) => l.map((x) => x.split(' ')[0]).join(', ');
+  if (estadoSig) {
+    // Un solo pendiente por tipo de falta (no uno por subcategoría)
+    if (estadoSig.sinValorar.length) pendientes.push(`Significancia: faltan por valorar ${estadoSig.sinValorar.length} subcategoría(s) de las emisiones indirectas (${codigos(estadoSig.sinValorar)}).`);
+    if (estadoSig.excluidasSinJustificar.length) pendientes.push(`Significancia: ${estadoSig.excluidasSinJustificar.length} subcategoría(s) se excluyen sin justificación (${codigos(estadoSig.excluidasSinJustificar)}).`);
+    if (estadoSig.significativasSinCuantificar.length) pendientes.push(`Significancia: ${estadoSig.significativasSinCuantificar.length} subcategoría(s) significativa(s) sin cuantificar (${codigos(estadoSig.significativasSinCuantificar)}).`);
+  } else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
+  const sinEvaluar = iso.indirectas.filter((c) => c.estado === 'Sin evaluar');
+  if (sinEvaluar.length) pendientes.push(`Categoría(s) ${sinEvaluar.map((c) => c.n).join(', ')} sin evaluar: indique si es no significativa o está excluida, con su justificación.`);
   const bloqueantes = [...iso.cuadre.incidencias, ...(cerrado ? incOrg.filter((x) => x.obligatorio).map((x) => x.mensaje) : [])];
   // Resumen ejecutivo: cifras clave y conclusiones por reglas (una página)
   const t1 = iso.porCategoria[1] ?? 0, t2 = iso.porCategoria[2] ?? 0, totalT = iso.totalInventario;

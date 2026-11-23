@@ -1614,6 +1614,11 @@ const PanelCierre: React.FC<{
       setOrigenSel(''); onCambio();
     } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
+  const eliminarFactura = async (d: Documento) => {
+    if (!confirm(`Va a eliminar la factura «${d.nombre_archivo}»${d.estado === 'revisado' ? ' y el dato de actividad que generó' : ''}. Después podrá volver a subirla si procede. ¿Continuar?`)) return;
+    setTrabajando(true);
+    try { await huellaService.borrarDocumento(d); onCambio(); } catch (e) { falla(e); } finally { setTrabajando(false); }
+  };
   const redactar = () => {
     const c = redactarCorreoPendientes({
       organizacion: org.nombre, anio: inv.anio, anioCompleto: inv.anio < new Date().getFullYear(), remitente: usuario,
@@ -1665,7 +1670,7 @@ const PanelCierre: React.FC<{
     if (!factores || !calculo || previo === undefined) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad })),
+      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,
@@ -1744,7 +1749,16 @@ const PanelCierre: React.FC<{
                     <details className="mt-1" open={i.nivel === 'error' && i.detalle.length <= 8}>
                       <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900">Ver las {i.detalle.length} afectadas</summary>
                       <ul className="mt-1 ml-1 border-l-2 border-slate-200 pl-3 space-y-0.5 max-h-48 overflow-auto">
-                        {i.detalle.map((x, n) => <li key={n} className="text-[11px] text-slate-700"><strong>{x.texto}</strong>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</li>)}
+                        {i.detalle.map((x, n) => {
+                          const doc = x.docId ? docs.find((d) => d.id === x.docId) : undefined;
+                          return (
+                            <li key={n} className="text-[11px] text-slate-700 flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5">
+                              <span className="flex-1 min-w-[200px]"><strong>{x.texto}</strong>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</span>
+                              {doc && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={12} /> Abrir factura</button>}
+                              {doc && abierto && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-red-200 bg-white font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50" disabled={trabajando} onClick={() => eliminarFactura(doc)}><Trash2 size={12} /> Eliminar</button>}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </details>
                   )}

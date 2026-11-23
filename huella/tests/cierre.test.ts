@@ -137,3 +137,12 @@ test('dos contadores que facturan a la vez siguen siendo series distintas', () =
   assert.equal(seriesDeSuministro(a).length, 2);
   assert.deepEqual(huecosMensuales(a, 2024)[0].faltan, ['feb', 'mar']);
 });
+
+test('cada factura afectada lleva su identificador para poder abrirla y decidir sobre ella', () => {
+  const docs = gasAstoria.map((d, i) => ({ ...d, id: `doc-${i}` }));
+  const r = evaluarCierre({ ...base, docs });
+  const dup = r.items.find((i) => i.codigo === 'facturas_duplicadas')!.detalle!;
+  assert.ok(dup.every((x) => x.docId && x.docId.startsWith('doc-')));
+  assert.equal(r.items.find((i) => i.codigo === 'consumo_cero')!.detalle!.length, 3);
+  assert.ok(r.items.find((i) => i.codigo === 'consumo_cero')!.detalle!.every((x) => !!x.docId));
+});

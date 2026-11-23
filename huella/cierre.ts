@@ -5,10 +5,10 @@ import { agruparPorTipoYContador, mesesTocados, NOMBRES_MES } from './mensual.ts
 export type Nivel = 'error' | 'aviso' | 'info' | 'ok';
 export type DestinoCierre = 'facturas' | 'consumos' | 'centros';
 /** Elemento concreto al que se refiere una comprobación (p. ej. una factura), para poder localizarlo. */
-export interface DetalleCierre { texto: string; nota?: string }
+export interface DetalleCierre { texto: string; nota?: string; /** Factura concreta a la que se refiere, para abrirla y decidir sobre ella. */ docId?: string }
 export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string; /** Qué elementos concretos afecta. */ detalle?: DetalleCierre[]; /** Pantalla donde se resuelve. */ ir?: DestinoCierre; irEtiqueta?: string }
 
-export interface DocCierre { nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
+export interface DocCierre { id?: string; nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -108,7 +108,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   const pend = e.docs.filter((d) => d.estado === 'subido' || d.estado === 'leido');
   const pendientes = pend.length;
   if (pendientes > 0) add('error', 'facturas_pendientes', `${pendientes} factura(s) sin revisar: confírmelas, recházelas o elimínelas antes de cerrar.`, {
-    detalle: pend.map((d) => ({ texto: nom(d), nota: d.estado === 'subido' ? 'subida pero sin leer (elimínela y vuelva a subirla)' : 'leída, pendiente de confirmar' })), ir: 'facturas', irEtiqueta: 'Ir a las facturas pendientes' });
+    detalle: pend.map((d) => ({ docId: d.id, texto: nom(d), nota: d.estado === 'subido' ? 'subida pero sin leer (elimínela y vuelva a subirla)' : 'leída, pendiente de confirmar' })), ir: 'facturas', irEtiqueta: 'Ir a las facturas pendientes' });
   else add('ok', 'facturas_pendientes', 'No hay facturas pendientes de revisar.');
 
   if (e.actividadConfirmada === 0) add('error', 'sin_actividad', 'No hay ningún dato de actividad confirmado.', { ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
@@ -124,14 +124,14 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   // Origen de la electricidad: se pregunta aquí, una sola vez, y no en cada factura
   const sinOrigenDocs = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida'));
   const sinOrigen = sinOrigenDocs.length;
-  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, aplíquelo abajo a todas o corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
+  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, aplíquelo abajo a todas o corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ docId: d.id, texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
   for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, { ir: 'facturas', irEtiqueta: 'Subir facturas' });
 
   const dups = facturasDuplicadas(e.docs);
-  if (dups.length > 0) add('error', 'facturas_duplicadas', `${dups.length} factura(s) repetida(s) (mismo centro, periodo y cantidad): se contarían dos veces. Elimine o rechace la repetida.`, { detalle: dups.flatMap((g) => g.map((d, i) => ({ texto: nom(d), nota: i === 0 ? 'misma factura que las siguientes' : 'repetida' }))), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
+  if (dups.length > 0) add('error', 'facturas_duplicadas', `${dups.length} factura(s) repetida(s) (mismo centro, periodo y cantidad): se contarían dos veces. Elimine o rechace la repetida.`, { detalle: dups.flatMap((g) => g.map((d, i) => ({ docId: d.id, texto: nom(d), nota: i === 0 ? 'misma factura que las siguientes' : 'repetida' }))), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
   const ceros = e.docs.filter((d) => d.estado === 'revisado' && d.cantidad === 0 && d.tipo !== 'otro');
-  if (ceros.length > 0) add('aviso', 'consumo_cero', `${ceros.length} factura(s) confirmadas con consumo 0: compruebe que no falta una página o una lectura (el consumo quedaría subestimado).`, { detalle: ceros.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
+  if (ceros.length > 0) add('aviso', 'consumo_cero', `${ceros.length} factura(s) confirmadas con consumo 0: compruebe que no falta una página o una lectura (el consumo quedaría subestimado).`, { detalle: ceros.map((d) => ({ docId: d.id, texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;

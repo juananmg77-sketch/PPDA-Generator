@@ -176,9 +176,10 @@ export function resumenPorCategoria(plantilla: Array<Pick<SubcategoriaPlantilla,
 }
 
 // ── Exclusión directa («no aplica») con una justificación que cumpla la ISO 14064-1 ──
-export interface MotivoExclusion { id: string; titulo: string; texto: string }
+export interface MotivoExclusion { id: string; titulo: string; texto: string; /** El motivo se basta por sí solo (p. ej. lo que exige el programa): el detalle propio es opcional. */ detalleOpcional?: boolean }
 /** Motivos habituales de exclusión de una fuente indirecta (ISO 14064-1:2018, 5.2.3: significancia; 9.3.1 i: exclusiones y su razón). Configurables. */
 export const MOTIVOS_EXCLUSION_POR_DEFECTO: MotivoExclusion[] = [
+  { id: 'no_exigida', titulo: 'No exigida por el programa aplicable', detalleOpcional: true, texto: 'El programa aplicable ({programa}) exige cuantificar únicamente las categorías 1 y 2; las categorías 3 a 6 son de cuantificación voluntaria y la organización decide no incluirlas en este inventario.' },
   { id: 'no_significativa', titulo: 'Contribución no significativa', texto: 'La contribución estimada de la fuente al total del inventario es no significativa respecto a las emisiones directas y de energía importada cuantificadas.' },
   { id: 'sin_datos', titulo: 'Sin datos fiables y contribución no significativa', texto: 'No se dispone de datos de actividad fiables y su cuantificación mediante estimaciones no aportaría información relevante, dado que su contribución estimada no es significativa.' },
   { id: 'sin_control', titulo: 'Fuera del control e influencia de la organización', texto: 'La organización no tiene control ni influencia razonable sobre la fuente, por lo que no puede reducir sus emisiones ni obtener datos de ella.' },
@@ -186,9 +187,10 @@ export const MOTIVOS_EXCLUSION_POR_DEFECTO: MotivoExclusion[] = [
 ];
 
 /** Redacta la justificación completa: el motivo elegido, el detalle concreto de la organización y la referencia a la norma. */
-export function redactarJustificacion(motivo: MotivoExclusion | undefined, detalle: string, referencia = 'ISO 14064-1:2018, 5.2.3 y 9.3.1 i)'): string {
+export function redactarJustificacion(motivo: MotivoExclusion | undefined, detalle: string, referencia = 'ISO 14064-1:2018, 5.2.3 y 9.3.1 i)', programa: string = TEXTOS_DECLARACION_POR_DEFECTO.programa): string {
   const d = detalle.trim().replace(/\.*$/, '');
-  return `${(motivo?.texto ?? '').trim()}${d ? ` ${d}.` : ''} Se excluye del inventario conforme a la ${referencia}.`.trim();
+  const base = (motivo?.texto ?? '').replace(/\{programa\}/g, programa).trim();
+  return `${base}${d ? ` ${d}.` : ''} Se excluye del inventario conforme a la ${referencia}.`.trim();
 }
 /** Una justificación es válida si hay un motivo y un detalle propio de la organización (no solo la frase tipo). */
-export const justificacionValida = (motivo: MotivoExclusion | undefined, detalle: string, min = 15): boolean => !!motivo && detalle.trim().length >= min;
+export const justificacionValida = (motivo: MotivoExclusion | undefined, detalle: string, min = 15): boolean => !!motivo && (motivo.detalleOpcional || detalle.trim().length >= min);

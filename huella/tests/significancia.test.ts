@@ -85,3 +85,12 @@ test('la justificación de exclusión incluye el motivo, el detalle propio y la 
   assert.doesNotMatch(j, /\.\./);
   assert.equal(justificacionValida(m, 'corto'), false); assert.equal(justificacionValida(undefined, 'Un detalle suficientemente largo.'), false); assert.equal(justificacionValida(m, 'Un detalle suficientemente largo.'), true);
 });
+
+test('motivo «no exigida por el programa»: justificación con el programa configurado y sin detalle obligatorio', () => {
+  const m = MOTIVOS_EXCLUSION_POR_DEFECTO.find((x) => x.id === 'no_exigida')!;
+  assert.equal(justificacionValida(m, ''), true);
+  const j = redactarJustificacion(m, '');
+  assert.match(j, /Decreto 48\/2021 del Registro balear de huella de carbono/); assert.match(j, /únicamente las categorías 1 y 2/); assert.match(j, /ISO 14064-1:2018/);
+  assert.doesNotMatch(j, /\{|\.\./);
+  assert.match(redactarJustificacion(m, 'Se revisará en 2026', undefined, 'Programa Y'), /Programa Y.*Se revisará en 2026\. Se excluye/);
+});

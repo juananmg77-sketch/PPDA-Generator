@@ -1833,7 +1833,7 @@ const ModalNoAplica: React.FC<{ alcance: { codigos: string[]; titulo: string }; 
   const [detalle, setDetalle] = useState('');
   const [guardando, setGuardando] = useState(false);
   const motivo = MOTIVOS_EXCLUSION_POR_DEFECTO.find((m) => m.id === motivoId);
-  const texto = redactarJustificacion(motivo, detalle);
+  const texto = redactarJustificacion(motivo, detalle, undefined, sig.textos?.programa ?? TEXTOS_DECLARACION_POR_DEFECTO.programa);
   const valido = justificacionValida(motivo, detalle);
   const aplicar = async () => {
     setGuardando(true);
@@ -1852,7 +1852,7 @@ const ModalNoAplica: React.FC<{ alcance: { codigos: string[]; titulo: string }; 
         <label className="block font-semibold text-slate-600">Motivo *
           <select className={`${input} mt-1`} value={motivoId} onChange={(e) => setMotivoId(e.target.value)} aria-label="Motivo de la exclusión"><option value="">Elegir…</option>{MOTIVOS_EXCLUSION_POR_DEFECTO.map((m) => <option key={m.id} value={m.id}>{m.titulo}</option>)}</select>
         </label>
-        <label className="block font-semibold text-slate-600">Detalle propio de la organización * <span className="font-normal">(mínimo 15 caracteres)</span>
+        <label className="block font-semibold text-slate-600">Detalle propio de la organización {motivo?.detalleOpcional ? <span className="font-normal">(opcional con este motivo)</span> : <><span>*</span> <span className="font-normal">(mínimo 15 caracteres)</span></>}
           <textarea className={`${input} mt-1`} rows={3} value={detalle} placeholder="Ej.: El hotel no dispone de registros de los proveedores de transporte ni de los desplazamientos de clientes." onChange={(e) => setDetalle(e.target.value)} />
         </label>
         <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"><p className="font-semibold text-slate-700 mb-1">Justificación que constará en el informe</p><p className="text-slate-700">{motivo ? texto : 'Elija un motivo para ver la justificación.'}</p></div>

@@ -149,6 +149,8 @@ export const huellaService = {
     const { data: u } = await supabase.auth.getUser();
     return ok<Actividad>(await supabase.from('hc_actividad').insert({ ...a, created_by: u?.user?.id, confirmada_por: a.estado === 'confirmada' ? u?.user?.id : null }).select().single());
   },
+  /** Fija el origen de la electricidad en las líneas de actividad que proceden de una factura. */
+  async fijarOrigenActividadDocumento(documentoId: string, origen: OrigenElectricidad) { ok(await supabase.from('hc_actividad').update({ origen_electricidad: origen }).eq('documento_id', documentoId)); },
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */

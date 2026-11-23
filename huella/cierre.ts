@@ -77,7 +77,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   // Origen de la electricidad: se pregunta aquí, una sola vez, y no en cada factura
   const sinOrigenDocs = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida'));
   const sinOrigen = sinOrigenDocs.length;
-  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
+  if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, aplíquelo abajo a todas o corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
   for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, { ir: 'facturas', irEtiqueta: 'Subir facturas' });
 

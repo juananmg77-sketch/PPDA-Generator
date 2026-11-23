@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
+import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
+import { redactarCorreoPendientes } from '../huella/correo';
 import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
@@ -277,7 +278,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <div className="space-y-4">
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
                   {esConsultor && pasoCierre === 'cierre'
-                    ? <PanelCierre inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                    ? <PanelCierre org={org} onCambio={recargarInv} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} onIr={(d) => setTab(d)} />
                     : <PanelInforme soloLectura={!esConsultor} org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />}
@@ -1546,10 +1547,36 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
 
 // ───────────────────────────── Cierre del cálculo ─────────────────────────────
 const PanelCierre: React.FC<{
-  inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  org: Organizacion; onCambio: () => void; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void; onIr: (destino: 'facturas' | 'consumos' | 'centros') => void;
-}> = ({ inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
+}> = ({ org, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
+  const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
+  const [correo, setCorreo] = useState<{ asunto: string; cuerpo: string } | null>(null);
+  const [copiado, setCopiado] = useState(false);
+  // Facturas de electricidad ya confirmadas en las que no consta la garantía de origen
+  const docsSinOrigen = docs.filter((d) => d.estado === 'revisado' && (d.extraccion?.tipo ?? d.tipo) === 'electricidad' && (!d.extraccion?.garantiaOrigen || d.extraccion.garantiaOrigen === 'desconocida'));
+  const aplicarOrigen = async () => {
+    if (!origenSel || !docsSinOrigen.length) return;
+    const nombre = { no: 'Red (sin garantía de origen)', renovable_balear: 'GdO renovable de Baleares', renovable_otra: 'GdO renovable (otra)' }[origenSel];
+    if (!confirm(`Va a marcar ${docsSinOrigen.length} factura(s) de electricidad como «${nombre}» y recalcular su huella. ${origenSel === 'no' ? '' : 'Hágalo solo si todas acreditan esa garantía de origen. '}¿Continuar?`)) return;
+    setTrabajando(true);
+    try {
+      const act = { no: 'red', renovable_balear: 'gdo_renovable_balear', renovable_otra: 'gdo_otra' }[origenSel] as OrigenElectricidad;
+      for (const d of docsSinOrigen) {
+        await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, garantiaOrigen: origenSel } });
+        await huellaService.fijarOrigenActividadDocumento(d.id, act);
+      }
+      setOrigenSel(''); onCambio();
+    } catch (e) { falla(e); } finally { setTrabajando(false); }
+  };
+  const redactar = () => {
+    const c = redactarCorreoPendientes({
+      organizacion: org.nombre, anio: inv.anio, anioCompleto: inv.anio < new Date().getFullYear(), remitente: usuario,
+      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((x) => x.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
+    });
+    setCorreo({ asunto: c.asunto, cuerpo: c.cuerpo }); setCopiado(false);
+  };
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
@@ -1679,8 +1706,24 @@ const PanelCierre: React.FC<{
                 </div>
               </li>
             ))}</ul>
+            {abierto && docsSinOrigen.length > 0 && (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+                <p className="font-semibold mb-2">Garantía de origen de la electricidad: no consta en {docsSinOrigen.length} factura{docsSinOrigen.length === 1 ? '' : 's'}</p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="font-semibold">Aplicar a todas ellas
+                    <select className={`${input} mt-1 w-auto min-w-[260px]`} value={origenSel} onChange={(e) => setOrigenSel(e.target.value as typeof origenSel)} aria-label="Garantía de origen para las facturas afectadas">
+                      <option value="">Elegir…</option><option value="no">Red (sin garantía de origen)</option>
+                      <option value="renovable_balear">GdO renovable de Baleares</option><option value="renovable_otra">GdO renovable (otra)</option>
+                    </select>
+                  </label>
+                  <button className={btnS} onClick={aplicarOrigen} disabled={!origenSel || trabajando}>Aplicar a las {docsSinOrigen.length} facturas</button>
+                </div>
+                <p className="mt-2 text-blue-800">Sin elegir nada se tratan como energía de red. Si solo algunas tienen garantía, aplique «Red» a todas aquí y corrija después las que la acrediten desde su factura.</p>
+              </div>
+            )}
             {abierto && (
               <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button className={btnS} onClick={redactar}><Mail size={14} /> Redactar correo al cliente con lo pendiente</button>
                 <button className={btnP} onClick={cerrar} disabled={!evaluacion.puedeCerrar || trabajando}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Lock size={14} />} Cerrar cálculo {inv.anio}</button>
                 {!evaluacion.puedeCerrar && <span className="text-xs text-red-700">Resuelva los errores para poder cerrar.</span>}
               </div>
@@ -1745,6 +1788,18 @@ const PanelCierre: React.FC<{
         </Modal>
       )}
 
+      {correo && (
+        <Modal titulo="Correo al cliente: documentación pendiente" onCerrar={() => setCorreo(null)}>
+          <p className="text-xs text-slate-600 mb-3">Borrador generado con lo que falta hoy en este cálculo. Revíselo y edítelo antes de enviarlo; no se envía desde aquí.</p>
+          <label className="text-xs font-semibold text-slate-600">Asunto<input className={`${input} mt-1`} value={correo.asunto} onChange={(e) => setCorreo({ ...correo, asunto: e.target.value })} /></label>
+          <label className="text-xs font-semibold text-slate-600 block mt-3">Mensaje<textarea className={`${input} mt-1 font-mono text-xs`} rows={16} value={correo.cuerpo} onChange={(e) => setCorreo({ ...correo, cuerpo: e.target.value })} /></label>
+          <div className="flex flex-wrap justify-end gap-2 mt-4">
+            <button className={btnS} onClick={() => setCorreo(null)}>Cerrar</button>
+            <button className={btnS} onClick={async () => { try { await navigator.clipboard.writeText(`Asunto: ${correo.asunto}\n\n${correo.cuerpo}`); setCopiado(true); } catch (x) { falla(x); } }}><Copy size={14} /> {copiado ? 'Copiado' : 'Copiar'}</button>
+            <a className={btnP} href={`mailto:?subject=${encodeURIComponent(correo.asunto)}&body=${encodeURIComponent(correo.cuerpo)}`}><Mail size={14} /> Abrir en el correo</a>
+          </div>
+        </Modal>
+      )}
       {reabrir && (
         <Modal titulo={`Reabrir el cálculo ${inv.anio}`} onCerrar={() => setReabrir(false)}>
           <p className="text-xs text-slate-700 mb-3">Al reabrirlo podrá modificar datos. La causa queda registrada junto con la fecha y el usuario, y la base anota el cambio en la auditoría. Deberá volver a cerrarlo.</p>

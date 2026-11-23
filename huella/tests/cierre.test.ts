@@ -80,3 +80,27 @@ test('las comprobaciones que afectan a facturas indican cuáles son y dónde res
   const f = r.items.find((i) => i.codigo === 'fallos_calculo')!;
   assert.equal(f.ir, 'consumos'); assert.equal(f.detalle![0].texto, 'Hotel · Gasóleo: falta el factor');
 });
+
+// ── Correo al cliente con lo pendiente ──
+import { mesesSinFactura, redactarCorreoPendientes } from '../correo.ts';
+const rv = (centro: string, tipo: string, contador: string | null, d: string, h: string, origen?: string) => ({ estado: 'revisado' as const, centro, tipo, contador, periodoDesde: d, periodoHasta: h, origenElectricidad: origen as never });
+
+test('correo: meses sin factura (año completo pide también enero y diciembre; en curso solo huecos)', () => {
+  const docs = [rv('Hotel A', 'electricidad', 'C1', '2024-02-01', '2024-03-31'), rv('Hotel A', 'electricidad', 'C1', '2024-05-01', '2024-05-31')];
+  assert.deepEqual(mesesSinFactura(docs, 2024, false)[0].faltan, ['abril']);
+  assert.equal(mesesSinFactura(docs, 2024, true)[0].faltan.length, 9);
+  assert.deepEqual(mesesSinFactura(docs, 2024, true)[0].faltan.slice(0, 2), ['enero', 'abril']);
+  assert.deepEqual(mesesSinFactura([{ ...docs[0], estado: 'subido' as const }], 2024, true), []); // sin cobertura no se reclama
+});
+
+test('correo: lista faltantes, ilegibles y electricidad sin garantía; sin pendientes lo dice', () => {
+  const docs = [
+    rv('Hotel A', 'electricidad', 'C1', '2024-01-01', '2024-01-31'), rv('Hotel A', 'electricidad', 'C1', '2024-03-01', '2024-03-31', 'no'),
+    { estado: 'subido' as const, nombre: 'oct.pdf', centro: 'Hotel A', tipo: 'electricidad' }, { estado: 'rechazado' as const, nombre: 'dic.pdf', tipo: 'gas_natural' },
+  ];
+  const c = redactarCorreoPendientes({ organizacion: 'Cadena X', anio: 2024, anioCompleto: false, docs, remitente: 'Juanan' });
+  assert.ok(c.hayPendientes && /febrero/.test(c.cuerpo) && /oct\.pdf \(Hotel A\)/.test(c.cuerpo) && /dic\.pdf/.test(c.cuerpo) && /Garantía de origen/.test(c.cuerpo));
+  assert.match(c.asunto, /Cadena X/); assert.match(c.cuerpo, /Juanan$/);
+  const ok = redactarCorreoPendientes({ organizacion: 'Cadena X', anio: 2024, anioCompleto: false, docs: [rv('Hotel A', 'electricidad', 'C1', '2024-01-01', '2024-01-31', 'no')], remitente: 'J' });
+  assert.equal(ok.hayPendientes, false); assert.match(ok.cuerpo, /no hay documentación pendiente/);
+});

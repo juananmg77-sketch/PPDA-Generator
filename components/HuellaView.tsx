@@ -1308,8 +1308,8 @@ const Estado: React.FC<{ e: Documento['estado'] }> = ({ e }) => {
 };
 
 const Revision: React.FC<{
-  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void; manual?: boolean;
-}> = ({ doc, factores, inv, otras, onHecho, falla, manual }) => {
+  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void; manual?: boolean; corregir?: boolean;
+}> = ({ doc, factores, inv, otras, onHecho, falla, manual, corregir }) => {
   const existentes = useMemo(() => otras.filter((x) => x.id !== doc.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map((x) => ({ id: x.id.slice(0, 8), centro: x.centro_id ?? undefined, proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo })), [otras, doc.id]);
   const asignacion = useMemo(() => asignarContador(doc.extraccion!, { centro: doc.centro_id ?? undefined, existentes }), [doc.id, existentes]); // eslint-disable-line
   const [e, setE] = useState<ExtraccionFactura>(() => (asignacion.contador ? { ...doc.extraccion!, contador: asignacion.contador } : doc.extraccion!));
@@ -1335,13 +1335,16 @@ const Revision: React.FC<{
 
   const confirmar = async () => {
     setGuardando(true);
-    try { await confirmarDocumento(doc, efectiva, cat === 'electricidad' ? '' : fuente, inv); onHecho(); } catch (x) { falla(x); setGuardando(false); }
+    try {
+      if (corregir) await huellaService.borrarActividadDocumento(doc.id); // sustituye el dato anterior de esta factura
+      await confirmarDocumento(doc, efectiva, cat === 'electricidad' ? '' : fuente, inv); onHecho();
+    } catch (x) { falla(x); setGuardando(false); }
   };
   const rechazar = async () => { setGuardando(true); try { await huellaService.actualizarDocumento(doc.id, { estado: 'rechazado' }); onHecho(); } catch (x) { falla(x); setGuardando(false); } };
 
   return (
     <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <p className="text-xs text-slate-600 mb-3">{manual ? 'Escriba cada dato tal como figura en la factura (botón «Ver»). El tipo y el mes se han deducido del nombre del archivo: compruébelos.' : `Compruebe cada dato contra la factura (botón «Ver»). Lectura propuesta con confianza ${Math.round((e.confianza ?? 0) * 100)} %.`}</p>
+      <p className="text-xs text-slate-600 mb-3">{corregir ? 'Abra la factura con «Abrir factura» y escriba el dato correcto (consumo, periodo…). Al confirmar, sustituye al dato anterior de esta factura.' : manual ? 'Escriba cada dato tal como figura en la factura (botón «Ver»). El tipo y el mes se han deducido del nombre del archivo: compruébelos.' : `Compruebe cada dato contra la factura (botón «Ver»). Lectura propuesta con confianza ${Math.round((e.confianza ?? 0) * 100)} %.`}</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <label className="text-xs font-semibold text-slate-600">Tipo
           <select className={`${input} mt-1`} value={e.tipo} onChange={(ev) => { set('tipo', ev.target.value as TipoFactura); setFuente(''); }}>{Object.entries(TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
@@ -1413,8 +1416,8 @@ const Revision: React.FC<{
         </ul>
       )}
       <div className="mt-4 flex flex-wrap gap-2">
-        <button className={btnP} onClick={confirmar} disabled={guardando || !factores || errores.length > 0 || sinFuente || e.tipo === 'otro'}><CheckCircle2 size={15} /> Confirmar como actividad</button>
-        <button className={btnS} onClick={rechazar} disabled={guardando}><XCircle size={15} /> Rechazar factura</button>
+        <button className={btnP} onClick={confirmar} disabled={guardando || !factores || errores.length > 0 || sinFuente || e.tipo === 'otro'}><CheckCircle2 size={15} /> {corregir ? 'Guardar dato corregido' : 'Confirmar como actividad'}</button>
+        {!corregir && <button className={btnS} onClick={rechazar} disabled={guardando}><XCircle size={15} /> Rechazar factura</button>}
         {(errores.length > 0 || sinFuente) && <span className="text-xs text-slate-600 self-center">{errores.length > 0 ? 'Resuelva los errores para confirmar.' : 'Elija el combustible o gas.'}</span>}
       </div>
     </div>
@@ -1596,6 +1599,7 @@ const PanelCierre: React.FC<{
 }> = ({ org, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
   const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
+  const [corrigiendo, setCorrigiendo] = useState<string | null>(null); // factura del cierre cuyo dato se está corrigiendo a mano
   const [correo, setCorreo] = useState<{ asunto: string; cuerpo: string } | null>(null);
   const [copiado, setCopiado] = useState(false);
   // Facturas de electricidad ya confirmadas en las que no consta la garantía de origen
@@ -1755,7 +1759,11 @@ const PanelCierre: React.FC<{
                             <li key={n} className="text-[11px] text-slate-700 flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5">
                               <span className="flex-1 min-w-[200px]"><strong>{x.texto}</strong>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</span>
                               {doc && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={12} /> Abrir factura</button>}
+                              {doc && abierto && doc.extraccion && doc.estado !== 'rechazado' && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-300 bg-white font-semibold text-brand-700 hover:bg-brand-50" onClick={() => setCorrigiendo(corrigiendo === doc.id ? null : doc.id)}><Pencil size={12} /> {corrigiendo === doc.id ? 'Cerrar' : 'Introducir dato'}</button>}
                               {doc && abierto && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-red-200 bg-white font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50" disabled={trabajando} onClick={() => eliminarFactura(doc)}><Trash2 size={12} /> Eliminar</button>}
+                              {doc && abierto && doc.extraccion && corrigiendo === doc.id && (
+                                <div className="w-full"><Revision key={doc.id} doc={doc} factores={factores} inv={inv} otras={docs} corregir onHecho={() => { setCorrigiendo(null); onCambio(); }} falla={falla} /></div>
+                              )}
                             </li>
                           );
                         })}

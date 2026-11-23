@@ -83,3 +83,19 @@ test('totales por alcance, categoría y gas; y ratio por índice de actividad', 
   assert.ok(Math.abs(ratio(totales.kgCO2eTotal, 100) - totales.kgCO2eTotal / 100) < 1e-12);
   assert.throws(() => ratio(10, 0));
 });
+
+import { conPcaManual } from '../factores.ts';
+import { conMezclas } from '../mezclas.ts';
+test('PCA manual de un gas fuera de la calculadora: queda en el conjunto, con su justificación en las notas', () => {
+  const f = conMezclas(construirConjunto(JSON.parse(readFileSync(new URL('../datos/factores-calculadora-2023.2.json', import.meta.url), 'utf-8')), { anioInventario: 2023 }));
+  assert.ok(Math.abs(f.pcaRefrigerantes['R-448A'] - 1494.36) < 0.01); // propuesta por composición
+  const g = conPcaManual(f, 'R-448A', 1387, 'Valor del documento MITECO de factores v17 (abril 2021), como en el inventario 2023 verificado.');
+  assert.equal(g.pcaRefrigerantes['R-448A'], 1387); assert.match(g.id, /\+ajustes$/);
+  assert.equal(g.notas.filter((n) => /R-448A/.test(n)).length, 1); assert.match(g.notas.find((n) => /R-448A/.test(n))!, /PCA manual de R-448A: 1387/);
+  assert.equal(f.pcaRefrigerantes['R-448A'] > 1400, true); // el original no cambia
+  assert.throws(() => conPcaManual(f, 'R-448A', 1387, 'corto'), /justificación/);
+  assert.throws(() => conPcaManual(f, '', 1387, 'una justificación suficiente'), /gas/);
+  assert.throws(() => conPcaManual(f, 'R-448A', 0, 'una justificación suficiente'), /mayor que cero/);
+  const h = conPcaManual(g, 'HFC-134a', 1430, 'PCA del informe 2023 verificado; la calculadora 2023.2 trae 1530.');
+  assert.equal(h.id.split('+ajustes').length, 2); assert.equal(h.notas.length, g.notas.length + 1);
+});

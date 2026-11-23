@@ -86,3 +86,12 @@ test('sector por CNAE y versión de la calculadora', () => {
   assert.equal(sectorDesdeCnae('5510'), 'I.- Hostelería'); assert.equal(sectorDesdeCnae('5610'), 'I.- Hostelería'); assert.equal(sectorDesdeCnae(null), null);
   assert.equal(versionDeFactores('calculadora-2024.1'), '2024.1'); assert.equal(versionDeFactores('calculadora-2030.1'), null);
 });
+
+test('un gas que la calculadora no trae va a «Otros» con su nombre y su PCA; si falta el PCA, falla', () => {
+  const d = datos(); d.lineas.push({ centro: 'Hotel Astoria Playa', categoria: 'fugitiva', fuente: 'R-448A', cantidad: 87.8 });
+  d.gases = { oficiales: ['HFC-134a', 'R-410A'], pca: { 'HFC-134a': 1530, 'R-448A': 1387 } };
+  const wb = leer(rellenarCalculadora(plantilla('2024.1'), d).bytes); const h = wb.Sheets['1.4_Emisiones fugitivas'];
+  assert.equal(h['G15'].v, 'HFC-134a'); assert.equal(h['G16'].v, 'Otros'); assert.equal(h['I16'].v, 'R-448A'); assert.equal(h['J16'].v, 1387); assert.equal(h['N16'].v, 87.8);
+  assert.ok(planCalculadora(d).avisos.some((a) => /R-448A.*«Otros».*1\.?387/.test(a)));
+  d.gases.pca = {}; assert.throws(() => planCalculadora(d), /no tiene su PCA/);
+});

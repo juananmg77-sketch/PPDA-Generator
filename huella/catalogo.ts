@@ -76,3 +76,11 @@ export async function cargarConjunto(anio: number, version?: string): Promise<Co
   delete alternativas[id];
   return { conjunto: conjuntos[id], disponibles, alternativas };
 }
+
+/** Gases de la lista de la calculadora oficial de una versión (los demás se declaran en «Otros»). */
+export async function gasesOficiales(version: string): Promise<string[]> {
+  const v = VERSIONES.find((x) => x.id === version.replace(/^calculadora-/, ''));
+  if (!v) return [];
+  const d = await v.cargar();
+  return [...Object.keys(d.refrigerantes), ...Object.keys(d.otrosGases)];
+}

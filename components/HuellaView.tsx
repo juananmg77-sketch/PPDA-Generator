@@ -12,7 +12,8 @@ import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { emisionesMensuales } from '../huella/graficos';
 import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
-import { cargarConjunto, diferencias, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
+import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
+import { conPcaManual } from '../huella/factores';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
 import { aplicarGas, modoAutomatico, resolverGas } from '../huella/gas';
 import { conMezclas, normalizarGas } from '../huella/mezclas';
@@ -139,6 +140,16 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
       const c = await cargarConjunto(inv.anio, v);
       const actualizado = await huellaService.guardarFactores(inv.id, c.conjunto);
       setInvs((l) => l.map((i) => (i.id === inv.id ? { ...i, conjunto_factores: actualizado.conjunto_factores ?? c.conjunto } : i)));
+    } catch (e) { falla(e); }
+  };
+
+  /** PCA de un gas que la calculadora no trae («Otros») o sustituido con justificación: se fija en los factores del cálculo y sale en el informe. */
+  const ajustarPca = async (gas: string, pca: number, justificacion: string) => {
+    if (!inv || !elegido) return;
+    try {
+      const nuevo = conPcaManual(elegido.conjunto, gas, pca, justificacion);
+      const act = await huellaService.guardarFactores(inv.id, nuevo);
+      setInvs((l) => l.map((i) => (i.id === inv.id ? { ...i, conjunto_factores: act.conjunto_factores ?? nuevo } : i)));
     } catch (e) { falla(e); }
   };
 
@@ -287,7 +298,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               )}
               {tab === 'ajustes' && esConsultor && (
                 <div className="space-y-4">
-                  {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto} onElegir={elegirVersion} />}
+                  {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} />}
                   {inv && (
                     <div className={card}>
                       <label className="text-sm font-bold text-slate-800">Año base del cálculo
@@ -791,7 +802,8 @@ const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => 
 };
 
 // ───────────────────────────── Versión de factores ─────────────────────────────
-const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abierto: boolean; onElegir: (v: string) => void }> = ({ inv, elegido, abierto, onElegir }) => {
+const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abierto: boolean; onElegir: (v: string) => void; gasesUsados: string[]; onPca: (gas: string, pca: number, justificacion: string) => Promise<void> }> = ({ inv, elegido, abierto, onElegir, gasesUsados, onPca }) => {
+  const [gas, setGas] = useState(''); const [pca, setPca] = useState(''); const [just, setJust] = useState(''); const [guardando, setGuardando] = useState(false);
   const fijada = !!inv.conjunto_factores;
   const actual = elegido.conjunto.version.replace('calculadora-', '');
   const comparaciones = (Object.keys(elegido.alternativas) as string[]).map((id) => ({ id, dif: diferencias(elegido.conjunto, elegido.alternativas[id]) }));
@@ -818,6 +830,20 @@ const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abier
         );
       })}
       {elegido.disponibles.length === 1 && <p className="text-[11px] text-slate-500">Solo una edición cubre el año {inv.anio}.</p>}
+
+      <div className="border-t border-slate-200 pt-3 mt-2">
+        <h3 className="text-sm font-bold text-slate-800">PCA manual de gases («Otros» de la calculadora)</h3>
+        <p className="text-xs text-slate-600 mt-1 mb-2">Para un gas que la calculadora oficial no trae (por ejemplo una mezcla como R-448A) o cuyo PCA se sustituye con la misma fuente que en el inventario verificado. Se fija en los factores del cálculo y la justificación sale en el informe; en el Excel oficial se declara en «Otros».</p>
+        {elegido.conjunto.notas.filter((n) => /^PCA /.test(n)).map((n, i) => <p key={i} className="text-[11px] rounded-lg bg-blue-50 text-blue-900 px-3 py-2 mb-1.5">{n}</p>)}
+        {abierto && (
+          <div className="grid md:grid-cols-[180px_120px_1fr_auto] gap-2 items-end mt-2">
+            <label className="text-xs font-semibold text-slate-600">Gas<input className={`${input} mt-1`} list="gases-usados" value={gas} onChange={(e) => setGas(e.target.value)} placeholder="R-448A" /><datalist id="gases-usados">{gasesUsados.map((g) => <option key={g} value={g} />)}</datalist></label>
+            <label className="text-xs font-semibold text-slate-600">PCA (kg CO₂e/kg)<input className={`${input} mt-1`} inputMode="decimal" value={pca} onChange={(e) => setPca(e.target.value)} placeholder="1387" /></label>
+            <label className="text-xs font-semibold text-slate-600">Fuente y justificación<input className={`${input} mt-1`} value={just} onChange={(e) => setJust(e.target.value)} placeholder="Ej.: documento MITECO de factores v17, como en el inventario verificado de 2023" /></label>
+            <button className={btnP} disabled={guardando || !gas.trim() || !pca.trim() || just.trim().length < 15} onClick={async () => { setGuardando(true); await onPca(gas.trim(), Number(pca.replace(',', '.')), just); setGuardando(false); setGas(''); setPca(''); setJust(''); }}>Aplicar</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -1900,8 +1926,11 @@ const PanelInforme: React.FC<{
     const nombreCentro = (id: string) => centros.find((x) => x.id === id)?.nombre ?? id;
     const proveedorDoc = (id?: string | null) => { const d = docs.find((x) => x.id === id); return d?.extraccion?.proveedor ?? d?.proveedor ?? undefined; };
     const estancias = invCentros.reduce((t, c) => t + Number(c.indice_actividad || 0), 0);
+    const conjunto = inv.conjunto_factores ?? factores;
+    const lista = await gasesOficiales(ver);
     const out = rellenarCalculadora(plantilla, {
       anio: inv.anio, verificacion: true,
+      gases: conjunto ? { oficiales: lista, pca: conMezclas(conjunto).pcaRefrigerantes } : undefined,
       organizacion: { nombre: org.nombre, cif: org.cif, cnae: org.cnae },
       centros: centros.map((c) => ({ nombre: c.nombre, enBaleares: c.en_baleares, isla: c.isla, municipio: c.municipio, direccion: c.direccion })),
       indice: estancias > 0 ? { nombre: 'Estancias', valor: estancias, unidades: 'estancias' } : undefined,

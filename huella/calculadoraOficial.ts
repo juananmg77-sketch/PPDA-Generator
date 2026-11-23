@@ -24,6 +24,8 @@ export interface DatosOficiales {
   /** El libro se entrega para verificación (o ya verificado). */
   verificacion: boolean;
   lineas: LineaOficial[];
+  /** Gases de la lista de la calculadora y PCA del cálculo: los demás se declaran en «Otros» con su PCA. Sin esto, todos se tratan como de la lista. */
+  gases?: { oficiales: string[]; pca: Record<string, number> };
 }
 export interface Celda { hoja: string; ref: string; valor: string | number }
 export interface PlanCalculadora { celdas: Celda[]; /** Avisos que pueden afectar a las cifras. */ avisos: string[]; /** Datos que el libro pide y la app no tiene. */ pendientes: string[] }
@@ -112,7 +114,17 @@ export function planCalculadora(d: DatosOficiales): PlanCalculadora {
   // 1.4 Fugitivas: recarga anual de cada gas
   const fug = agrupar(d.lineas.filter((l) => l.categoria === 'fugitiva'), (l) => `${l.centro}|${l.fuente}`, (l) => l.cantidad);
   hay('Emisiones fugitivas', fug.length, CAP.fugitivas, HOJAS.fugitivas);
-  fug.forEach(({ x, total }, i) => { const r = CAP.fugitivas[0] + i; poner(HOJAS.fugitivas, `E${r}`, x.centro); poner(HOJAS.fugitivas, `G${r}`, x.fuente); poner(HOJAS.fugitivas, `N${r}`, redondear(total)); });
+  const oficiales = d.gases ? new Set(d.gases.oficiales) : null;
+  fug.forEach(({ x, total }, i) => {
+    const r = CAP.fugitivas[0] + i; poner(HOJAS.fugitivas, `E${r}`, x.centro); poner(HOJAS.fugitivas, `N${r}`, redondear(total));
+    if (oficiales && !oficiales.has(x.fuente)) {
+      // gas que la calculadora no trae: casilla «Otros» con su nombre y su PCA (el del cálculo, con su justificación en las notas de factores)
+      const pca = d.gases!.pca[x.fuente];
+      if (!(pca > 0)) throw new Error(`El gas «${x.fuente}» no está en la calculadora oficial y el cálculo no tiene su PCA: indíquelo en Ajustes con su justificación.`);
+      poner(HOJAS.fugitivas, `G${r}`, 'Otros'); poner(HOJAS.fugitivas, `I${r}`, x.fuente); poner(HOJAS.fugitivas, `J${r}`, pca);
+      avisos.push(`Gas «${x.fuente}»: no figura en la lista de la calculadora; se ha declarado en «Otros» con PCA ${pca.toLocaleString('es-ES')} (la justificación está en las notas de los factores del cálculo).`);
+    } else poner(HOJAS.fugitivas, `G${r}`, x.fuente);
+  });
   if (fug.length) avisos.push('Gases fugitivos: se han declarado como recarga anual (kg) en la tabla A de equipos; el libro pide además tipo de equipo y carga inicial, que la aplicación no recoge.');
 
   // 2.1 Electricidad: edificio, comercializadora, tipo de energía y kWh

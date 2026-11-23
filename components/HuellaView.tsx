@@ -832,16 +832,30 @@ const PanelFactores: React.FC<{ inv: Inventario; elegido: ConjuntoElegido; abier
       {elegido.disponibles.length === 1 && <p className="text-[11px] text-slate-500">Solo una edición cubre el año {inv.anio}.</p>}
 
       <div className="border-t border-slate-200 pt-3 mt-2">
-        <h3 className="text-sm font-bold text-slate-800">PCA manual de gases («Otros» de la calculadora)</h3>
-        <p className="text-xs text-slate-600 mt-1 mb-2">Para un gas que la calculadora oficial no trae (por ejemplo una mezcla como R-448A) o cuyo PCA se sustituye con la misma fuente que en el inventario verificado. Se fija en los factores del cálculo y la justificación sale en el informe; en el Excel oficial se declara en «Otros».</p>
-        {elegido.conjunto.notas.filter((n) => /^PCA /.test(n)).map((n, i) => <p key={i} className="text-[11px] rounded-lg bg-blue-50 text-blue-900 px-3 py-2 mb-1.5">{n}</p>)}
+        <h3 className="text-sm font-bold text-slate-800">Gases que la calculadora oficial no trae</h3>
+        {elegido.conjunto.notas.filter((n) => /^PCA /.test(n)).length === 0
+          ? <p className="text-xs text-slate-600 mt-1">Ninguno: todos los gases del cálculo están en la calculadora oficial.</p>
+          : <p className="text-xs text-slate-600 mt-1">La aplicación calcula su potencial de calentamiento (PCA) y los declara en «Otros» del Excel oficial. No hace falta hacer nada.</p>}
+        {elegido.conjunto.notas.filter((n) => /^PCA /.test(n)).map((n, i) => {
+          const m = /^PCA (?:manual )?de ([^\s(:]+)[^:]*: ([\d.,]+)/.exec(n);
+          return (
+            <details key={i} className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-800">
+              <summary className="cursor-pointer font-semibold">{m ? `${m[1]} · PCA ${m[2]} kg CO₂e/kg` : 'Gas con PCA propio'} <span className="font-normal text-slate-500">· ver cómo se calcula</span></summary>
+              <p className="mt-2 text-slate-600">{n}</p>
+            </details>
+          );
+        })}
         {abierto && (
-          <div className="grid md:grid-cols-[180px_120px_1fr_auto] gap-2 items-end mt-2">
-            <label className="text-xs font-semibold text-slate-600">Gas<input className={`${input} mt-1`} list="gases-usados" value={gas} onChange={(e) => setGas(e.target.value)} placeholder="R-448A" /><datalist id="gases-usados">{gasesUsados.map((g) => <option key={g} value={g} />)}</datalist></label>
-            <label className="text-xs font-semibold text-slate-600">PCA (kg CO₂e/kg)<input className={`${input} mt-1`} inputMode="decimal" value={pca} onChange={(e) => setPca(e.target.value)} placeholder="1387" /></label>
-            <label className="text-xs font-semibold text-slate-600">Fuente y justificación<input className={`${input} mt-1`} value={just} onChange={(e) => setJust(e.target.value)} placeholder="Ej.: documento MITECO de factores v17, como en el inventario verificado de 2023" /></label>
-            <button className={btnP} disabled={guardando || !gas.trim() || !pca.trim() || just.trim().length < 15} onClick={async () => { setGuardando(true); await onPca(gas.trim(), Number(pca.replace(',', '.')), just); setGuardando(false); setGas(''); setPca(''); setJust(''); }}>Aplicar</button>
-          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">Cambiar el PCA de un gas (solo si hace falta)</summary>
+            <p className="text-xs text-slate-600 mt-2 mb-2">Por ejemplo, para mantener el valor de un inventario ya verificado. Indique el gas, su PCA y de dónde sale: quedará en el informe.</p>
+            <div className="grid md:grid-cols-[160px_120px_1fr_auto] gap-2 items-end">
+              <label className="text-xs font-semibold text-slate-600">Gas<input className={`${input} mt-1`} list="gases-usados" value={gas} onChange={(e) => setGas(e.target.value)} placeholder="R-448A" /><datalist id="gases-usados">{gasesUsados.map((g) => <option key={g} value={g} />)}</datalist></label>
+              <label className="text-xs font-semibold text-slate-600">PCA<input className={`${input} mt-1`} inputMode="decimal" value={pca} onChange={(e) => setPca(e.target.value)} placeholder="1387" /></label>
+              <label className="text-xs font-semibold text-slate-600">De dónde sale<input className={`${input} mt-1`} value={just} onChange={(e) => setJust(e.target.value)} placeholder="Ej.: valor del informe verificado de 2023 (mín. 15 caracteres)" /></label>
+              <button className={btnP} disabled={guardando || !gas.trim() || !pca.trim() || just.trim().length < 15} onClick={async () => { setGuardando(true); await onPca(gas.trim(), Number(pca.replace(',', '.')), just); setGuardando(false); setGas(''); setPca(''); setJust(''); }}>Aplicar</button>
+            </div>
+          </details>
         )}
       </div>
     </div>

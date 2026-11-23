@@ -89,5 +89,26 @@ tbody tr:nth-child(even) td{background:#F2F8FD}
 </div>
 <div class="indice"><h2>ÍNDICE</h2><ul>${indice}</ul></div>
 ${cuerpo}
+<script>
+/* Safari y Firefox ignoran los márgenes de @page (y Safari aplica el de la primera página a todas): en ellos los márgenes se logran con un envoltorio de tabla cuyo encabezado y pie, vacíos, se repiten en cada página. Chrome conserva los márgenes de @page y su numeración. */
+(function(){
+  if (/Chrome|Chromium|CriOS|Edg\//.test(navigator.userAgent)) return;
+  var css = document.createElement('style');
+  css.textContent = '@page{size:A4;margin:0}@page :first{margin:0}'
+    + 'table.envoltura{width:100%;margin:0;font-size:10pt;border-collapse:collapse}'
+    + 'table.envoltura>thead>tr>td,table.envoltura>tfoot>tr>td,table.envoltura>tbody>tr>td{padding:0;border:0;background:none}'
+    + 'table.envoltura>tbody>tr{break-inside:auto}table.envoltura>tfoot{display:table-footer-group}'
+    + '.esp-sup{height:28mm}.esp-inf{height:26mm}.cont-env{padding:0 17mm!important}'
+    + '.cabecera{top:9mm;left:17mm;right:17mm}.banda{bottom:0;left:0;right:0}';
+  document.head.appendChild(css);
+  var portada = document.querySelector('.portada'), fin = document.currentScript;
+  if (!portada || !fin) return;
+  var t = document.createElement('table'); t.className = 'envoltura';
+  t.innerHTML = '<thead><tr><td><div class="esp-sup"></div></td></tr></thead><tfoot><tr><td><div class="esp-inf"></div></td></tr></tfoot><tbody><tr><td class="cont-env"></td></tr></tbody>';
+  var cont = t.querySelector('.cont-env');
+  while (portada.nextSibling && portada.nextSibling !== fin) cont.appendChild(portada.nextSibling);
+  fin.parentNode.insertBefore(t, fin);
+})();
+</script>
 </body></html>`;
 }

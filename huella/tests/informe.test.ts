@@ -187,7 +187,7 @@ test('exclusiones de la categoría 1 sin % o sin evidencia son pendientes; la ev
   const e = base(); e.exclusiones = [];
   const m = construirInforme(e); const iso = JSON.stringify(m.secciones.find((x) => x.id === '9'));
   assert.match(iso, /No significativa/); // categorías 3 a 6 por la evaluación, sin exclusiones sueltas
-  assert.match(iso, /3\.1 Transporte de mercancías/);
+  assert.doesNotMatch(iso, /3\.1 Transporte de mercancías/); // las subcategorías no figuran en el informe
 });
 
 import { resumenDeInventario } from '../anioBase.ts';
@@ -328,9 +328,9 @@ test('categorías 3 a 6 excluidas con el mismo motivo: una sola fila y una sola 
   const s5 = tablas('5')[0]; assert.equal(s5.filas.length, 3); // categorías 1, 2 y «3 a 6»
   assert.match(s5.filas[2][0], /^Categorías 3 a 6 \(transporte; productos usados/); assert.equal(s5.filas[2][1], 'No significativa'); assert.equal(s5.filas[2][2], motivo);
   const s92 = tablas('9').find((t) => t.cab[0] === 'Categoría' && t.cab.includes('Justificación'))!; assert.equal(s92.filas.length, 2); // categoría 2 + «3 a 6»
-  const completo = JSON.stringify(m); assert.equal(completo.split(motivo).length - 1, 3, 'el motivo aparece una vez por tabla/párrafo, no una por subcategoría'); // s5, 9.2 y el párrafo de subcategorías
-  assert.ok(!tablas('9').some((t) => t.cab[0] === 'Subcategoría')); // sin tabla de trece filas iguales
-  assert.match(texto(m), /excluidas como «no aplica» \(3\.1, 3\.2/);
+  const completo = JSON.stringify(m); assert.equal(completo.split(motivo).length - 1, 2, 'el motivo aparece una vez por tabla (secciones 5 y 9.2)');
+  assert.ok(!tablas('9').some((t) => t.cab[0] === 'Subcategoría')); // sin tabla de subcategorías
+  assert.doesNotMatch(texto(m), /(?<![\d.])3\.[1-4]\b(?!\.)|[Ss]ubcategor/); // ninguna subcategoría en el informe
   // con motivos distintos por categoría no se fusionan
   const e = base(); e.exclusiones = [];
   e.significancia = { ...e.significancia!, evaluaciones: PLANTILLA_HOTELES.map((x) => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: null, influencia: null, datos: null, requisitos: null, resultado: 'no_significativa' as const, justificacion: `Motivo de la categoría ${x.categoria}.`, cuantificada: false, metodo: 'no_aplica' as const })) };

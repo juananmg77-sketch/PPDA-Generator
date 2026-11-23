@@ -174,7 +174,7 @@ export function resumenPorCategoria(plantilla: Array<Pick<SubcategoriaPlantilla,
     else { r.noSignificativas++; if ((e.justificacion ?? '').trim()) (porTexto[s.categoria] ??= new Map()).set(e.justificacion!.trim(), [...((porTexto[s.categoria] ??= new Map()).get(e.justificacion!.trim()) ?? []), s.codigo]); }
   }
   // Justificaciones sin repetir: si todas coinciden, una sola; si no, cada texto con los códigos a los que se aplica
-  for (const [cat, m] of Object.entries(porTexto)) out[Number(cat)].justificaciones = m.size === 1 ? [...m.keys()] : [...m].map(([t, cs]) => `${cs.join(', ')}: ${t}`);
+  for (const [cat, m] of Object.entries(porTexto)) out[Number(cat)].justificaciones = [...m.keys()]; // textos distintos, sin códigos de subcategoría
   return out;
 }
 

@@ -177,7 +177,7 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     for (const c of l) { const g = grupos[grupos.length - 1]; const u = g?.items[g.items.length - 1]; if (g && u && c.estado !== 'Cuantificada' && u.estado === c.estado && u.justificacion === c.justificacion && c.n === u.n + 1) g.items.push(c); else grupos.push({ items: [c] }); }
     return grupos.map((g) => ({ ...g, etiqueta: g.items.length === 1 ? CATEGORIAS_ISO[g.items[0].n - 1].resumen : `Categorías ${g.items[0].n} a ${g.items[g.items.length - 1].n} (${g.items.map((x) => nombreCorto(x.n)).join('; ')})` }));
   };
-  const subsConDatos = (n: number) => [...new Set(d.actividad.map((a) => CATEGORIA_ISO_FUENTE[a.categoria as keyof typeof CATEGORIA_ISO_FUENTE]).filter((c) => c && c.n === n).map((c) => c.sub))].sort();
+  const subsConDatos = (n: number) => [...new Set(d.actividad.map((a) => CATEGORIA_ISO_FUENTE[a.categoria as keyof typeof CATEGORIA_ISO_FUENTE]).filter((c) => c && c.n === n).map((c) => c.sub.replace(/^\d\.\d\s+/, '')))].sort(); // sin códigos de subcategoría
   const s5: Seccion = { id: '5', titulo: 'Límites del informe', bloques: [
     { k: 'tabla', cab: ['Categoría (ISO 14064-1)', 'Estado', 'Fuentes o justificación'], filas: fusionar(iso.categorias).map((g) => [
       g.etiqueta, g.items[0].estado,
@@ -304,21 +304,6 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     ...(grupoGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones directas por grupo de gas (t CO₂e)', ...svgBarrasHorizontales(grupoGraf, 'Emisiones directas por grupo de gas'), pie: 'Solo categoría 1; se muestran los grupos con emisiones.' }] : []),
     { k: 'h', texto: '9.2 Emisiones indirectas por categoría (2 a 6)' },
     { k: 'tabla', cab: ['Categoría', 'Estado', 'Emisiones (t CO₂e)', 'Justificación'], filas: fusionar(iso.indirectas).map((g) => [g.etiqueta, g.items[0].estado, fmt(g.items[0].toneladasCO2e, 'tCO2e'), g.items[0].justificacion ?? '—']), numericas: [2], pie: 'Cuantificada: con datos de actividad. No significativa: excluida por estar por debajo del umbral de significancia. Excluida: no cuantificada, con su justificación.' },
-    ...(sig ? (() => {
-      const activas = sig.plantilla.filter((x) => x.activa);
-      const evs = activas.map((x) => ({ x, e: sig.evaluaciones.find((y) => y.codigo === x.codigo) }));
-      const textos = [...new Set(evs.map(({ e }) => e?.justificacion?.trim()).filter(Boolean))] as string[];
-      // Si todas las subcategorías se excluyen como «no aplica» con el mismo motivo, un párrafo basta (no una tabla que lo repita trece veces)
-      if (evs.length && evs.every(({ e }) => e?.metodo === 'no_aplica') && textos.length === 1) return [{ k: 'p' as const, texto: `Subcategorías de las categorías 3 a 6 excluidas como «no aplica» (${evs.map(({ x }) => x.codigo).join(', ')}). Justificación común: ${textos[0]}` }];
-      const comun = textos.length === 1 && evs.filter(({ e }) => e?.justificacion?.trim()).length > 1 ? textos[0] : null;
-      const tabla = { k: 'tabla' as const, cab: ['Subcategoría', 'Magnitud estimada', 'Influencia', 'Datos', 'Requisitos', 'Resultado', 'Cuantificada', 'Justificación'], filas: evs.map(({ x, e }) => {
-        const r = e ? evaluarEvaluacion(e, criterios) : null;
-        const si = (v: boolean | null | undefined) => (v == null ? '—' : v ? 'Sí' : 'No');
-        const noAplica = e?.metodo === 'no_aplica';
-        return [`${x.codigo} ${x.nombre}`, noAplica ? '—' : pct(e?.magnitudPct), noAplica ? '—' : e?.influencia ? { alta: 'Alta', media: 'Media', baja: 'Baja' }[e.influencia] : '—', noAplica ? '—' : e?.datos ? { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' }[e.datos] : '—', noAplica ? '—' : si(e?.requisitos), r?.resultado ? (r.resultado === 'significativa' ? 'Significativa' : noAplica ? 'No aplica (excluida)' : 'No significativa') : 'Sin valorar', r?.resultado === 'significativa' ? si(e?.cuantificada) : '—', comun && e?.justificacion?.trim() ? 'Ver nota' : e?.justificacion?.trim() || '—'];
-      }), pie: `Evaluación de la significancia de las emisiones indirectas (ISO 14064-1:2018, apartado 5.2.3): magnitud estimada, nivel de influencia, calidad de los datos y requisitos de clientes o normativos.${comun ? ` Justificación común de las exclusiones: ${comun}` : ''}` };
-      return [tabla];
-    })() : []),
     ...(catGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(catGraf, 'Emisiones por categoría'), pie: 'Categorías cuantificadas del inventario.' }] : []),
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
@@ -444,12 +429,11 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
   pendientes.push(...dir.incidencias);
-  const codigos = (l: string[]) => l.map((x) => x.split(' ')[0]).join(', ');
   if (estadoSig) {
     // Un solo pendiente por tipo de falta (no uno por subcategoría)
-    if (estadoSig.sinValorar.length) pendientes.push(`Significancia: faltan por valorar ${estadoSig.sinValorar.length} subcategoría(s) de las emisiones indirectas (${codigos(estadoSig.sinValorar)}).`);
-    if (estadoSig.excluidasSinJustificar.length) pendientes.push(`Significancia: ${estadoSig.excluidasSinJustificar.length} subcategoría(s) se excluyen sin justificación (${codigos(estadoSig.excluidasSinJustificar)}).`);
-    if (estadoSig.significativasSinCuantificar.length) pendientes.push(`Significancia: ${estadoSig.significativasSinCuantificar.length} subcategoría(s) significativa(s) sin cuantificar (${codigos(estadoSig.significativasSinCuantificar)}).`);
+    if (estadoSig.sinValorar.length) pendientes.push(`Significancia: faltan por valorar ${estadoSig.sinValorar.length} subcategoría(s) de las emisiones indirectas.`);
+    if (estadoSig.excluidasSinJustificar.length) pendientes.push(`Significancia: ${estadoSig.excluidasSinJustificar.length} subcategoría(s) se excluyen sin justificación.`);
+    if (estadoSig.significativasSinCuantificar.length) pendientes.push(`Significancia: ${estadoSig.significativasSinCuantificar.length} subcategoría(s) significativa(s) sin cuantificar.`);
   } else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
   const sinEvaluar = iso.indirectas.filter((c) => c.estado === 'Sin evaluar');
   if (sinEvaluar.length) pendientes.push(`Categoría(s) ${sinEvaluar.map((c) => c.n).join(', ')} sin evaluar: indique si es no significativa o está excluida, con su justificación.`);

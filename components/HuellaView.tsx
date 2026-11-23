@@ -7,7 +7,7 @@ import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
-import { CNAE_HOTEL, centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
+import { CNAE_HOTEL, centroDesdeHotel, coordenada, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
 import { desgloseGases } from '../huella/gases';
@@ -673,6 +673,12 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
     try {
       const res = (await Promise.all(ids.map((id) => huellaService.buscarHoteles({ id }).then((r) => r[0] ?? null)))).filter((h): h is HotelSuite => !!h);
       setDeSuite(res); volcar(res, sobrescribir);
+      // Los centros vinculados sin coordenadas las reciben de HS Suite (nunca se pisan las que ya tienen)
+      for (const h of res) {
+        const lat = coordenada(h.latitud, 90), lon = coordenada(h.longitud, 180);
+        const c = centrosOrg.find((x) => x.suite_hotel_id === h.id);
+        if (c && lat != null && lon != null && (c.latitud == null || c.longitud == null)) { try { await huellaService.actualizarCentro(c.id, { latitud: lat, longitud: lon }); } catch { /* se podrán escribir a mano en «Editar centro» */ } }
+      }
       setNotaSuite(sobrescribir ? 'Datos actualizados desde HS Suite: revíselos y pulse Guardar.' : '');
     } catch (e) { onError?.(e); } finally { setCargandoSuite(false); }
   };
@@ -737,6 +743,7 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
                   <li key={h.id} className="px-3 py-1.5 text-xs">
                     <strong>{h.nombre_hotel}</strong>{h.titular ? ` · ${h.titular}` : ''}{h.cif ? ` · ${h.cif}` : ''}
                     <span className="block text-slate-500">{[h.direccion_completa, h.municipio, h.isla].filter(Boolean).join(' · ')} · {h.num_habitaciones ?? '—'} hab. · {h.num_plazas ?? '—'} plazas</span>
+                    <span className="block text-slate-500">Coordenadas: {coordenada(h.latitud, 90) != null && coordenada(h.longitud, 180) != null ? `${coordenada(h.latitud, 90)!.toLocaleString('es-ES', { maximumFractionDigits: 6 })}, ${coordenada(h.longitud, 180)!.toLocaleString('es-ES', { maximumFractionDigits: 6 })}` : <span className="text-amber-700">no constan en HS Suite (escríbalas en «Editar centro»)</span>}</span>
                   </li>
                 ))}
               </ul>

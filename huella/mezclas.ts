@@ -1,6 +1,7 @@
 // Mezclas de refrigerantes que la calculadora oficial no trae: su potencial de calentamiento (PCA) se calcula como la media ponderada
 // por masa de los PCA de sus componentes, con los valores del propio conjunto de factores (así es coherente con las demás mezclas de la calculadora).
 import type { ConjuntoFactores } from './tipos.ts';
+import { fmt } from './formato.ts';
 
 /** PCA de los HFO usados en las mezclas (IPCC AR6 / Reglamento (UE) 2024/573, anexo II); la calculadora oficial no los incluye. */
 export const PCA_HFO: Record<string, number> = { 'HFO-1234yf': 0.501, 'HFO-1234ze(E)': 1.37 };
@@ -43,8 +44,8 @@ export function conMezclas(f: ConjuntoFactores): ConjuntoFactores {
     if (v === null) continue;
     nuevas[nombre] = v;
     const mz = MEZCLAS[nombre];
-    const comp = Object.entries(mz.componentes).map(([c, x]) => `${c} ${Math.round(x * 100)} % × ${(f.pcaRefrigerantes[c] ?? PCA_HFO[c]).toLocaleString('es-ES')}`).join('; ');
-    notas.push(`PCA de ${nombre} (mezcla sin PCA propio en la calculadora oficial; se declara en «Otros»): ${v.toLocaleString('es-ES')} kg CO2e/kg, media ponderada por masa de los PCA individuales de sus componentes en su última revisión, los de este conjunto de factores (${comp}; HFO según AR6), aunque no coincidan con los usados en años anteriores. ${mz.fuente}`);
+    const comp = Object.entries(mz.componentes).map(([c, x]) => `${c} ${Math.round(x * 100)} % × ${fmt(f.pcaRefrigerantes[c] ?? PCA_HFO[c], 'pca')}`).join('; ');
+    notas.push(`PCA de ${nombre} (mezcla sin PCA propio en la calculadora oficial; se declara en «Otros»): ${fmt(v, 'pca')} kg CO2e/kg, media ponderada por masa de los PCA individuales de sus componentes en su última revisión, los de este conjunto de factores (${comp}; HFO según AR6), aunque no coincidan con los usados en años anteriores. ${mz.fuente}`);
   }
   if (!notas.length) return f;
   return { ...f, pcaRefrigerantes: { ...f.pcaRefrigerantes, ...nuevas }, notas: [...f.notas.filter((n) => !notas.includes(n)), ...notas] };

@@ -35,6 +35,7 @@ function tabla(b: Extract<Bloque, { k: 'tabla' }>) {
     ...b.filas.map((f, r) => new TableRow({ cantSplit: true, children: f.map((c, i) => celda(c, i, false, r % 2 === 1)) })),
   ];
   const out: Array<Table | Paragraph> = [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: filas })];
+  for (const nota of b.notas ?? []) out.push(new Paragraph({ spacing: { after: 40 }, children: [run(nota, { size: 8, color: '666666' })] }));
   out.push(new Paragraph({ spacing: { after: 120 }, children: b.pie ? [run(b.pie, { size: 8, color: '666666' })] : [] }));
   return out;
 }

@@ -1,5 +1,6 @@
 // Butano, propano y GLP: reconocimiento del combustible, unidades (kg, litros, envases) y su factor de emisión.
 import type { ExtraccionFactura } from './extraccion.ts';
+import { fmtMax } from './formato.ts';
 
 const norm = (s?: string) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 
@@ -27,5 +28,5 @@ export function aplicarEnvases(e: ExtraccionFactura, kgPorEnvase?: number): Extr
   if (e.tipo !== 'glp' || typeof e.cantidad !== 'number' || !esEnvase(e.unidad)) return e;
   if (!(typeof kgPorEnvase === 'number' && kgPorEnvase > 0)) return e;
   const kg = Math.round(e.cantidad * kgPorEnvase * 100) / 100;
-  return { ...e, cantidad: kg, unidad: 'kg', nota: `Convertido de ${e.cantidad.toLocaleString('es-ES')} ${e.unidad} × ${kgPorEnvase.toLocaleString('es-ES')} kg por envase.` };
+  return { ...e, cantidad: kg, unidad: 'kg', nota: `Convertido de ${fmtMax(e.cantidad)} ${e.unidad} × ${fmtMax(kgPorEnvase)} kg por envase.` };
 }

@@ -16,7 +16,7 @@ function bloque(b: Bloque): string {
       const num = new Set(b.numericas ?? []);
       const cab = b.cab.map((c, i) => `<th${num.has(i) ? ' class="n"' : ''}>${esc(c)}</th>`).join('');
       const filas = b.filas.map((f) => `<tr>${f.map((c, i) => `<td${num.has(i) ? ' class="n"' : ''}>${multi(c)}</td>`).join('')}</tr>`).join('');
-      return `<table><thead><tr>${cab}</tr></thead><tbody>${filas}</tbody></table>${b.pie ? `<p class="pie">${esc(b.pie)}</p>` : ''}`;
+      return `<table><thead><tr>${cab}</tr></thead><tbody>${filas}</tbody></table>${(b.notas ?? []).map((n) => `<p class="pie">${esc(n)}</p>`).join('')}${b.pie ? `<p class="pie">${esc(b.pie)}</p>` : ''}`;
     }
   }
 }

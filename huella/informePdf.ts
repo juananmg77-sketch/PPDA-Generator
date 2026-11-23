@@ -12,19 +12,22 @@ const C = { azul: '#002060', marino: '#00093D', cian: '#24CBF5', texto: '#344454
 const quitarFuente = (svg: string) => svg.replace(/font-family="[^"]*"/g, 'font-family="Montserrat"');
 
 /** Anchos de columna (pt): proporcionales al contenido, pero ninguna menor que su palabra más larga (el título no se parte ni se sale de la página). */
-function anchos(cab: string[], filas: string[][]): number[] {
+function anchos(cab: string[], filas: string[][], fs: number): number[] {
   const peso = cab.map((c, i) => {
     const largos = [c.length, ...filas.slice(0, 60).map((f) => Math.max(...(f[i] ?? '').split('\n').map((l) => l.length), 0))];
     const media = largos.reduce((x, y) => x + y, 0) / largos.length;
     return Math.min(40, Math.max(4, (Math.max(...largos) + media) / 2));
   });
-  const minimo = cab.map((c, i) => {
-    const palabras = [...c.split(/\s+/), ...filas.slice(0, 60).flatMap((f) => (f[i] ?? '').split(/\s+/))];
-    const larga = Math.max(...palabras.map((w) => w.length), 1);
-    return Math.min(110, Math.max(c.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 1) * 4.9 + 9, Math.min(larga, 12) * 4.1 + 9));
-  });
+  // Anchura mínima: la de la palabra más larga del título y del cuerpo (los dígitos de Montserrat son más anchos que las letras)
+  const palabraPt = (w: string, negrita: boolean) => ([...w].reduce((t, ch) => t + (/\d/.test(ch) ? 5.6 : /[.,]/.test(ch) ? 2.6 : /[A-ZÁÉÍÓÚ]/.test(ch) ? 5.9 : 5.1), 0) * (negrita ? 1.07 : 1) * fs) / 8 + 1;
+  const minimo = cab.map((c, i) => Math.min(150, Math.max(
+    ...c.split(/\s+/).map((w) => palabraPt(w, true)),
+    ...filas.slice(0, 80).flatMap((f) => (f[i] ?? '').split(/\s+/)).map((w) => palabraPt(w.slice(0, 14), false)),
+  )));
+  // pdfmake suma el relleno de cada celda (4 + 4 pt) y los bordes fuera de la anchura indicada: se descuentan para no pasarse del margen
+  const util = ANCHO - cab.length * 8 - (cab.length + 1) * 0.5;
   const total = peso.reduce((x, y) => x + y, 0);
-  let w = peso.map((p) => (ANCHO * p) / total);
+  let w = peso.map((p) => (util * p) / total);
   for (let vuelta = 0; vuelta < 6; vuelta++) {
     const falta = w.reduce((t, x, i) => t + Math.max(0, minimo[i] - x), 0);
     if (falta < 0.5) break;
@@ -33,7 +36,7 @@ function anchos(cab: string[], filas: string[][]): number[] {
     w = w.map((x, i) => (x < minimo[i] ? minimo[i] : x - (Math.max(0, x - minimo[i]) / holgura) * falta));
   }
   const suma = w.reduce((x, y) => x + y, 0);
-  if (suma > ANCHO) w = w.map((x) => (x * ANCHO) / suma); // si los mínimos no caben, se reparte la falta
+  if (suma > util) w = w.map((x) => (x * util) / suma); // si los mínimos no caben, se reparte la falta
   return w.map((x) => Math.floor(x * 10) / 10 - 0.1);
 }
 
@@ -55,13 +58,14 @@ function bloque(b: Bloque): unknown[] {
       const num = new Set(b.numericas ?? []);
       const fs = b.cab.length >= 8 ? 7 : 8;
       const celda = (t: string, i: number, cab: boolean) => ({ text: t, alignment: num.has(i) ? 'right' : 'left', ...(cab ? { bold: true, color: '#FFFFFF', fillColor: C.azul } : {}), fontSize: fs });
-      return [
-        { margin: [0, 2, 0, b.pie ? 2 : 8], table: { headerRows: 1, dontBreakRows: true, keepWithHeaderRows: 1, widths: anchos(b.cab, b.filas),
+      const notas = (b.notas ?? []).map((n) => ({ text: n, fontSize: 7.5, color: C.pie, margin: [0, 0, 0, 2], alignment: 'left' }));
+      const tabla = { margin: [0, 2, 0, b.pie || notas.length ? 2 : 8], table: { headerRows: 1, dontBreakRows: true, keepWithHeaderRows: 1, widths: anchos(b.cab, b.filas, fs),
           body: [b.cab.map((c, i) => celda(c, i, true)), ...b.filas.map((f) => f.map((t, i) => celda(t, i, false)))] },
           layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => C.gris, vLineColor: () => C.gris, paddingLeft: () => 4, paddingRight: () => 4, paddingTop: () => 2.5, paddingBottom: () => 2.5,
-            fillColor: (fila: number) => (fila > 0 && fila % 2 === 0 ? C.zebra : null) } },
-        ...(b.pie ? [{ text: b.pie, fontSize: 7.5, color: C.pie, margin: [0, 0, 0, 8] }] : []),
-      ];
+            fillColor: (fila: number) => (fila > 0 && fila % 2 === 0 ? C.zebra : null) } };
+      const pie = b.pie ? [{ text: b.pie, fontSize: 7.5, color: C.pie, margin: [0, 0, 0, 8] }] : [];
+      // La nota va con su tabla en la misma página; si la tabla es demasiado larga para caber en una, la nota queda al final de ella
+      return b.filas.length <= 22 && notas.length ? [{ unbreakable: true, stack: [tabla, ...notas, ...pie] }] : [tabla, ...notas, ...pie];
     }
   }
 }

@@ -3,6 +3,8 @@
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
 import { desgloseGases } from './gases.ts';
+import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
+import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
 
 export const VERSION_MOTOR = 'HS GREEN huella 1.0';
 
@@ -12,7 +14,7 @@ export type Bloque =
   | { k: 'lista'; items: string[] }
   | { k: 'nota'; texto: string }
   | { k: 'grafico'; titulo: string; svg: string; ancho: number; alto: number; pie?: string }
-  | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string };
+  | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string; /** Notas al pie de las marcas (*, †) que aparecen en la tabla, con su texto del catálogo. */ notas?: string[] };
 export interface Seccion { id: string; titulo: string; bloques: Bloque[] }
 export interface ModeloInforme {
   meta: { titulo: string; subtitulo: string; norma: string; estado: string; edicion: string; fecha: string; organizacion: string; anio: number; codigo: string };
@@ -43,8 +45,9 @@ export interface DatosInforme {
   fecha: string; // AAAA-MM-DD
 }
 
-const num = (v: number, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
-const tn = (kg: number, d = 2) => num(kg / 1000, d);
+/** Toneladas (t CO₂e) a partir de kg, siempre con el formato de la capa única. */
+const tn = (kg: number) => fmt(kg / 1000, 'tCO2e');
+const pct = (v: number | null | undefined) => { const t = fmtOpc(v, 'porcentaje'); return t === null ? '—' : `${t} %`; };
 const fechaEs = (iso?: string | null) => (iso ? new Date(iso.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : '—');
 const dash = (x?: string | number | null) => (x === null || x === undefined || x === '' ? '—' : String(x));
 
@@ -102,7 +105,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   if (!d.exclusiones.length) pendientes.push('No hay fuentes excluidas registradas: confirme que el inventario es completo para las categorías 1 y 2.');
   if (o.consultorEmail == null) pendientes.push('No consta el consultor responsable del inventario.');
 
-  const centrosTabla = d.centros.map((c) => [c.nombre, dash(c.direccion), [c.municipio, c.enBaleares ? c.isla : 'Fuera de Baleares'].filter(Boolean).join(' · ') || '—', c.unidades != null ? num(c.unidades, 0) : '—']);
+  const centrosTabla = d.centros.map((c) => [c.nombre, dash(c.direccion), [c.municipio, c.enBaleares ? c.isla : 'Fuera de Baleares'].filter(Boolean).join(' · ') || '—', fmt(c.unidades, 'entero')]);
 
   // ── 1
   const s1: Seccion = { id: '1', titulo: 'Datos básicos y descripción de la organización', bloques: [
@@ -131,7 +134,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   // ── 4
   const s4: Seccion = { id: '4', titulo: 'Límites de la organización', bloques: [
     { k: 'p', texto: `Criterio de consolidación: ${o.criterio === 'control' ? 'control (operativo o financiero)' : 'participación en el capital'}.` },
-    { k: 'tabla', cab: hayPlantilla ? ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias', 'Plantilla media'] : ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, num(c.indice, 0), ...(hayPlantilla ? [(c.plantilla ?? 0) > 0 ? num(c.plantilla!, 2) : 'n/a'] : [])]), numericas: hayPlantilla ? [3, 4] : [3] },
+    { k: 'tabla', cab: hayPlantilla ? ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias', 'Plantilla media'] : ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, fmt(c.indice > 0 ? c.indice : null, 'entero'), ...(hayPlantilla ? [fmt((c.plantilla ?? 0) > 0 ? c.plantilla : null, 'plantilla')] : [])]), numericas: hayPlantilla ? [3, 4] : [3] },
   ] };
 
   // ── 5
@@ -151,8 +154,8 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
 
   // ── 6
   const s6: Seccion = { id: '6', titulo: 'Exclusiones', bloques: d.exclusiones.length
-    ? [{ k: 'tabla', cab: ['Fuente excluida', '% estimado', 'Justificación'], filas: d.exclusiones.map((x) => [x.fuente, x.porcentaje != null ? `${num(x.porcentaje, 3)} %` : '—', x.justificacion]), numericas: [1] },
-       { k: 'p', texto: `Suma estimada de las exclusiones: ${num(d.exclusiones.reduce((s, x) => s + (x.porcentaje ?? 0), 0), 3)} % de las emisiones.` }]
+    ? [{ k: 'tabla', cab: ['Fuente excluida', '% estimado', 'Justificación'], filas: d.exclusiones.map((x) => [x.fuente, pct(x.porcentaje), x.justificacion]), numericas: [1] },
+       { k: 'p', texto: `Suma estimada de las exclusiones: ${pct(d.exclusiones.reduce((s, x) => s + (x.porcentaje ?? 0), 0))} de las emisiones.` }]
     : [{ k: 'p', texto: 'No se ha excluido ninguna fuente de las categorías 1 y 2 en este inventario.' }] };
 
   // ── 7
@@ -175,17 +178,17 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
       'No se han producido cambios de enfoque de cuantificación respecto a inventarios anteriores.',
     ] },
     { k: 'h', texto: '7.2 Datos de actividad' },
-    { k: 'tabla', cab: ['Fuente', 'Cantidad total', 'Unidad', 'Registros', 'Centros'], filas: [...porFuente.entries()].map(([k, x]) => [k, num(x.cant, 2), x.unidad, String(x.n), [...x.centros].join(', ')]), numericas: [1, 3] },
+    { k: 'tabla', cab: ['Fuente', 'Cantidad total', 'Unidad', 'Registros', 'Centros'], filas: [...porFuente.entries()].map(([k, x]) => [k, fmt(x.cant, 'actividad'), x.unidad, fmt(x.n, 'entero'), [...x.centros].join(', ')]), numericas: [1, 3] },
     { k: 'p', texto: `Cada dato procede de una factura revisada y confirmada por una persona; ${d.actividad.filter((a) => !a.documento).length} dato(s) se introdujeron manualmente con su origen anotado. El detalle está en el Anexo A.` },
     { k: 'h', texto: '7.3 Factores de emisión y potenciales de calentamiento' },
     { k: 'tabla', cab: ['Concepto', 'Valor'], filas: [
-      ['Conjunto de factores', f.id], ['Procedencia', f.procedencia], ['Potencial de calentamiento CH₄', `${f.gwp.ch4} kg CO₂e/kg`], ['Potencial de calentamiento N₂O', `${f.gwp.n2o} kg CO₂e/kg`],
-      ['Fuente de los potenciales', f.gwp.fuente], ['Mix eléctrico balear', `${f.mixElectrico} kg CO₂e/kWh`],
+      ['Conjunto de factores', f.id], ['Procedencia', f.procedencia], ['Potencial de calentamiento CH₄', `${fmt(f.gwp.ch4, 'pca')} kg CO₂e/kg`], ['Potencial de calentamiento N₂O', `${fmt(f.gwp.n2o, 'pca')} kg CO₂e/kg`],
+      ['Fuente de los potenciales', f.gwp.fuente], ['Mix eléctrico balear', `${fmt(f.mixElectrico, 'factor')} kg CO₂e/kWh`],
     ] },
     { k: 'p', texto: RESOLUCIONES[anio] ?? `Resolución anual de factores de emisión correspondiente al año ${anio}: pendiente de citar.` },
     ...(f.notas.length ? [{ k: 'lista' as const, items: f.notas.map((n) => `Nota sobre los factores: ${n}`) }] : []),
-    ...(usados.length ? [{ k: 'tabla' as const, cab: ['Fuente', 'Unidad', 'CO₂ (kg/ud)', 'CH₄ (g/ud)', 'N₂O (g/ud)'], filas: usados.map((k) => [k, dash(f.unidades[k]), String(f.combustibles[k].co2 ?? '—'), String(f.combustibles[k].ch4 ?? '—'), String(f.combustibles[k].n2o ?? '—')]), numericas: [2, 3, 4] }] : []),
-    ...(gasesUsados.length ? [{ k: 'tabla' as const, cab: ['Gas refrigerante', 'PCA'], filas: gasesUsados.map((k) => [k, num(f.pcaRefrigerantes[k], 0)]), numericas: [1] }] : []),
+    ...(usados.length ? [{ k: 'tabla' as const, cab: ['Fuente', 'Unidad', 'CO₂ (kg/ud)', 'CH₄ (g/ud)', 'N₂O (g/ud)'], filas: usados.map((k) => [k, dash(f.unidades[k]), fmt(f.combustibles[k].co2, 'factor'), fmt(f.combustibles[k].ch4, 'factor'), fmt(f.combustibles[k].n2o, 'factor')]), numericas: [2, 3, 4] }] : []),
+    ...(gasesUsados.length ? [{ k: 'tabla' as const, cab: ['Gas refrigerante', 'PCA'], filas: gasesUsados.map((k) => [k, fmt(f.pcaRefrigerantes[k], 'pca')]), numericas: [1] }] : []),
     { k: 'h', texto: '7.4 CO₂ biogénico y absorciones' },
     { k: 'p', texto: biogenico ? 'El inventario incluye combustibles de origen biogénico (marcados con **). Su CO₂ biogénico no se suma a las emisiones totales; el CH₄ y el N₂O sí se contabilizan.' : 'No se han identificado emisiones de CO₂ de origen biogénico. No se cuantifican absorciones ni compensaciones en este inventario.' },
     { k: 'h', texto: '7.5 Herramienta de cálculo' },
@@ -209,7 +212,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const ubic = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eUbicacion ?? 0), 0);
   const merc = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const indiceTotal = d.centros.reduce((s, c) => s + (c.indice > 0 ? c.indice : 0), 0);
-  const plantillaTotal = d.centros.reduce((s, c) => s + ((c.plantilla ?? 0) > 0 ? c.plantilla! : 0), 0);
+  const plantillaTotal = comoSeMuestra(d.centros.reduce((s, c) => s + ((c.plantilla ?? 0) > 0 ? comoSeMuestra(c.plantilla!, 'plantilla') : 0), 0), 'plantilla'); // el divisor de los ratios es el valor que se muestra
   const gases = desgloseGases(d.resultados, d.factores);
   const totalGases = gases.reduce((t, x) => t + x.toneladasCO2e, 0);
   // Gráficos de resultados (SVG)
@@ -239,21 +242,21 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales([{ nombre: '1 · Emisiones directas', t: tot.kgCO2eAlcance1 / 1000 }, { nombre: '2 · Energía importada', t: tot.kgCO2eAlcance2 / 1000 }], 'Emisiones por categoría'), pie: 'Alcance 1 (combustibles, refrigerantes) y Alcance 2 (electricidad) del inventario.' },
     { k: 'h', texto: '9.2 Resultados por tipo de gas' },
     { k: 'tabla', cab: ['Gas', 'Familia', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)', '% del total'], filas: [
-      ...gases.map((x) => [x.gas, x.familia, num(x.toneladasGas, x.fluorado || x.gas !== 'CO₂' ? 4 : 2), num(x.pca, 0), tn(x.toneladasCO2e * 1000, x.gas === 'CH₄' || x.gas === 'N₂O' ? 3 : 2), totalGases > 0 ? `${num((x.toneladasCO2e / totalGases) * 100, 1)} %` : '—']),
-      ['Total', '', '', '', tn(totalGases * 1000), '100 %'],
+      ...gases.map((x) => [x.gas, x.familia, fmt(x.toneladasGas, 'gasT'), fmt(x.pca, 'pca'), tn(x.toneladasCO2e * 1000), totalGases > 0 ? pct((x.toneladasCO2e / totalGases) * 100) : '—']),
+      ['Total', '', '', '', tn(totalGases * 1000), totalGases > 0 ? pct(100) : '—'],
     ], numericas: [2, 3, 4, 5], pie: 'Cada gas en toneladas del propio gas; las emisiones de CO₂e resultan de multiplicarlas por su potencial de calentamiento global (PCA). Los gases fluorados de las recargas se expresan en CO₂e igual que el CH₄ y el N₂O, con el PCA de cada gas del conjunto de factores utilizado.' },
-    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales(gases.filter((x) => x.toneladasCO2e > 0 || !x.fluorado).map((x) => ({ nombre: x.fluorado ? `${x.gas} (${x.familia})` : x.gas, t: x.toneladasCO2e })), 'Emisiones por gas', 3), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
+    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales(gases.filter((x) => x.toneladasCO2e > 0 || !x.fluorado).map((x) => ({ nombre: x.fluorado ? `${x.gas} (${x.familia})` : x.gas, t: x.toneladasCO2e })), 'Emisiones por gas'), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
     { k: 'h', texto: '9.4 Resultados por centro' },
-    { k: 'tabla', cab: hayPlantilla ? ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia', 'Plantilla media', 't CO₂e por trabajador'] : ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; return [c.nombre, tn(kg), num(c.indice, 0), c.indice > 0 ? num(kg / 1000 / c.indice, 4) : 'n/a', ...(hayPlantilla ? [(c.plantilla ?? 0) > 0 ? num(c.plantilla!, 2) : 'n/a', (c.plantilla ?? 0) > 0 ? num(kg / 1000 / c.plantilla!, 4) : 'n/a'] : [])]; }), numericas: hayPlantilla ? [1, 2, 3, 4, 5] : [1, 2, 3] },
+    { k: 'tabla', cab: hayPlantilla ? ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia', 'Plantilla media', 't CO₂e por trabajador'] : ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; const pl = (c.plantilla ?? 0) > 0 ? comoSeMuestra(c.plantilla!, 'plantilla') : null; return [c.nombre, tn(kg), fmt(c.indice > 0 ? c.indice : null, 'entero'), fmt(c.indice > 0 ? kg / 1000 / c.indice : null, 'ratio'), ...(hayPlantilla ? [fmt(pl, 'plantilla'), fmt(pl ? kg / 1000 / pl : null, 'ratio')] : [])]; }), numericas: hayPlantilla ? [1, 2, 3, 4, 5] : [1, 2, 3] },
     { k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' },
     ...(d.centros.filter((c) => c.indice > 0).length > 1 ? [{ k: 'grafico' as const, titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' }] : []),
-    ...(hayPlantilla ? [{ k: 'p' as const, texto: plantillaTotal > 0 ? `Ratio global por trabajador: ${num(tot.kgCO2eTotal / 1000 / plantillaTotal, 4)} t CO₂e por trabajador (plantilla media ${num(plantillaTotal, 2)}).` : 'No se calcula el ratio por trabajador.' }] : []),
-    { k: 'p', texto: indiceTotal > 0 ? `Ratio global: ${num(tot.kgCO2eTotal / 1000 / indiceTotal, 4)} t CO₂e por estancia (${num(indiceTotal, 0)} estancias).` : 'No se calcula el ratio global: no hay índice de actividad.' },
+    ...(hayPlantilla && plantillaTotal > 0 ? [{ k: 'p' as const, texto: `Ratio global por trabajador: ${fmt(tot.kgCO2eTotal / 1000 / plantillaTotal, 'ratio')} t CO₂e por trabajador (plantilla media ${fmt(plantillaTotal, 'plantilla')}).` }] : hayPlantilla ? [{ k: 'p' as const, texto: 'No se calcula el ratio por trabajador.' }] : []),
+    { k: 'p', texto: indiceTotal > 0 ? `Ratio global: ${fmt(tot.kgCO2eTotal / 1000 / indiceTotal, 'ratio')} t CO₂e por estancia (${fmt(indiceTotal, 'entero')} estancias).` : 'No se calcula el ratio global: no hay índice de actividad.' },
   ];
   if (d.anterior) {
-    const v = (a: number, b: number) => (b > 0 ? `${a >= b ? '+' : ''}${num(((a - b) / b) * 100, 1)} %` : '—');
+    const v = (a: number, b: number) => (b > 0 ? `${fmt(((a - b) / b) * 100, 'porcentaje', { signo: true })} %` : '—');
     bloques9.push({ k: 'h', texto: `9.5 Comparación con ${d.anterior.anio}` });
     bloques9.push({ k: 'tabla', cab: ['Magnitud', `${d.anterior.anio} (t CO₂e)`, `${anio} (t CO₂e)`, 'Variación'], filas: [
       ['Alcance 1', tn(d.anterior.a1), tn(tot.kgCO2eAlcance1), v(tot.kgCO2eAlcance1, d.anterior.a1)],
@@ -282,10 +285,10 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   // ── 12 Anexos
   const anexoA: Bloque = { k: 'tabla', cab: ['Centro', 'Categoría', 'Fuente', 'Contador', 'Periodo', 'Cantidad', 'Ud.', 'Evidencia'], filas: d.actividad.map((a) => [
     a.centro, CATEGORIA[a.categoria] ?? a.categoria, a.fuente || (a.origenElectricidad ? `Electricidad · ${ORIGEN[a.origenElectricidad] ?? a.origenElectricidad}` : 'Electricidad'), dash(a.contador),
-    a.periodoDesde ? `${fechaEs(a.periodoDesde)} – ${fechaEs(a.periodoHasta)}` : '—', num(a.cantidad, 2), a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad), a.documento ?? `Manual: ${a.notas ?? ''}`,
+    a.periodoDesde ? `${fechaEs(a.periodoDesde)} – ${fechaEs(a.periodoHasta)}` : '—', fmt(a.cantidad, 'actividad'), a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad), a.documento ?? `Manual: ${a.notas ?? ''}`,
   ]), numericas: [5] };
   const anexoC: Bloque = { k: 'tabla', cab: ['Centro', 'Fuente', 'kg CO₂', 'g CH₄', 'g N₂O', 'kg CO₂e', 'Cálculo'], filas: d.resultados.map((r) => [
-    r.linea.centro, r.linea.fuente || 'Electricidad', num(r.kgCO2, 1), num(r.gCH4, 1), num(r.gN2O, 1), num(r.kgCO2e, 1), r.trazabilidad.factorUsado,
+    r.linea.centro, r.linea.fuente || 'Electricidad', fmt(r.kgCO2, 'kgCO2e'), fmt(r.gCH4, 'gramos'), fmt(r.gN2O, 'gramos'), fmt(r.kgCO2e, 'kgCO2e'), r.trazabilidad.factorUsado,
   ]), numericas: [2, 3, 4, 5] };
   const s12: Seccion = { id: '12', titulo: 'Anexos', bloques: [
     { k: 'h', texto: 'Anexo A · Datos de actividad' }, anexoA,
@@ -314,5 +317,15 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     anio,
     codigo: `HC-${anio}-${o.nombre.normalize('NFD').replace(/[^\w]+/g, '').slice(0, 12).toUpperCase()}`,
   };
-  return { meta, secciones: [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12], pendientes };
+  const secciones = [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12];
+  // Notas al pie: cada marca (*, †) al final del nombre de una fuente o factor genera su nota bajo la tabla donde aparece; sin texto en el catálogo es una incidencia
+  const sinNota = new Set<string>();
+  for (const sec of secciones) for (const b of sec.bloques) if (b.k === 'tabla') {
+    const marcas = [...new Set(b.filas.flatMap((fila) => fila.map(marcaFinal)).filter((m): m is string => !!m))].sort();
+    if (!marcas.length) continue;
+    b.notas = marcas.filter((m) => NOTAS_FUENTES[m]).map((m) => `${m} ${NOTAS_FUENTES[m]}`);
+    for (const m of marcas) if (!NOTAS_FUENTES[m]) sinNota.add(m);
+  }
+  for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
+  return { meta, secciones, pendientes };
 }

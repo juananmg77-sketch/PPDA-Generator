@@ -52,8 +52,8 @@ test('las cifras del informe coinciden con las del motor (por categoría, por ga
 test('cita la resolución de 2023, los potenciales de calentamiento y la trazabilidad por línea', () => {
   const t = texto(construirInforme(base()));
   assert.match(t, /BOIB n\.º 35/);
-  assert.ok(t.includes(`${f.gwp.ch4} kg CO₂e/kg`) && t.includes(`${f.gwp.n2o} kg CO₂e/kg`));
-  assert.ok(t.includes('HFC-134a') && t.includes('1530'));
+  assert.ok(t.includes('27,90 kg CO₂e/kg') && t.includes('273 kg CO₂e/kg'));
+  assert.ok(t.includes('HFC-134a') && t.includes('1.530'));
   assert.ok(t.includes('Anexo C'));
 });
 

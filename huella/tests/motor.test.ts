@@ -91,7 +91,7 @@ test('PCA manual de un gas fuera de la calculadora: queda en el conjunto, con su
   assert.ok(Math.abs(f.pcaRefrigerantes['R-448A'] - 1494.36) < 0.01); // propuesta por composición
   const g = conPcaManual(f, 'R-448A', 1387, 'Valor del documento MITECO de factores v17 (abril 2021), como en el inventario 2023 verificado.');
   assert.equal(g.pcaRefrigerantes['R-448A'], 1387); assert.match(g.id, /\+ajustes$/);
-  assert.equal(g.notas.filter((n) => /R-448A/.test(n)).length, 1); assert.match(g.notas.find((n) => /R-448A/.test(n))!, /PCA manual de R-448A: 1387/);
+  assert.equal(g.notas.filter((n) => /R-448A/.test(n)).length, 1); assert.match(g.notas.find((n) => /R-448A/.test(n))!, /PCA manual de R-448A: 1\.387/);
   assert.equal(f.pcaRefrigerantes['R-448A'] > 1400, true); // el original no cambia
   assert.throws(() => conPcaManual(f, 'R-448A', 1387, 'corto'), /justificación/);
   assert.throws(() => conPcaManual(f, '', 1387, 'una justificación suficiente'), /gas/);

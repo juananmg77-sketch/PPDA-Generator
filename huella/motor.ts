@@ -1,3 +1,4 @@
+import { fmt } from './formato.ts';
 import type {
   ConjuntoFactores,
   LineaActividad,
@@ -36,7 +37,7 @@ export function calcularCombustion(l: LineaActividad, f: ConjuntoFactores): Resu
     kgCO2e,
     trazabilidad: {
       conjunto: f.id,
-      factorUsado: `CO2 ${fac.co2} kg/ud · CH4 ${fac.ch4} g/ud · N2O ${fac.n2o} g/ud · GWP CH4 ${f.gwp.ch4}, N2O ${f.gwp.n2o}`,
+      factorUsado: `CO2 ${fmt(fac.co2, 'factor')} kg/ud · CH4 ${fmt(fac.ch4, 'factor')} g/ud · N2O ${fmt(fac.n2o, 'factor')} g/ud · GWP CH4 ${fmt(f.gwp.ch4, 'pca')}, N2O ${fmt(f.gwp.n2o, 'pca')}`,
       formula: 'cantidad × factor; CO2e = CO2 + CH4(kg)×GWP + N2O(kg)×GWP',
     },
   };
@@ -55,7 +56,7 @@ export function calcularFugitiva(l: LineaActividad, f: ConjuntoFactores): Result
     gCH4: 0,
     gN2O: 0,
     kgCO2e,
-    trazabilidad: { conjunto: f.id, factorUsado: `PCA ${pca}`, formula: 'kg recargados × PCA' },
+    trazabilidad: { conjunto: f.id, factorUsado: `PCA ${fmt(pca, 'pca')}`, formula: 'kg recargados × PCA' },
   };
 }
 
@@ -81,7 +82,7 @@ export function calcularElectricidad(l: LineaActividad, f: ConjuntoFactores): Re
     electricidad: { kgCO2eUbicacion: ubicacion, kgCO2eMercado: mercado },
     trazabilidad: {
       conjunto: f.id,
-      factorUsado: `mix balear ${f.anioInventario}: ${f.mixElectrico} kg CO2e/kWh (origen: ${origen})`,
+      factorUsado: `mix balear ${f.anioInventario}: ${fmt(f.mixElectrico, 'factor')} kg CO2e/kWh (origen: ${origen})`,
       formula: 'kWh × mix; 0 con autoconsumo o GdO renovable de Baleares (registro balear)',
     },
   };

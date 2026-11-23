@@ -1,5 +1,6 @@
 // Gráficos del informe como SVG (texto puro, sin dependencias): se incrustan tal cual en el HTML/PDF y se convierten a PNG para el Word.
 import { repartirPorMes } from './mensual.ts';
+import { fmtLibre } from './formato.ts';
 
 export const PALETA = ['#00BF46', '#0002C9', '#EA980F', '#24CBF5', '#C234D6', '#F9416D', '#77D464', '#00093D'];
 const TEXTO = '#333333', SUAVE = '#777777', EJE = '#9D9D9C', REJILLA = '#E5E5E5';
@@ -7,7 +8,7 @@ const FUENTE = "Montserrat, Arial, sans-serif";
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-export const nf = (v: number, d = 2) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+export const nf = (v: number, d = 2) => fmtLibre(v, d);
 const px = (n: number) => Math.round(n * 10) / 10;
 
 /** Nombre corto de la fuente para leyendas: «Gas butano (kg)» → «Gas butano»; sin fuente = electricidad. */

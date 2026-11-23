@@ -1,5 +1,6 @@
 // Fuentes que se pueden excluir del inventario y cálculo de las emisiones de los extintores de CO2 (criterio de insignificancia, ISO 14064-1).
 
+import { fmtLibre } from './formato.ts';
 export const FUENTE_EXTINTORES = 'Extintores de CO₂ (recargas)';
 export const FUENTES_EXCLUIBLES = [
   FUENTE_EXTINTORES,
@@ -42,7 +43,7 @@ export function calcularExtintores(lineas: LineaExtintor[], totalInventarioT: nu
   return { tipo: 'extintores', lineas: utiles, totalExtintores, kgCO2, tCO2e, totalInventarioT, porcentaje: porcentajeExcluido(tCO2e, totalInventarioT) };
 }
 
-const n = (x: number, d = 2) => x.toLocaleString('es-ES', { maximumFractionDigits: d });
+const n = (x: number, d = 2) => fmtLibre(x, d);
 
 /** Texto de justificación para el informe. */
 export function justificacionExtintores(c: CalculoExtintores): string {

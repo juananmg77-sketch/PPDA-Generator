@@ -1,4 +1,5 @@
 import type { ConjuntoFactores, DatosCalculadora, FactorCombustible } from './tipos.ts';
+import { fmt } from './formato.ts';
 
 export interface OpcionesConjunto {
   anioInventario: number;
@@ -72,7 +73,7 @@ export function conPcaManual(f: ConjuntoFactores, gas: string, pca: number, just
   if (!nombre) throw new Error('Indique el gas.');
   if (!(pca > 0) || !Number.isFinite(pca)) throw new Error('El PCA debe ser un número mayor que cero.');
   if (justificacion.trim().length < 15) throw new Error('Indique la fuente y la justificación del PCA (al menos una frase): quedará en el informe.');
-  const nota = `PCA manual de ${nombre}: ${pca.toLocaleString('es-ES')} kg CO2e/kg (casilla «Otros» de la calculadora oficial). ${justificacion.trim()}`;
+  const nota = `PCA manual de ${nombre}: ${fmt(pca, 'pca')} kg CO2e/kg (casilla «Otros» de la calculadora oficial). ${justificacion.trim()}`;
   return {
     ...f,
     id: f.id.includes('+ajustes') ? f.id : `${f.id}+ajustes`,

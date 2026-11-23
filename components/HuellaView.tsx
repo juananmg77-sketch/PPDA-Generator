@@ -314,7 +314,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
                   {esConsultor && pasoCierre === 'cierre'
                     ? <PanelCierre org={org} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} onCambio={recargarInv} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
-                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} onIr={(d) => setTab(d)} />
+                        onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} onIr={(d) => { if (d === 'organizacion') setModalOrg('editar'); else if (d === 'anio_base') setTab('ajustes'); else if (d === 'facturas' || d === 'consumos' || d === 'centros') setTab(d); }} />
                     : <PanelInforme soloLectura={!esConsultor} org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />}
                 </div>
@@ -1942,7 +1942,7 @@ const TarjetaRecalculo: React.FC<{ inv: Inventario; ab: ReturnType<typeof useAni
     try { onInventario(await huellaService.guardarRecalculoBase(inv.id, { metodologiaCambiada: dec?.metodologiaCambiada ?? null, decision: dec?.decision ?? null, motivo: dec?.motivo ?? null, ...c, fecha: new Date().toISOString().slice(0, 10), usuario })); } catch (e) { falla(e); }
   };
   return (
-    <div className={card}>
+    <div className={card} id="cierre-recalculo">
       <h2 className="text-sm font-bold text-slate-800 mb-1">Recálculo del año base ({ab.def.anio})</h2>
       {ab.cfg.reglas.metodologia && (
         <label className="block text-xs font-semibold text-slate-600 mb-2">¿Ha cambiado la metodología de cálculo respecto al año base?
@@ -2140,10 +2140,16 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
     try { for (const s of faltan) await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: null, influencia: null, datos: null, requisitos: null, resultado: null, justificacion: null, cuantificada: false }); sig.recargar(); } catch (e) { falla(e); } finally { setCreando(false); }
   };
   const e = sig.estado;
+  const resumenEstado = !e ? 'Sin evaluar' : e.completa && e.significativasCuantificadas ? 'Completa' : `Incompleta: ${e.faltas.join('; ')}`;
   return (
-    <div className={card}>
-      <div className="flex items-center gap-3 mb-1 flex-wrap">
+    <details className={`${card} group`} id="cierre-significancia">
+      <summary className="cursor-pointer list-none flex items-center gap-3 flex-wrap">
+        <ChevronRight size={15} className="transition-transform group-open:rotate-90 shrink-0" />
         <h2 className="flex-1 text-sm font-bold text-slate-800">Significancia de las emisiones indirectas (ISO 14064-1, 5.2.3)</h2>
+        <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${e && e.completa && e.significativasCuantificadas ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{resumenEstado}</span>
+      </summary>
+      <div className="flex items-center gap-3 mt-3 mb-1 flex-wrap">
+        <span className="flex-1" />
         <button className={btnS} onClick={() => setModal(true)}><Settings size={14} /> Criterios, plantilla y textos</button>
         {abierto && faltan.length > 0 && <button className={btnP} onClick={crear} disabled={creando}>{creando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {sig.evals.length ? `Añadir ${faltan.length} subcategoría(s) de la plantilla` : 'Cargar la plantilla del sector'}</button>}
       </div>
@@ -2176,7 +2182,7 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
       )}
       {noAplica && <ModalNoAplica alcance={noAplica} sig={sig} inv={inv} onCerrar={() => setNoAplica(null)} falla={falla} />}
       {modal && <ModalConfigSignificancia org={org} sig={sig} onOrg={onOrg} onCerrar={() => setModal(false)} falla={falla} />}
-    </div>
+    </details>
   );
 };
 
@@ -2281,10 +2287,20 @@ const ModalConfigSignificancia: React.FC<{ org: Organizacion; sig: ReturnType<ty
 
 const PanelCierre: React.FC<{
   org: Organizacion; onOrg: (o: Organizacion) => void; onCambio: () => void; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
-  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void; onIr: (destino: 'facturas' | 'consumos' | 'centros') => void;
+  usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void; onIr: (destino: 'facturas' | 'consumos' | 'centros' | 'organizacion' | 'anio_base') => void;
 }> = ({ org, onOrg, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
   const sig = useSignificancia(org, inv, falla);
+  /** Lleva a donde se resuelve una comprobación: otra pantalla, o una tarjeta de esta (se despliega y se enfoca). */
+  const irA = (d: string) => {
+    if (d === 'recalculo' || d === 'significancia' || d === 'exclusiones') {
+      const el = document.getElementById(`cierre-${d}`);
+      if (el instanceof HTMLDetailsElement) el.open = true;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    onIr(d as Parameters<typeof onIr>[0]);
+  };
   const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
   const datosOrg = useMemo(() => validarOrganizacion({ razonSocial: org.razon_social, nombreComercial: org.nombre, cif: org.cif, cnae: org.cnae, iae: org.iae, criterioConsolidacion: org.criterio_consolidacion, justificacionConsolidacion: org.consolidacion_justificacion, responsableNombre: org.responsable_nombre, responsableCargo: org.responsable_cargo, responsableEntidad: org.responsable_entidad }), [org]);
   const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
@@ -2500,7 +2516,7 @@ const PanelCierre: React.FC<{
                       </ul>
                     </details>
                   )}
-                  {i.ir && abierto && <button className="mt-1 text-[11px] font-bold text-brand-700 underline hover:text-brand-900" onClick={() => onIr(i.ir!)}>{i.irEtiqueta ?? 'Resolver'} →</button>}
+                  {i.ir && abierto && <button className="mt-1 text-[11px] font-bold text-brand-700 underline hover:text-brand-900" onClick={() => irA(i.ir!)}>{i.irEtiqueta ?? 'Resolver'} →</button>}
                 </div>
               </li>
             ))}</ul>
@@ -2547,7 +2563,7 @@ const PanelCierre: React.FC<{
 
       <PanelSignificancia org={org} inv={inv} abierto={abierto} sig={sig} onOrg={onOrg} falla={falla} />
 
-      <div className={card}>
+      <div className={card} id="cierre-exclusiones">
         <div className="flex items-center gap-3 mb-1"><h2 className="flex-1 text-sm font-bold text-slate-800">Fuentes excluidas</h2>{abierto && <button className={btnS} onClick={() => setModalEx(true)}><Plus size={14} /> Añadir exclusión</button>}</div>
         <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del {fmtOpc(sig.criterios.exclusionDirectaPorFuente, 'porcentaje')} % y el conjunto como máximo el {fmtOpc(sig.criterios.exclusionDirectaTotal, 'porcentaje')} % de las emisiones (ISO 14064-1, 9.3.1 i). Las exclusiones de la categoría 1 necesitan el porcentaje estimado y una evidencia.</p>
         {exclusiones.length > 0 && (

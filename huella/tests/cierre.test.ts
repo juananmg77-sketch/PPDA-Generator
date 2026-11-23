@@ -195,3 +195,22 @@ test('datos de la organización en el cierre: lo obligatorio que falta bloquea; 
   assert.equal(av.items.find((i) => i.codigo === 'organizacion_avisos')!.nivel, 'aviso');
   assert.ok(!av.items.some((i) => i.codigo === 'organizacion_datos'));
 });
+
+test('las comprobaciones de la organización, el año base, el recálculo y la significancia llevan al punto donde se completan', () => {
+  const r = evaluarCierre({
+    ...base,
+    organizacion: { faltan: ['Falta el IAE.'], avisos: ['La razón social coincide.'] },
+    exclusionesDirectas: ['Exclusión «X» (categoría 1): falta la evidencia.'],
+    significancia: { completa: false, significativasCuantificadas: false, sinValorar: ['3.1 x'], excluidasSinJustificar: [], significativasSinCuantificar: ['4.1 y'], faltas: [] },
+    categoriasSinEvaluar: [{ n: 3, nombre: 'Transporte' }],
+    anioBase: { definido: false, conDatos: false, recalculo: null },
+  });
+  const ir = (cod: string) => r.items.find((i) => i.codigo === cod)?.ir;
+  assert.equal(ir('organizacion_datos'), 'organizacion'); assert.equal(ir('organizacion_avisos'), 'organizacion');
+  assert.equal(ir('exclusiones_directas'), 'exclusiones');
+  for (const c of ['significancia_incompleta', 'significativas_sin_cuantificar', 'declaracion_parcial', 'categorias_sin_evaluar']) assert.equal(ir(c), 'significancia', c);
+  assert.equal(ir('anio_base_sin_definir'), 'anio_base');
+  const rc = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: [{ titulo: 't', detalle: ['d'] }], noEvaluables: [], incidencias: ['falta'] } } });
+  assert.equal(rc.items.find((i) => i.codigo === 'recalculo_sin_decision')!.ir, 'recalculo');
+  assert.equal(evaluarCierre({ ...base, significancia: null }).items.find((i) => i.codigo === 'significancia_no_realizada')!.ir, 'significancia');
+});

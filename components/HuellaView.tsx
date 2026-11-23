@@ -1846,6 +1846,7 @@ const PanelInforme: React.FC<{
   const [trabajando, setTrabajando] = useState('');
   const [ver, setVer] = useState<Verificacion>({ nivel: 'Limitado' });
   const [modalVer, setModalVer] = useState(false);
+  const [notaExp, setNotaExp] = useState<{ avisos: string[]; pendientes: string[] } | null>(null);
   const marco = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -1885,10 +1886,63 @@ const PanelInforme: React.FC<{
       descargar(await informeADocx(modelo, marca, svgAPng), `${modelo.meta.codigo}_V01.docx`);
     } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
+  const nombreArchivo = org.nombre.replace(/[^\w]+/g, '_');
+  /** Calculadora oficial del Registro balear (la versión que corresponde a los factores del cálculo) con los datos del inventario. */
+  const libroOficial = async () => {
+    const { rellenarCalculadora, versionDeFactores } = await import('../huella/calculadoraOficial');
+    const version = inv.conjunto_factores?.version ?? factores?.version;
+    const ver = versionDeFactores(version);
+    if (!ver) throw new Error(`No hay calculadora oficial incorporada para los factores «${version ?? 'sin fijar'}» (disponibles: 2023.2 y 2024.1).`);
+    const r = await fetch(`/plantillas/calculadora-${ver}.xlsx`);
+    if (!r.ok) throw new Error('No se pudo cargar la plantilla de la calculadora oficial.');
+    const plantilla = new Uint8Array(await r.arrayBuffer());
+    const nombreCentro = (id: string) => centros.find((x) => x.id === id)?.nombre ?? id;
+    const proveedorDoc = (id?: string | null) => { const d = docs.find((x) => x.id === id); return d?.extraccion?.proveedor ?? d?.proveedor ?? undefined; };
+    const estancias = invCentros.reduce((t, c) => t + Number(c.indice_actividad || 0), 0);
+    const out = rellenarCalculadora(plantilla, {
+      anio: inv.anio, verificacion: true,
+      organizacion: { nombre: org.nombre, cif: org.cif, cnae: org.cnae },
+      centros: centros.map((c) => ({ nombre: c.nombre, enBaleares: c.en_baleares, isla: c.isla, municipio: c.municipio, direccion: c.direccion })),
+      indice: estancias > 0 ? { nombre: 'Estancias', valor: estancias, unidades: 'estancias' } : undefined,
+      lineas: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({
+        centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad) * Number(a.reparto_proporcion ?? 1),
+        origenElectricidad: a.origen_electricidad ?? undefined, proveedor: proveedorDoc(a.documento_id),
+      })),
+    });
+    const anioVer = Number(ver.slice(0, 4));
+    if (inv.anio < 2020 || inv.anio > anioVer) out.avisos.push(`El año ${inv.anio} está fuera del rango de la calculadora ${ver} (2020-${anioVer}): el libro no podrá seleccionarlo.`);
+    return { ...out, version: ver };
+  };
+  const calculadora = async () => {
+    setTrabajando('calc'); setNotaExp(null);
+    try {
+      const r = await libroOficial();
+      descargar(new Blob([r.bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Calculadora_Registro_HC_${inv.anio}_${nombreArchivo}.xlsx`);
+      setNotaExp({ avisos: r.avisos, pendientes: r.pendientes });
+    } catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
+  /** Paquete para el verificador: libro de recálculo + calculadora oficial cumplimentada, en un ZIP. */
   const paquete = async () => {
-    if (!datos) return; setTrabajando('xlsx');
-    try { const { paqueteAXlsx } = await import('../huella/paquete'); descargar(paqueteAXlsx(datos), `Paquete_verificador_${inv.anio}_${org.nombre.replace(/[^\w]+/g, '_')}.xlsx`); }
-    catch (e) { falla(e); } finally { setTrabajando(''); }
+    if (!datos) return; setTrabajando('xlsx'); setNotaExp(null);
+    try {
+      const [{ paqueteAXlsx }, { zipSync, strToU8 }, lib] = await Promise.all([import('../huella/paquete'), import('fflate'), libroOficial()]);
+      const t = datos.totales;
+      const leeme = [
+        `PAQUETE DEL VERIFICADOR · HUELLA DE CARBONO ${inv.anio} · ${org.nombre}`, '',
+        `1_Paquete_verificador_${inv.anio}.xlsx · datos de actividad con su evidencia, recálculo con fórmulas visibles y factores.`,
+        `2_Calculadora_oficial_${inv.anio}.xlsx · calculadora oficial del Registro balear (versión ${lib.version}) cumplimentada con los mismos datos.`, '',
+        'Al abrir la calculadora oficial en Excel se recalcula sola. Sus resultados (hoja 4.1) deben coincidir con los de la aplicación:',
+        `  Alcance 1: ${(t.kgCO2eAlcance1 / 1000).toFixed(3)} t CO2e · Alcance 2: ${(t.kgCO2eAlcance2 / 1000).toFixed(3)} t CO2e · Total: ${(t.kgCO2eTotal / 1000).toFixed(3)} t CO2e`, '',
+        ...(lib.avisos.length ? ['AVISOS', ...lib.avisos.map((x) => `  - ${x}`), ''] : []),
+        ...(lib.pendientes.length ? ['PENDIENTE DE COMPLETAR EN LA CALCULADORA (la aplicación no tiene el dato)', ...lib.pendientes.map((x) => `  - ${x}`), ''] : []),
+      ].join('\n');
+      const zip = zipSync({
+        [`1_Paquete_verificador_${inv.anio}.xlsx`]: new Uint8Array(await paqueteAXlsx(datos).arrayBuffer()),
+        [`2_Calculadora_oficial_${inv.anio}.xlsx`]: lib.bytes, 'LEEME.txt': strToU8(leeme),
+      }, { level: 1 });
+      descargar(new Blob([zip as BlobPart], { type: 'application/zip' }), `Paquete_verificador_${inv.anio}_${nombreArchivo}.zip`);
+      setNotaExp({ avisos: lib.avisos, pendientes: lib.pendientes });
+    } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
   const marcarVerificado = async () => {
     if (!confirm('Va a marcar el cálculo como verificado con los datos indicados. ¿Continuar?')) return;
@@ -1910,9 +1964,19 @@ const PanelInforme: React.FC<{
           {!soloLectura && inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
           <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
           <button className={btnP} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
-          <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador</button>
+          <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador (ZIP)</button>
+          <button className={btnS} onClick={calculadora} disabled={!!trabajando} title="Calculadora oficial del Registro balear con los datos de este cálculo">{trabajando === 'calc' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Calculadora oficial (Excel)</button>
         </div>
       </div>
+
+      {notaExp && (notaExp.avisos.length > 0 || notaExp.pendientes.length > 0) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">
+          <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={15} /> Calculadora oficial: revise antes de presentarla</p>
+          {notaExp.avisos.length > 0 && <ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+          {notaExp.pendientes.length > 0 && <><p className="text-xs font-semibold mt-2">Datos que el libro pide y la aplicación no tiene:</p><ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
+          <p className="text-[11px] mt-2 text-amber-800">Al abrir el libro en Excel se recalculan solos los resultados (hoja 4.1); compruebe que el total coincide con el de la aplicación.</p>
+        </div>
+      )}
 
       {!soloLectura && modelo.pendientes.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm text-amber-900">

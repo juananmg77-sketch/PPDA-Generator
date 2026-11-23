@@ -7,13 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:huella": "node --test huella/tests/motor.test.ts huella/tests/aceptacion-informe-ejemplo.test.ts huella/tests/extraccion.test.ts huella/tests/lectura.test.ts huella/tests/catalogo.test.ts huella/tests/mensual.test.ts huella/tests/cierre.test.ts huella/tests/informe.test.ts huella/tests/hotelesSuite.test.ts huella/tests/gas.test.ts huella/tests/glp.test.ts huella/tests/mezclas.test.ts huella/tests/graficos.test.ts circularidad/tests/circularidad.test.ts"
+    "test:huella": "node --test huella/tests/motor.test.ts huella/tests/aceptacion-informe-ejemplo.test.ts huella/tests/extraccion.test.ts huella/tests/lectura.test.ts huella/tests/catalogo.test.ts huella/tests/mensual.test.ts huella/tests/cierre.test.ts huella/tests/informe.test.ts huella/tests/hotelesSuite.test.ts huella/tests/gas.test.ts huella/tests/glp.test.ts huella/tests/mezclas.test.ts huella/tests/graficos.test.ts huella/tests/calculadoraOficial.test.ts circularidad/tests/circularidad.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
     "@google/genai": "^1.38.0",
     "@supabase/supabase-js": "^2.100.0",
     "docx": "^9.15.4",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

@@ -36,3 +36,10 @@ python3 -I huella/scripts/extraer_factores.py <calculadora.xlsx> huella/datos/fa
 - PCA AR5 de refrigerantes y GWP de 2022 (28 y 265): proceden del informe de ejemplo; contrastar con el documento del MITECO y el BOIB.
 - Mix eléctrico de 2024 (0,348): contrastar con la resolución del Govern.
 - Factores del registro estatal (mix por comercializadora): fuera de la primera versión.
+
+## Calculadora oficial cumplimentada (paquete del verificador)
+- `calculadoraOficial.ts` rellena el libro oficial del Registro balear (`public/plantillas/calculadora-2023.2.xlsx` y `-2024.1.xlsx`, según los factores del cálculo) editando solo el XML de las celdas de entrada: se conservan fórmulas, listas, protección y hojas ocultas, y el libro se marca para recalcular al abrirlo (los resultados 4.1 los calcula Excel).
+- Rellena 0.1 (organización, índice de actividad, centros), 1.1 (instalaciones fijas), 1.2 (vehículos A.1 y A.2), 1.4 (gases, recarga anual) y 2.1 (electricidad por centro, comercializadora y tipo: «No», «Autoconsumo» o «GdO origen renovable Illes Balears»). Cada bloque del libro admite 22 filas (20 en A.2): si se superan, falla con mensaje claro.
+- No se rellenan: tipo de organización, coordenadas, tipo de equipo y carga inicial de los gases, plan de reducción (0.2), procesos (1.3), categorías 3-6 ni la hoja estatal. La pantalla Informe los lista como «pendientes».
+- Botones en Informe: «Paquete del verificador (ZIP)» (xlsx de recálculo + calculadora + LEEME) y «Calculadora oficial (Excel)».
+- Verificación: recalculando el libro relleno con un motor de fórmulas independiente, 1.1, 1.2, 1.4 y 2.1 dan los mismos kg CO₂e por línea que el motor de la app.

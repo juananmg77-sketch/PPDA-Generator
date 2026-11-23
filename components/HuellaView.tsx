@@ -320,17 +320,32 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 </div>
               )}
               {tab === 'ajustes' && esConsultor && (
-                <div className="space-y-4">
-                  {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} />}
+                <div className="space-y-3">
+                  {(() => {
+                    const faltan = validarOrganizacion({ razonSocial: org.razon_social, nombreComercial: org.nombre, cif: org.cif, cnae: org.cnae, iae: org.iae, criterioConsolidacion: org.criterio_consolidacion, justificacionConsolidacion: org.consolidacion_justificacion, responsableNombre: org.responsable_nombre, responsableCargo: org.responsable_cargo, responsableEntidad: org.responsable_entidad }).filter((x) => x.obligatorio);
+                    return (
+                      <div className={card}>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="flex-1 min-w-[200px]">
+                            <h2 className="text-sm font-bold text-slate-800">Datos de la organización</h2>
+                            <p className="text-xs text-slate-600">{org.razon_social || org.nombre}{org.cif ? ` · ${org.cif}` : ''}</p>
+                          </div>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${faltan.length ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>{faltan.length ? `${faltan.length} dato${faltan.length === 1 ? '' : 's'} por completar` : 'Completos'}</span>
+                          <button className={btnP} onClick={() => setModalOrg('editar')}><Pencil size={14} /> Editar datos</button>
+                        </div>
+                        {faltan.length > 0 && <p className="mt-2 text-[11px] text-slate-600">Falta: {faltan.map((x) => x.mensaje.replace(/^Falta (el|la) /, '').replace(/ de la organización\.?$/, '').replace(/\.$/, '')).join(' · ')}</p>}
+                      </div>
+                    );
+                  })()}
+                  {inv && <AjustesAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} falla={falla} />}
+                  {inv && elegido && (
+                    <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <summary className="flex items-center gap-3 cursor-pointer list-none px-5 py-4 text-sm font-bold text-slate-800">Factores de emisión del cálculo {inv.anio}<span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{elegido.conjunto.version.replace('calculadora-', 'Calculadora ')}{inv.conjunto_factores ? ' · fijada' : ''}</span></summary>
+                      <div className="px-5 pb-5 [&>div]:!border-0 [&>div]:!shadow-none [&>div]:!p-0"><PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} /></div>
+                    </details>
+                  )}
                   <CatalogoIncertidumbre cfg={cfgInc} onCfg={setCfgInc} falla={falla} />
                   <CardPlantillaInforme falla={falla} />
-                  {inv && <AjustesAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} falla={falla} />}
-                  <div className={card}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1"><h2 className="text-sm font-bold text-slate-800">Organización</h2><p className="text-xs text-slate-600">{org.nombre}{org.cif ? ` · ${org.cif}` : ''}</p></div>
-                      <button className={btnS} onClick={() => setModalOrg('editar')}><Pencil size={14} /> Editar datos</button>
-                    </div>
-                  </div>
                 </div>
               )}
             </>
@@ -748,7 +763,8 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
             </div>
           )}
           {deSuite.length > 0 && (
-            <div className="mt-3">
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-700">Ver {deSuite.length} hotel{deSuite.length === 1 ? '' : 'es'} de HS Suite</summary>
               {!deSuite.some((h) => h.cif?.trim()) && <p className="text-[11px] text-amber-700 font-semibold mb-1">HS Suite no tiene CIF registrado para {deSuite.length === 1 ? 'este hotel' : 'estos hoteles'}: escríbalo a mano (y complételo en HS Suite para la próxima vez).</p>}
               <p className="text-[11px] text-slate-600 mb-1">{deSuite.length} hotel{deSuite.length === 1 ? '' : 'es'} · <strong>{deSuite.reduce((a, h) => a + (h.num_habitaciones ?? 0), 0).toLocaleString('es-ES')}</strong> habitaciones · <strong>{deSuite.reduce((a, h) => a + (h.num_plazas ?? 0), 0).toLocaleString('es-ES')}</strong> plazas</p>
               <ul className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-36 overflow-auto">
@@ -760,37 +776,67 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
                   </li>
                 ))}
               </ul>
-            </div>
+            </details>
           )}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
-        <Campo etiqueta="Razón social (denominación legal) *" ancho><input className={input} value={v.razon} placeholder="Tal como figura en el CIF, con su forma jurídica (S.L., S.A.…)" onChange={f('razon')} autoFocus /></Campo>
-        {avisosRazonSocial(v.razon, v.nombre, v.cif).length > 0 && <ul className="col-span-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisosRazonSocial(v.razon, v.nombre, v.cif).map((x, i) => <li key={i}>{x}</li>)}</ul>}
-        <Campo etiqueta="Nombre comercial (empresa o grupo) *" ancho><input className={input} value={v.nombre} placeholder="Nombre con que se conoce la organización" onChange={f('nombre')} /></Campo>
-        <Campo etiqueta="CIF *"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
-        <Campo etiqueta="Consultor asignado (email, controla el acceso)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo>
-        <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
-        <Campo etiqueta="CNAE * (obligatorio para la versión final)"><input className={input} value={v.cnae} onChange={f('cnae')} /></Campo>
-        <Campo etiqueta="IAE * (obligatorio para la versión final)"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
-        <div className="col-span-2 rounded-xl border border-slate-200 p-3">
-          <p className="text-xs font-semibold text-slate-700 mb-2">Criterio de consolidación (ISO 14064-1) *</p>
-          <div className="space-y-1.5">{CRITERIOS_CONSOLIDACION.map((c) => (
-            <label key={c.id} className="flex items-start gap-2 text-xs cursor-pointer"><input type="radio" name="criterio" className="mt-0.5" checked={v.criterio === c.id} onChange={() => setV({ ...v, criterio: c.id })} /><span><strong>{c.titulo}.</strong> <span className="text-slate-600">{c.descripcion}</span></span></label>
-          ))}</div>
-          <label className="block text-xs font-semibold text-slate-600 mt-2">Justificación del criterio *<textarea className={`${input} mt-1`} rows={2} value={v.justificacion} placeholder="Por qué se elige este criterio para esta organización." onChange={(e) => setV({ ...v, justificacion: e.target.value })} /></label>
-        </div>
-        <div className="col-span-2 rounded-xl border border-slate-200 p-3">
-          <p className="text-xs font-semibold text-slate-700 mb-2">Responsable de la elaboración del informe</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo etiqueta="Nombre *"><input className={input} value={v.rNombre} onChange={f('rNombre')} /></Campo>
-            <Campo etiqueta="Cargo *"><input className={input} value={v.rCargo} onChange={f('rCargo')} /></Campo>
-            <Campo etiqueta="Entidad *"><input className={input} value={v.rEntidad} onChange={f('rEntidad')} /></Campo>
-            <Campo etiqueta="Correo (opcional)"><input className={input} value={v.rEmail} onChange={f('rEmail')} /></Campo>
+      {(() => {
+        const avisos = avisosRazonSocial(v.razon, v.nombre, v.cif);
+        const criterio = CRITERIOS_CONSOLIDACION.find((c) => c.id === v.criterio);
+        const faltaFinal = [!v.cnae.trim() && 'CNAE', !v.iae.trim() && 'IAE'].filter(Boolean) as string[];
+        const faltaCons = !v.criterio || !v.justificacion.trim();
+        const faltaResp = !v.rNombre.trim() || !v.rCargo.trim() || !v.rEntidad.trim();
+        const Estado: React.FC<{ ok: boolean; texto: string }> = ({ ok, texto }) => <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${ok ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{texto}</span>;
+        const sum = 'flex items-center gap-2 cursor-pointer px-3 py-2.5 text-sm font-semibold text-slate-800 list-none';
+        return (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Campo etiqueta="Razón social (denominación legal) *" ancho><input className={input} value={v.razon} placeholder="Tal como figura en el CIF, con su forma jurídica (S.L., S.A.…)" onChange={f('razon')} autoFocus /></Campo>
+              {avisos.length > 0 && <ul className="col-span-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+              <Campo etiqueta="Nombre comercial *"><input className={input} value={v.nombre} placeholder="Nombre con que se conoce" onChange={f('nombre')} /></Campo>
+              <Campo etiqueta="CIF *"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
+            </div>
+
+            <details className="rounded-xl border border-slate-200" open={faltaFinal.length > 0}>
+              <summary className={sum}>Dirección y códigos de actividad <Estado ok={faltaFinal.length === 0} texto={faltaFinal.length ? `Falta ${faltaFinal.join(' y ')}` : 'Completo'} /></summary>
+              <div className="grid grid-cols-2 gap-3 px-3 pb-3">
+                <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
+                <Campo etiqueta="CNAE (obligatorio para la versión final)"><input className={input} value={v.cnae} placeholder="Ej.: 5510" onChange={f('cnae')} /></Campo>
+                <Campo etiqueta="IAE (obligatorio para la versión final)"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
+              </div>
+            </details>
+
+            <details className="rounded-xl border border-slate-200" open={faltaCons}>
+              <summary className={sum}>Criterio de consolidación (ISO 14064-1) <Estado ok={!faltaCons} texto={faltaCons ? 'Pendiente' : criterio?.titulo ?? 'Completo'} /></summary>
+              <div className="px-3 pb-3 space-y-2">
+                <select className={input} value={v.criterio} onChange={(e) => setV({ ...v, criterio: e.target.value as '' | CriterioConsolidacion })} aria-label="Criterio de consolidación">
+                  <option value="">Elegir criterio…</option>
+                  {CRITERIOS_CONSOLIDACION.map((c) => <option key={c.id} value={c.id}>{c.titulo}</option>)}
+                </select>
+                {criterio && <p className="text-[11px] text-slate-600">{criterio.descripcion}</p>}
+                <label className="block text-xs font-semibold text-slate-600">Justificación del criterio *<textarea className={`${input} mt-1`} rows={2} value={v.justificacion} placeholder="Por qué se elige este criterio para esta organización." onChange={(e) => setV({ ...v, justificacion: e.target.value })} /></label>
+              </div>
+            </details>
+
+            <details className="rounded-xl border border-slate-200" open={faltaResp}>
+              <summary className={sum}>Responsable del informe <Estado ok={!faltaResp} texto={faltaResp ? 'Pendiente' : v.rNombre.trim()} /></summary>
+              <div className="grid grid-cols-2 gap-3 px-3 pb-3">
+                <Campo etiqueta="Nombre *"><input className={input} value={v.rNombre} onChange={f('rNombre')} /></Campo>
+                <Campo etiqueta="Cargo *"><input className={input} value={v.rCargo} onChange={f('rCargo')} /></Campo>
+                <Campo etiqueta="Entidad *"><input className={input} value={v.rEntidad} onChange={f('rEntidad')} /></Campo>
+                <Campo etiqueta="Correo (opcional)"><input className={input} value={v.rEmail} onChange={f('rEmail')} /></Campo>
+              </div>
+            </details>
+
+            <details className="rounded-xl border border-slate-200">
+              <summary className={sum}>Acceso <span className="ml-auto text-[11px] font-normal text-slate-500">Consultor asignado</span></summary>
+              <div className="px-3 pb-3"><Campo etiqueta="Correo del consultor (controla quién puede editar)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo></div>
+            </details>
           </div>
-        </div>
-      </div>
-      <div className="flex justify-end gap-2 mt-5">
+        );
+      })()}
+      <div className="sticky bottom-0 -mx-6 -mb-6 mt-5 px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-end gap-2 rounded-b-2xl">
+        {(!v.nombre.trim()) && <span className="mr-auto text-[11px] text-amber-800">El nombre comercial es obligatorio para guardar.</span>}
         <button className={btnS} onClick={onCerrar}>Cancelar</button>
         <button className={btnP} onClick={guardar} disabled={!v.nombre.trim() || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button>
       </div>
@@ -1917,16 +1963,16 @@ const PanelAnioBase: React.FC<{ org: Organizacion; invs: Inventario[]; ab: Retur
           {!d.inventarioId && <p><span className="font-semibold">Origen:</span> {d.origen} {d.evidenciaUrl ? <a className="underline text-brand-700" href={d.evidenciaUrl} target="_blank" rel="noreferrer">evidencia</a> : d.evidenciaNombre ? `· evidencia: ${d.evidenciaNombre}` : ''}</p>}
         </div>
       ) : <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">No se ha definido el año base: el informe dirá que no existe inventario del año base.</p>}
-      <div className="mt-4 border-t border-slate-100 pt-3">
-        <p className="text-xs font-semibold text-slate-700 mb-2">Reglas de recálculo del año base</p>
-        <div className="flex flex-wrap items-end gap-4 text-xs">
+      <details className="mt-4 border-t border-slate-100 pt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-slate-700 mb-2">Reglas de recálculo del año base <span className="font-normal text-slate-500">· umbral {c.umbral} %</span></summary>
+        <div className="flex flex-wrap items-end gap-4 text-xs mt-2">
           <label className="flex items-center gap-2"><input type="checkbox" checked={c.lim} onChange={(e) => setC({ ...c, lim: e.target.checked })} /> Cambio de límites (alta o baja de centros)</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={c.met} onChange={(e) => setC({ ...c, met: e.target.checked })} /> Cambio de metodología</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={c.fac} onChange={(e) => setC({ ...c, fac: e.target.checked })} /> Cambio de factor o PCA superior a</label>
           <label className="flex items-center gap-1 font-semibold text-slate-600"><input className={`${input} w-16`} value={c.umbral} onChange={(e) => setC({ ...c, umbral: e.target.value })} aria-label="Umbral de cambio de factor" /> %</label>
           <button className={btnS} onClick={guardarCfg}>Guardar reglas</button>
         </div>
-      </div>
+      </details>
       {modal && <ModalAnioBase org={org} invs={invs} onOrg={onOrg} onCerrar={() => setModal(false)} falla={falla} />}
     </div>
   );

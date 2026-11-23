@@ -2027,19 +2027,20 @@ const CatalogoIncertidumbre: React.FC<{ cfg: Partial<ConfigIncertidumbre> | null
 };
 
 const CardPlantillaInforme: React.FC<{ falla: (e: unknown) => void }> = ({ falla }) => {
-  const [t, setT] = useState('');
+  const [t, setT] = useState(CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad);
   const [filas, setFilas] = useState(String(CONFIG_PLANTILLA_POR_DEFECTO.minFilasSinPartir));
   const [guardando, setGuardando] = useState(false);
-  useEffect(() => { huellaService.configuracion<Partial<ConfigPlantillaInforme>>('plantilla_informe').then((c) => { setT(c?.confidencialidad ?? ''); if (c?.minFilasSinPartir) setFilas(String(c.minFilasSinPartir)); }).catch(() => undefined); }, []);
+  useEffect(() => { huellaService.configuracion<Partial<ConfigPlantillaInforme>>('plantilla_informe').then((c) => { setT(c?.confidencialidad?.trim() || CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad); if (c?.minFilasSinPartir) setFilas(String(c.minFilasSinPartir)); }).catch(() => undefined); }, []);
   const guardar = async () => {
     setGuardando(true);
-    try { await huellaService.guardarConfiguracion('plantilla_informe', { confidencialidad: t.trim() || null, minFilasSinPartir: Number(filas) || CONFIG_PLANTILLA_POR_DEFECTO.minFilasSinPartir }); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (la plantilla solo la editan los administradores)`)); } finally { setGuardando(false); }
+    try { await huellaService.guardarConfiguracion('plantilla_informe', { confidencialidad: t.trim() === CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad ? null : t.trim() || null, minFilasSinPartir: Number(filas) || CONFIG_PLANTILLA_POR_DEFECTO.minFilasSinPartir }); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (la plantilla solo la editan los administradores)`)); } finally { setGuardando(false); }
   };
   return (
     <details className={`${card} group`}>
       <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Plantilla del informe: confidencialidad y paginación</summary>
-      <label className="block text-xs font-semibold text-slate-600 mt-3">Cláusula de confidencialidad de la portada (vacía = texto por defecto)
-        <textarea className={`${input} mt-1`} rows={4} value={t} placeholder={CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad} onChange={(e) => setT(e.target.value)} />
+      <label className="block text-xs font-semibold text-slate-600 mt-3">Cláusula de confidencialidad de la portada (sale por defecto en todos los informes; solo hace falta tocarla para cambiarla)
+        <textarea className={`${input} mt-1`} rows={5} value={t} onChange={(e) => setT(e.target.value)} />
+        {t !== CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad && <button type="button" className="mt-1 text-[11px] font-semibold text-brand-700 underline" onClick={() => setT(CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad)}>Restaurar el texto por defecto</button>}
       </label>
       <label className="block text-xs font-semibold text-slate-600 mt-3">Las tablas de menos de esta cantidad de filas no se parten entre páginas
         <input inputMode="numeric" className={`${input} mt-1 w-24`} value={filas} onChange={(e) => setFilas(e.target.value)} />

@@ -7,7 +7,7 @@ import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
-import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
+import { CNAE_HOTEL, centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
 import { desgloseGases } from '../huella/gases';
@@ -451,7 +451,7 @@ const NuevoCalculo: React.FC<{
       let orgId = orgSel;
       if (orgSel === 'nueva') {
         const base = hoteles[0] ? organizacionDesdeHotel(hoteles[0]) : null;
-        const o = await huellaService.crearOrganizacion({ nombre: nombre.trim(), cif: base?.cif ?? null, direccion: hoteles.length === 1 ? base?.direccion ?? null : null, consultor_email: usuario, suite_cadena: cadena ?? base?.suite_cadena ?? null });
+        const o = await huellaService.crearOrganizacion({ nombre: nombre.trim(), cif: base?.cif ?? null, direccion: hoteles.length === 1 ? base?.direccion ?? null : null, consultor_email: usuario, suite_cadena: cadena ?? base?.suite_cadena ?? null, cnae: CNAE_HOTEL });
         orgId = o.id;
       }
       // Centros: solo los hoteles que aún no están en la organización
@@ -664,7 +664,7 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
     // Con un solo hotel la dirección de la organización es la del hotel (aunque pertenezca a una cadena); con varios no hay una única dirección
     const direccion = hs.length === 1 ? (hs[0].direccion_completa?.trim() || o.direccion) : o.direccion;
     const cif = hs.map((h) => h.cif?.trim()).find((x) => !!x) ?? o.cif;
-    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (direccion ?? p.direccion) : p.direccion }));
+    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (direccion ?? p.direccion) : p.direccion, cnae: sobrescribir || !p.cnae ? o.cnae : p.cnae }));
   };
   const cargarVinculados = async (sobrescribir: boolean) => {
     const ids = centrosOrg.map((c) => c.suite_hotel_id).filter((x): x is string => !!x).slice(0, 25);
@@ -688,13 +688,13 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
           <BuscadorHoteles textoBoton="Añadir" placeholder="Busque el hotel, la cadena o el titular" vinculados={new Set(hoteles.map((h) => h.id))}
             onElegir={(h) => {
               setHoteles((l) => (l.some((x) => x.id === h.id) ? l : [...l, h]));
-              if (hoteles.length === 0) { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '' })); setCadenaSuite(o.suite_cadena); }
+              if (hoteles.length === 0) { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '', cnae: p.cnae || o.cnae })); setCadenaSuite(o.suite_cadena); }
             }}
             onCadena={async (cadena) => {
               try {
                 const todos = (await huellaService.buscarHoteles({ cadena, limite: 200 })).filter((h) => h.activo !== false);
                 setHoteles((l) => [...l, ...todos.filter((h) => !l.some((x) => x.id === h.id))]);
-                if (hoteles.length === 0 && todos[0]) { const o = organizacionDesdeHotel(todos[0]); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: '' })); setCadenaSuite(cadena); }
+                if (hoteles.length === 0 && todos[0]) { const o = organizacionDesdeHotel(todos[0]); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: '', cnae: p.cnae || o.cnae })); setCadenaSuite(cadena); }
               } catch (e) { onError?.(e); }
             }} />
           {hoteles.length > 0 && (
@@ -765,20 +765,20 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
 
 const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ centro, onGuardar, onCerrar, onError }) => {
   const [nota, setNota] = useState('');
-  const [v, setV] = useState({ nombre: centro.nombre, direccion: centro.direccion ?? '', municipio: centro.municipio ?? '', isla: centro.isla ?? 'Mallorca', balear: centro.en_baleares, unidades: centro.unidades_alojamiento != null ? String(centro.unidades_alojamiento) : '' });
+  const [v, setV] = useState({ nombre: centro.nombre, direccion: centro.direccion ?? '', municipio: centro.municipio ?? '', isla: centro.isla ?? 'Mallorca', balear: centro.en_baleares, unidades: centro.unidades_alojamiento != null ? String(centro.unidades_alojamiento) : '', latitud: centro.latitud != null ? String(centro.latitud) : '', longitud: centro.longitud != null ? String(centro.longitud) : '' });
   const [guardando, setGuardando] = useState(false);
   const actualizarDesdeSuite = async () => {
     try {
       const [h] = await huellaService.buscarHoteles({ id: centro.suite_hotel_id! });
       if (!h) { setNota('El hotel ya no existe en HS Suite.'); return; }
       const c = centroDesdeHotel(h);
-      setV({ nombre: c.nombre, direccion: c.direccion ?? '', municipio: c.municipio ?? '', isla: c.isla ?? 'Mallorca', balear: c.en_baleares, unidades: c.unidades_alojamiento != null ? String(c.unidades_alojamiento) : '' });
+      setV({ nombre: c.nombre, direccion: c.direccion ?? '', municipio: c.municipio ?? '', isla: c.isla ?? 'Mallorca', balear: c.en_baleares, unidades: c.unidades_alojamiento != null ? String(c.unidades_alojamiento) : '', latitud: c.latitud != null ? String(c.latitud) : v.latitud, longitud: c.longitud != null ? String(c.longitud) : v.longitud });
       setNota('Datos actualizados desde HS Suite: revíselos y pulse Guardar.');
     } catch (e) { onError?.(e); }
   };
   const guardar = async () => {
     setGuardando(true);
-    try { await onGuardar({ nombre: v.nombre.trim(), direccion: v.direccion.trim() || null, municipio: v.municipio.trim() || null, isla: v.balear ? v.isla : null, en_baleares: v.balear, unidades_alojamiento: v.unidades === '' ? null : Math.max(0, Math.round(Number(v.unidades))) }); onCerrar(); } finally { setGuardando(false); }
+    try { await onGuardar({ nombre: v.nombre.trim(), direccion: v.direccion.trim() || null, municipio: v.municipio.trim() || null, isla: v.balear ? v.isla : null, en_baleares: v.balear, unidades_alojamiento: v.unidades === '' ? null : Math.max(0, Math.round(Number(v.unidades))), latitud: v.latitud.trim() === '' ? null : Number(v.latitud.replace(',', '.')), longitud: v.longitud.trim() === '' ? null : Number(v.longitud.replace(',', '.')) }); onCerrar(); } finally { setGuardando(false); }
   };
   return (
     <Modal titulo="Editar centro de trabajo" onCerrar={onCerrar}>
@@ -794,6 +794,8 @@ const FormCentro: React.FC<{ centro: Centro; onGuardar: (v: Partial<Centro>) => 
         <Campo etiqueta="Municipio"><input className={input} value={v.municipio} onChange={(e) => setV({ ...v, municipio: e.target.value })} /></Campo>
         <Campo etiqueta="Isla"><select className={input} value={v.isla} disabled={!v.balear} onChange={(e) => setV({ ...v, isla: e.target.value })}>{['Mallorca', 'Menorca', 'Ibiza', 'Formentera'].map((i) => <option key={i}>{i}</option>)}</select></Campo>
         <Campo etiqueta="Unidades de alojamiento"><input type="number" min={0} className={input} value={v.unidades} onChange={(e) => setV({ ...v, unidades: e.target.value })} /></Campo>
+        <Campo etiqueta="Latitud"><input inputMode="decimal" className={input} value={v.latitud} onChange={(e) => setV({ ...v, latitud: e.target.value })} placeholder="Ej.: 39,8330" /></Campo>
+        <Campo etiqueta="Longitud"><input inputMode="decimal" className={input} value={v.longitud} onChange={(e) => setV({ ...v, longitud: e.target.value })} placeholder="Ej.: 3,1168" /></Campo>
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 self-end pb-2"><input type="checkbox" checked={v.balear} onChange={(e) => setV({ ...v, balear: e.target.checked })} /> Centro en Baleares</label>
       </div>
       <div className="flex justify-end gap-2 mt-5">
@@ -2048,7 +2050,7 @@ const PanelInforme: React.FC<{
     const out = rellenarCalculadora(plantilla, {
       anio: inv.anio, verificacion: true,
       gases: conjunto ? { oficiales: lista, pca: conMezclas(conjunto).pcaRefrigerantes } : undefined,
-      organizacion: { nombre: org.nombre, cif: org.cif, cnae: org.cnae },
+      organizacion: { nombre: org.nombre, cif: org.cif, cnae: org.cnae || (centros.some((c) => c.suite_hotel_id) ? CNAE_HOTEL : null) },
       centros: centros.map((c) => ({ nombre: c.nombre, enBaleares: c.en_baleares, isla: c.isla, municipio: c.municipio, direccion: c.direccion, latitud: c.latitud != null ? Number(c.latitud) : null, longitud: c.longitud != null ? Number(c.longitud) : null })),
       plantillaTotal: invCentros.reduce((t, c) => t + Number(c.plantilla_media || 0), 0),
       indice: estancias > 0 ? { nombre: 'Estancias', valor: estancias, unidades: 'estancias' } : undefined,

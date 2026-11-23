@@ -25,3 +25,13 @@ test('lectura de extintores: por defecto solo CO2 recarga/retimbrado y de factur
   assert.deepEqual(agruparPorKg([{ cantidad: 3, kgPorExtintor: 2 }, { cantidad: 1, kgPorExtintor: 5 }, { cantidad: 2, kgPorExtintor: 2 }]), [{ cantidad: 5, kgPorExtintor: 2 }, { cantidad: 1, kgPorExtintor: 5 }]);
   assert.equal(limpiarLectura({ lineas: [{ ...l[0], cantidad: 0 }] }).lineas.length, 0);
 });
+
+import { centroDesdeHotel, organizacionDesdeHotel, coordenada } from '../hotelesSuite.ts';
+test('hoteles de HS Suite: coordenadas y CNAE de hotel', () => {
+  const h = { id: 'x', codigo_hotel: 'HS-1', nombre_hotel: 'H', cadena_hotelera: null, titular: null, cif: null, pais: 'España', ccaa: 'Illes Balears', isla: 'Mallorca', municipio: 'Alcúdia', direccion_completa: 'C/ A', num_habitaciones: 10, num_plazas: 0, activo: true, latitud: '39.8330436', longitud: 3.1167803 };
+  const c = centroDesdeHotel(h);
+  assert.equal(c.latitud, 39.8330436); assert.equal(c.longitud, 3.1167803);
+  assert.equal(centroDesdeHotel({ ...h, latitud: undefined, longitud: null }).latitud, null);
+  assert.equal(coordenada('120', 90), null);
+  assert.equal(organizacionDesdeHotel(h).cnae, '5510');
+});

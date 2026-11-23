@@ -1458,10 +1458,49 @@ const TablaLineas: React.FC<{
     } catch (e) { falla(e); } finally { setGuardando(false); }
   };
   const kg = new Map<string, ResultadoLinea>(resultados.map((r) => [r.linea.id, r] as [string, ResultadoLinea]));
+  // Filtro por categoría y fuente; orden por cualquier columna (clic en el título: mayor a menor y, al repetir, menor a mayor)
+  type Col = 'centro' | 'categoria' | 'fuente' | 'contador' | 'cantidad' | 'factor' | 'tco2e' | 'periodo';
+  const [fCat, setFCat] = useState<'' | Categoria>('');
+  const [fFue, setFFue] = useState('');
+  const [orden, setOrden] = useState<{ col: Col | null; desc: boolean }>({ col: null, desc: true });
+  const nombreFuente = (a: Actividad) => a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : 'Electricidad');
+  const categorias = Array.from(new Set<Categoria>(lineas.map((a) => a.categoria)));
+  const fuentes = Array.from(new Set(lineas.filter((a) => !fCat || a.categoria === fCat).map(nombreFuente))).sort();
+  const valorOrden = (a: Actividad, col: Col): number | string => {
+    const r = kg.get(a.id); const base = Number(a.cantidad) * Number(a.reparto_proporcion ?? 1);
+    switch (col) {
+      case 'centro': return nombreCentro(a.centro_id); case 'categoria': return CATEGORIAS[a.categoria]; case 'fuente': return nombreFuente(a); case 'contador': return a.contador ?? '';
+      case 'cantidad': return Number(a.cantidad); case 'tco2e': return r ? r.kgCO2e : -1; case 'factor': return r && base > 0 ? r.kgCO2e / base : -1; case 'periodo': return a.periodo_desde ?? '';
+    }
+  };
+  const visibles = useMemo(() => {
+    const l = lineas.filter((a) => (!fCat || a.categoria === fCat) && (!fFue || nombreFuente(a) === fFue));
+    if (!orden.col) return l;
+    const c = orden.col;
+    return [...l].sort((x, y) => { const a = valorOrden(x, c), b = valorOrden(y, c); const d = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es'); return orden.desc ? -d : d; });
+  }, [lineas, resultados, fCat, fFue, orden]); // eslint-disable-line
+  const totalVisT = visibles.reduce((t, a) => t + (kg.get(a.id)?.kgCO2e ?? 0), 0) / 1000;
+  const th = (col: Col, texto: string, cls = 'pr-3') => (
+    <th className={`${cls} select-none`}><button className="inline-flex items-center gap-1 font-semibold hover:text-slate-900" onClick={() => setOrden((o) => (o.col === col ? { col, desc: !o.desc } : { col, desc: col === 'cantidad' || col === 'factor' || col === 'tco2e' || col === 'periodo' }))} aria-label={`Ordenar por ${texto}`}>{texto}<span className="text-[9px]">{orden.col === col ? (orden.desc ? '▼' : '▲') : ''}</span></button></th>
+  );
   return (
+    <div>
+    <div className="flex flex-wrap items-end gap-3 mb-3">
+      <label className="text-[11px] font-semibold text-slate-600">Categoría<select className={`${input} mt-1 w-auto min-w-[170px] !py-1.5 !text-xs`} value={fCat} onChange={(e) => { setFCat(e.target.value as '' | Categoria); setFFue(''); }} aria-label="Filtrar por categoría"><option value="">Todas</option>{categorias.map((c) => <option key={c} value={c}>{CATEGORIAS[c]}</option>)}</select></label>
+      <label className="text-[11px] font-semibold text-slate-600">Fuente<select className={`${input} mt-1 w-auto min-w-[170px] !py-1.5 !text-xs`} value={fFue} onChange={(e) => setFFue(e.target.value)} aria-label="Filtrar por fuente"><option value="">Todas</option>{fuentes.map((f) => <option key={f} value={f}>{f}</option>)}</select></label>
+      <label className="text-[11px] font-semibold text-slate-600">Ordenar por<select className={`${input} mt-1 w-auto min-w-[170px] !py-1.5 !text-xs`} value={orden.col ? `${orden.col}|${orden.desc ? 'd' : 'a'}` : ''} aria-label="Ordenar"
+        onChange={(e) => { const [col, d] = e.target.value.split('|'); setOrden(col ? { col: col as Col, desc: d === 'd' } : { col: null, desc: true }); }}>
+        <option value="">Orden original</option><option value="tco2e|d">t CO₂e: de mayor a menor</option><option value="tco2e|a">t CO₂e: de menor a mayor</option>
+        <option value="cantidad|d">Cantidad: de mayor a menor</option><option value="cantidad|a">Cantidad: de menor a mayor</option>
+        <option value="periodo|a">Fecha: más antiguas primero</option><option value="periodo|d">Fecha: más recientes primero</option>
+        <option value="fuente|a">Fuente: A-Z</option><option value="centro|a">Centro: A-Z</option>
+      </select></label>
+      {(fCat || fFue || orden.col) && <button className={btnS} onClick={() => { setFCat(''); setFFue(''); setOrden({ col: null, desc: true }); }}>Quitar filtros</button>}
+      <p className="text-[11px] text-slate-600 ml-auto self-center">{visibles.length} de {lineas.length} líneas · <strong>{num(totalVisT, 3)}</strong> t CO₂e</p>
+    </div>
     <div className="overflow-x-auto"><table className="w-full text-xs">
-      <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">Factor de emisión</th><th className="pr-3 text-right">t CO₂e</th><th className="pr-3">Origen</th><th /></tr></thead>
-      <tbody>{lineas.map((a) => {
+      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{th('centro', 'Centro', 'py-2 pr-3')}{th('categoria', 'Categoría')}{th('fuente', 'Fuente')}{th('contador', 'Contador')}{th('cantidad', 'Cantidad', 'pr-3 text-right')}{th('factor', 'Factor de emisión', 'pr-3 text-right')}{th('tco2e', 't CO₂e', 'pr-3 text-right')}{th('periodo', 'Origen')}<th /></tr></thead>
+      <tbody>{visibles.map((a) => {
         const r = kg.get(a.id);
         const ud = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : factores.unidades[a.fuente] ?? (a.unidad ?? '');
         const base = Number(a.cantidad) * Number(a.reparto_proporcion ?? 1);
@@ -1505,6 +1544,7 @@ const TablaLineas: React.FC<{
         );
       })}</tbody>
     </table></div>
+    </div>
   );
 };
 

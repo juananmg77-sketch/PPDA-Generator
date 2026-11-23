@@ -9,6 +9,8 @@ export type TipoFactura = 'electricidad' | 'gas_natural' | 'gasoleo' | 'glp' | '
 /** Lo que devuelve la lectura automática de una factura (todos los campos son propuestas). */
 export interface ExtraccionFactura {
   tipo: TipoFactura;
+  /** La persona que revisa ha comprobado la factura a mano y confirma el dato (aunque sea 0): no se vuelve a avisar. */
+  verificadoManual?: boolean;
   proveedor?: string;
   /** Punto de suministro: CUPS (luz y gas), nº de contador o de instalación, tal como figura. «VARIOS» si la factura agrupa varios. */
   contador?: string;

@@ -1337,7 +1337,7 @@ const Revision: React.FC<{
     setGuardando(true);
     try {
       if (corregir) await huellaService.borrarActividadDocumento(doc.id); // sustituye el dato anterior de esta factura
-      await confirmarDocumento(doc, efectiva, cat === 'electricidad' ? '' : fuente, inv); onHecho();
+      await confirmarDocumento(doc, corregir ? { ...efectiva, verificadoManual: true } : efectiva, cat === 'electricidad' ? '' : fuente, inv); onHecho();
     } catch (x) { falla(x); setGuardando(false); }
   };
   const rechazar = async () => { setGuardando(true); try { await huellaService.actualizarDocumento(doc.id, { estado: 'rechazado' }); onHecho(); } catch (x) { falla(x); setGuardando(false); } };
@@ -1674,7 +1674,7 @@ const PanelCierre: React.FC<{
     if (!factores || !calculo || previo === undefined) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad })),
+      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,

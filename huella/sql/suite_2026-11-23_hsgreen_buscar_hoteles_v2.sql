@@ -1,8 +1,6 @@
--- PROYECTO HS SUITE (tcywohajqmnfdwfuvwfk), no el del PPDA. Añade latitud y longitud al resultado de la búsqueda de hoteles que usa HS GREEN.
--- Solo amplía las columnas devueltas; mismos permisos y misma comprobación del token. La aplicación funciona sin esto (las coordenadas se escriben a mano).
-drop function if exists public.hsgreen_buscar_hoteles(text, text, text, uuid, integer);
-
-create function public.hsgreen_buscar_hoteles(p_token text, p_texto text default null, p_cadena text default null, p_id uuid default null, p_limit integer default 50)
+-- PROYECTO HS SUITE (tcywohajqmnfdwfuvwfk), no el del PPDA. FUNCIÓN NUEVA: no modifica ni borra nada existente.
+-- Igual que hsgreen_buscar_hoteles pero devolviendo además latitud y longitud. La original queda intacta para cualquier otra aplicación.
+create or replace function public.hsgreen_buscar_hoteles_v2(p_token text, p_texto text default null, p_cadena text default null, p_id uuid default null, p_limit integer default 50)
  returns table(id uuid, codigo_hotel text, nombre_hotel text, cadena_hotelera text, titular text, cif text, pais text, ccaa text, isla text, municipio text, direccion_completa text, num_habitaciones integer, num_plazas integer, activo boolean, latitud double precision, longitud double precision)
  language plpgsql
  security definer
@@ -31,5 +29,5 @@ begin
   limit v_lim;
 end $function$;
 
-revoke all on function public.hsgreen_buscar_hoteles(text, text, text, uuid, integer) from public;
-grant execute on function public.hsgreen_buscar_hoteles(text, text, text, uuid, integer) to postgres, anon, authenticated, service_role;
+revoke all on function public.hsgreen_buscar_hoteles_v2(text, text, text, uuid, integer) from public;
+grant execute on function public.hsgreen_buscar_hoteles_v2(text, text, text, uuid, integer) to postgres, anon, authenticated, service_role;

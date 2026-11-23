@@ -20,7 +20,7 @@ export default async (req: Request): Promise<Response> => {
   if (!id && (texto ?? '').trim().length < 2 && (cadena ?? '').trim().length < 2) return json({ error: 'Escriba al menos 2 caracteres.' }, 400);
 
   try {
-    const r = await fetch(`${url}/rest/v1/rpc/hsgreen_buscar_hoteles`, {
+    const r = await fetch(`${url}/rest/v1/rpc/hsgreen_buscar_hoteles_v2`, {
       method: 'POST',
       headers: { apikey: anon, authorization: `Bearer ${anon}`, 'content-type': 'application/json' },
       body: JSON.stringify({ p_token: token, p_texto: texto, p_cadena: cadena, p_id: id, p_limit: Math.min(Number(c.limite) || 50, 200) }),

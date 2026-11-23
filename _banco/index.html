@@ -1,0 +1,128 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet"><script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              /* ── Brand verde corporativo (más sobrio) ── */
+              brand: {
+                50:  '#f0fbf3',
+                100: '#dcf6e3',
+                200: '#b8ecc7',
+                300: '#8fe0a5',
+                400: '#77D464',
+                500: '#00BF46',
+                600: '#00923A',
+                700: '#007A30',
+                800: '#066126',
+                900: '#0a4a21',
+              },
+              /* ── Header corporativo oscuro ── */
+              header: {
+                DEFAULT: '#00093D',
+                light:   '#0a1a5c',
+                text:    '#ffffff',
+                muted:   'rgba(255,255,255,0.65)',
+              },
+              /* ── Sidebar navegación ── */
+              nav: {
+                bg:     '#ffffff',
+                border: '#e2e8f0',
+                active: '#00923A',
+                hover:  '#f0fbf3',
+                text:   '#475569',
+                num:    '#94a3b8',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* ===== HS GREEN · cristal sobre paisaje ===== */
+      body { background: #dde6ee; }
+      body::before { content:''; position:fixed; inset:-40px; z-index:-2; background:url('/login-hotel.jpg') 30% center/cover no-repeat; filter:blur(16px) saturate(1.1); }
+      body::after  { content:''; position:fixed; inset:0; z-index:-1; background:rgba(255,255,255,.5); pointer-events:none; }
+      .min-h-screen.bg-slate-100, .min-h-screen.bg-slate-50, .min-h-screen.bg-gray-50 { background: transparent; }
+      /* Tarjetas y barras blancas -> cristal (se excluyen informes, PDF y elementos con .no-glass) */
+      :is(div,section,aside,nav,article,form,ul).bg-white:is(.rounded-lg,.rounded-xl,.rounded-2xl,.rounded-3xl,.border-r,.border-b,.border-t):not(#pdf-render-temp *):not(.paper *):not(.no-glass) {
+        background-color: rgba(255,255,255,.70);
+        -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+        border-color: rgba(255,255,255,.75);
+      }
+      button.bg-white:is(.rounded-xl,.rounded-2xl):not(#pdf-render-temp *):not(.paper *):not(.no-glass) {
+        background-color: rgba(255,255,255,.70); -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15); border-color: rgba(255,255,255,.75);
+      }
+      /* Cabeceras de pantalla en cristal claro */
+      header.bg-header:not(#pdf-render-temp *) {
+        background: rgba(255,255,255,.66);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+        color: #00093D;
+      }
+      header.bg-header :is(.text-white, .text-white\/90, .text-white\/80, .text-white\/70, .text-white\/60, .text-white\/50, .text-white\/40, .text-header-muted) { color:#00093D !important; }
+      header.bg-header :is([style*="rgba(255,255,255"], [style*="rgba(255, 255, 255"]) { color: rgba(0,9,61,.8) !important; }
+      header.bg-header .hover\:text-white:hover { color:#00093D !important; }
+      header.bg-header :is(.hover\:bg-header-light:hover, .bg-white\/15) { background: rgba(0,9,61,.08) !important; }
+      header.bg-header .bg-white\/20 { background: rgba(0,9,61,.22) !important; }
+      /* Ventanas (modales): blanco sólido y mayor contraste, nunca cristal sobre el velo oscuro */
+      .fixed.inset-0 :is(.bg-white).rounded-lg, .fixed.inset-0 :is(.bg-white).rounded-xl, .fixed.inset-0 :is(.bg-white).rounded-2xl, .fixed.inset-0 :is(.bg-white).rounded-3xl { background-color:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; border-color:#dfe6ee !important; }
+      .fixed.inset-0 .bg-slate-50 { background-color:#f4f7fa; }
+      .fixed.inset-0 .text-slate-300 { color:#64748b; }
+      .fixed.inset-0 .text-slate-400 { color:#475569; }
+      .fixed.inset-0 .text-slate-500 { color:#334155; }
+      .fixed.inset-0 .text-slate-600 { color:#1e293b; }
+      /* Plan de desperdicio (editor): fondo blanco opaco y máximo contraste */
+      .plan-view.min-h-screen.bg-slate-100 { background: #f4f7fa; }
+      .plan-view :is(div,section,aside,nav,article,form,ul,button).bg-white { background-color:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; border-color:#dfe6ee !important; }
+      .plan-view header.bg-header { background:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; box-shadow:0 1px 6px rgba(0,9,61,.08); }
+      .plan-view .text-slate-400 { color:#64748b; }
+      @media print { body::before, body::after { display:none; } header.bg-header { background:#fff; -webkit-backdrop-filter:none; backdrop-filter:none; } }
+    </style>
+    <style>
+      /* HS GREEN · imagen de marca: títulos en Montserrat y filo degradado bajo las cabeceras */
+      h1, h2 { font-family: 'Montserrat', 'Inter', sans-serif; }
+      header { border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, #24CBF5, #0002C9) 1; }
+      @media print { header { border-image: none; border-bottom: 0; } }
+    </style>    <style>
+      /* ===== HS GREEN · cristal sobre paisaje ===== */
+      body { background: #dde6ee; }
+      body::before { content:''; position:fixed; inset:-40px; z-index:-2; background:url('/login-hotel.jpg') 30% center/cover no-repeat; filter:blur(16px) saturate(1.1); }
+      body::after  { content:''; position:fixed; inset:0; z-index:-1; background:rgba(255,255,255,.5); pointer-events:none; }
+      .min-h-screen.bg-slate-100, .min-h-screen.bg-slate-50, .min-h-screen.bg-gray-50 { background: transparent; }
+      /* Tarjetas y barras blancas -> cristal (se excluyen informes, PDF y elementos con .no-glass) */
+      :is(div,section,aside,nav,article,form,ul).bg-white:is(.rounded-lg,.rounded-xl,.rounded-2xl,.rounded-3xl,.border-r,.border-b,.border-t):not(#pdf-render-temp *):not(.paper *):not(.no-glass) {
+        background-color: rgba(255,255,255,.70);
+        -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15);
+        border-color: rgba(255,255,255,.75);
+      }
+      button.bg-white:is(.rounded-xl,.rounded-2xl):not(#pdf-render-temp *):not(.paper *):not(.no-glass) {
+        background-color: rgba(255,255,255,.70); -webkit-backdrop-filter: blur(12px) saturate(1.15); backdrop-filter: blur(12px) saturate(1.15); border-color: rgba(255,255,255,.75);
+      }
+      /* Cabeceras de pantalla en cristal claro */
+      header.bg-header:not(#pdf-render-temp *) {
+        background: rgba(255,255,255,.66);
+        -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+        color: #00093D;
+      }
+      header.bg-header :is(.text-white, .text-white\/90, .text-white\/80, .text-white\/70, .text-white\/60, .text-white\/50, .text-white\/40, .text-header-muted) { color:#00093D !important; }
+      header.bg-header :is([style*="rgba(255,255,255"], [style*="rgba(255, 255, 255"]) { color: rgba(0,9,61,.8) !important; }
+      header.bg-header .hover\:text-white:hover { color:#00093D !important; }
+      header.bg-header :is(.hover\:bg-header-light:hover, .bg-white\/15) { background: rgba(0,9,61,.08) !important; }
+      header.bg-header .bg-white\/20 { background: rgba(0,9,61,.22) !important; }
+      /* Ventanas (modales): blanco sólido y mayor contraste, nunca cristal sobre el velo oscuro */
+      .fixed.inset-0 :is(.bg-white).rounded-lg, .fixed.inset-0 :is(.bg-white).rounded-xl, .fixed.inset-0 :is(.bg-white).rounded-2xl, .fixed.inset-0 :is(.bg-white).rounded-3xl { background-color:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; border-color:#dfe6ee !important; }
+      .fixed.inset-0 .bg-slate-50 { background-color:#f4f7fa; }
+      .fixed.inset-0 .text-slate-300 { color:#64748b; }
+      .fixed.inset-0 .text-slate-400 { color:#475569; }
+      .fixed.inset-0 .text-slate-500 { color:#334155; }
+      .fixed.inset-0 .text-slate-600 { color:#1e293b; }
+      /* Plan de desperdicio (editor): fondo blanco opaco y máximo contraste */
+      .plan-view.min-h-screen.bg-slate-100 { background: #f4f7fa; }
+      .plan-view :is(div,section,aside,nav,article,form,ul,button).bg-white { background-color:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; border-color:#dfe6ee !important; }
+      .plan-view header.bg-header { background:#fff !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; box-shadow:0 1px 6px rgba(0,9,61,.08); }
+      .plan-view .text-slate-400 { color:#64748b; }
+      @media print { body::before, body::after { display:none; } header.bg-header { background:#fff; -webkit-backdrop-filter:none; backdrop-filter:none; } }
+    </style>
+</head><body class="bg-gray-50 text-gray-900 antialiased"><div id="root"></div><script type="module" src="/_banco/main.tsx"></script></body></html>

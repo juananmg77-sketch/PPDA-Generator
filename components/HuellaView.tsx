@@ -1729,23 +1729,23 @@ function useSignificancia(org: Organizacion, inv: Inventario, falla: (e: unknown
   // Con plantilla del sector y al menos una subcategoría valorada hay evaluación; si no, «no realizada» (null)
   const estado = useMemo(() => (plantilla.length && evals.length ? estadoEvaluacion(plantilla, evaluaciones, criterios) : null), [plantilla, evals, evaluaciones, criterios]);
   const paraInforme = useMemo(() => ({ plantilla: plantilla.map((p) => ({ codigo: p.codigo, nombre: p.nombre, activa: p.activa, categoria: p.categoria })), evaluaciones, criterios: org.config_significancia ?? null, textos }), [plantilla, evaluaciones, org.config_significancia, textos]);
-  return { sector, plantilla, evals, criterios, estado, textos, paraInforme: plantilla.length && evals.length ? paraInforme : undefined, recargar: () => setVersion((v) => v + 1) };
+  /** Aplica una evaluación ya guardada sin recargar todo (así no se pisa lo que se está escribiendo en otras filas). */
+  const aplicar = (r: EvaluacionDB) => setEvals((l) => (l.some((x) => x.codigo === r.codigo) ? l.map((x) => (x.codigo === r.codigo ? r : x)) : [...l, r]));
+  return { aplicar, sector, plantilla, evals, criterios, estado, textos, paraInforme: plantilla.length && evals.length ? paraInforme : undefined, recargar: () => setVersion((v) => v + 1) };
 }
 
 const NIVELES: Record<string, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' };
 const CALIDAD: Record<string, string> = { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' };
 
-const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | undefined; criterios: CriteriosSignificancia; inv: Inventario; abierto: boolean; onGuardado: () => void; falla: (e: unknown) => void }> = ({ s, e, criterios, inv, abierto, onGuardado, falla }) => {
+const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | undefined; criterios: CriteriosSignificancia; inv: Inventario; abierto: boolean; onGuardado: (r: EvaluacionDB) => void; falla: (e: unknown) => void }> = ({ s, e, criterios, inv, abierto, onGuardado, falla }) => {
   const [v, setV] = useState({ mag: e?.magnitud_pct != null ? String(e.magnitud_pct).replace('.', ',') : '', inf: e?.influencia ?? '', dat: e?.datos ?? '', req: e?.requisitos == null ? '' : e.requisitos ? 'si' : 'no', just: e?.justificacion ?? '', cuant: !!e?.cuantificada });
-  useEffect(() => { setV({ mag: e?.magnitud_pct != null ? String(e.magnitud_pct).replace('.', ',') : '', inf: e?.influencia ?? '', dat: e?.datos ?? '', req: e?.requisitos == null ? '' : e.requisitos ? 'si' : 'no', just: e?.justificacion ?? '', cuant: !!e?.cuantificada }); }, [e?.id, e?.magnitud_pct, e?.influencia, e?.datos, e?.requisitos, e?.justificacion, e?.cuantificada]); // eslint-disable-line
   const val = (x: typeof v): Valoracion => ({ magnitudPct: x.mag.trim() === '' ? null : Number(x.mag.replace(',', '.')), influencia: (x.inf || null) as Valoracion['influencia'], datos: (x.dat || null) as Valoracion['datos'], requisitos: x.req === '' ? null : x.req === 'si' });
   const r = evaluarSignificancia(val(v), criterios);
   const guardar = async (x: typeof v) => {
     const va = val(x);
     if (va.magnitudPct != null && !(va.magnitudPct >= 0)) return;
     try {
-      await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: va.magnitudPct, influencia: va.influencia, datos: va.datos, requisitos: va.requisitos, resultado: evaluarSignificancia(va, criterios).resultado, justificacion: x.just.trim() || null, cuantificada: x.cuant });
-      onGuardado();
+      onGuardado(await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: va.magnitudPct, influencia: va.influencia, datos: va.datos, requisitos: va.requisitos, resultado: evaluarSignificancia(va, criterios).resultado, justificacion: x.just.trim() || null, cuantificada: x.cuant }));
     } catch (err) { falla(err); }
   };
   const cambiar = (c: Partial<typeof v>, ahora = true) => { const n = { ...v, ...c }; setV(n); if (ahora) void guardar(n); };
@@ -1784,12 +1784,12 @@ const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto
       {sig.plantilla.length === 0 && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">No hay plantilla de subcategorías para este sector: un administrador debe crearla en «Criterios, plantilla y textos».</p>}
       {sig.plantilla.length > 0 && (
         <>
-          <div className="overflow-x-auto"><table className="w-full text-xs">
-            <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2">Subcategoría</th><th className="pr-2">Magnitud (% del total)</th><th className="pr-2">Influencia</th><th className="pr-2">Datos</th><th className="pr-2">Requisitos</th><th className="pr-2">Resultado</th><th className="pr-2 text-center">Cuantif.</th><th>Justificación</th></tr></thead>
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs">
+            <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-64">Subcategoría</th><th className="pr-2">Magnitud (% del total)</th><th className="pr-2">Influencia</th><th className="pr-2">Datos</th><th className="pr-2">Requisitos</th><th className="pr-2">Resultado</th><th className="pr-2 text-center">Cuantif.</th><th>Justificación</th></tr></thead>
             <tbody>{[3, 4, 5, 6].flatMap((cat) => {
               const lista = sig.plantilla.filter((s) => s.activa && s.categoria === cat);
               if (!lista.length) return [];
-              return [<tr key={`c${cat}`}><td colSpan={8} className="pt-3 pb-1 text-[11px] font-bold text-brand-700">{CATEGORIAS_ISO[cat - 1].resumen}</td></tr>, ...lista.map((s) => <FilaSignificancia key={s.codigo} s={s} e={sig.evals.find((x) => x.codigo === s.codigo)} criterios={sig.criterios} inv={inv} abierto={abierto} onGuardado={sig.recargar} falla={falla} />)];
+              return [<tr key={`c${cat}`}><td colSpan={8} className="pt-3 pb-1 text-[11px] font-bold text-brand-700">{CATEGORIAS_ISO[cat - 1].resumen}</td></tr>, ...lista.map((s) => <FilaSignificancia key={s.codigo} s={s} e={sig.evals.find((x) => x.codigo === s.codigo)} criterios={sig.criterios} inv={inv} abierto={abierto} onGuardado={sig.aplicar} falla={falla} />)];
             })}</tbody>
           </table></div>
           <p className={`mt-3 text-xs rounded-lg px-3 py-2 ${e && e.completa && e.significativasCuantificadas ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>

@@ -1003,6 +1003,7 @@ const PanelFacturas: React.FC<{
   const [centroId, setCentroId] = useState('');
   const [tipo, setTipo] = useState<TipoFactura | ''>('');
   const [revisando, setRevisando] = useState<string | null>(null);
+  const [manual, setManual] = useState<string | null>(null); // factura sin leer que se está introduciendo a mano
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [arrastrando, setArrastrando] = useState(false);
@@ -1061,6 +1062,16 @@ const PanelFacturas: React.FC<{
   const hechas = tareas.filter((t) => t.estado === 'listo' || t.estado === 'error').length;
 
   const puedeEliminar = rol === 'consultor' && abierto;
+  const sinLeer = (d: Documento) => d.estado === 'subido' || (d.estado === 'leido' && !d.extraccion);
+  /** Punto de partida para escribir a mano una factura que no se pudo leer: tipo y mes se deducen del nombre del archivo, el resto lo escribe quien revisa. */
+  const semilla = (d: Documento): ExtraccionFactura => {
+    const n = d.nombre_archivo ?? '';
+    const tipo: TipoFactura = /gas[oó]leo/i.test(n) ? 'gasoleo' : /glp|butano|propano/i.test(n) ? 'glp' : /elec|luz/i.test(n) ? 'electricidad' : /\bgas\b/i.test(n) ? 'gas_natural' : 'otro';
+    const m = n.match(/(20\d{2})-(0[1-9]|1[0-2])/);
+    const desde = m ? `${m[1]}-${m[2]}-01` : d.periodo_desde ?? undefined;
+    const hasta = m ? `${m[1]}-${m[2]}-${String(new Date(Number(m[1]), Number(m[2]), 0).getDate()).padStart(2, '0')}` : d.periodo_hasta ?? undefined;
+    return { tipo, periodoDesde: desde, periodoHasta: hasta, confianza: 0, nota: `Introducido a mano: la factura «${n}» no se pudo leer automáticamente.` };
+  };
   const listaFacturas = (items: Documento[]) => (
     <ul className="divide-y divide-slate-100">
       {[...items].sort((a, b) => String(a.periodo_desde ?? '').localeCompare(String(b.periodo_desde ?? ''))).map((d) => (
@@ -1072,7 +1083,13 @@ const PanelFacturas: React.FC<{
           </div>
           <Estado e={d.estado} />
           <button className={btnS} onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /> Ver</button>
+          {puedeEliminar && sinLeer(d) && <button className={btnS} onClick={() => setManual(manual === d.id ? null : d.id)}><Pencil size={14} /> {manual === d.id ? 'Cerrar' : 'Introducir a mano'}</button>}
           {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
+          {manual === d.id && sinLeer(d) && (
+            <div className="basis-full">
+              <Revision doc={{ ...d, extraccion: semilla(d) }} factores={factores} inv={inv} otras={docs} manual onHecho={() => { setManual(null); onCambio(); }} falla={falla} />
+            </div>
+          )}
         </li>
       ))}
     </ul>
@@ -1151,7 +1168,7 @@ const PanelFacturas: React.FC<{
       {rol === 'consultor' && sinLeerDocs.length > 0 && (
         <div className={`${card} border-red-200`}>
           <h2 className="text-sm font-bold text-red-800 mb-1 flex items-center gap-2"><AlertTriangle size={15} /> Subidas sin leer ({sinLeerDocs.length})</h2>
-          <p className="text-xs text-slate-600 mb-2">No se pudo leer su contenido y impiden cerrar el cálculo. Ábralas con «Ver» para comprobarlas; lo normal es eliminarlas y volver a subirlas (o introducir sus datos a mano en Consumos).</p>
+          <p className="text-xs text-slate-600 mb-2">No se pudo leer su contenido y impiden cerrar el cálculo. Ábralas con «Ver» para comprobarlas y escriba sus datos con «Introducir a mano» (queda ligado a la factura), o elimínelas y vuelva a subirlas.</p>
           {listaFacturas(sinLeerDocs)}
         </div>
       )}
@@ -1246,8 +1263,8 @@ const Estado: React.FC<{ e: Documento['estado'] }> = ({ e }) => {
 };
 
 const Revision: React.FC<{
-  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void;
-}> = ({ doc, factores, inv, otras, onHecho, falla }) => {
+  doc: Documento; factores: ConjuntoFactores | null; inv: Inventario; otras: Documento[]; onHecho: () => void; falla: (e: unknown) => void; manual?: boolean;
+}> = ({ doc, factores, inv, otras, onHecho, falla, manual }) => {
   const existentes = useMemo(() => otras.filter((x) => x.id !== doc.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map((x) => ({ id: x.id.slice(0, 8), centro: x.centro_id ?? undefined, proveedor: x.extraccion?.proveedor, contador: x.extraccion?.contador, periodoDesde: x.extraccion?.periodoDesde, periodoHasta: x.extraccion?.periodoHasta, cantidad: x.extraccion?.cantidad, tipo: x.extraccion!.tipo })), [otras, doc.id]);
   const asignacion = useMemo(() => asignarContador(doc.extraccion!, { centro: doc.centro_id ?? undefined, existentes }), [doc.id, existentes]); // eslint-disable-line
   const [e, setE] = useState<ExtraccionFactura>(() => (asignacion.contador ? { ...doc.extraccion!, contador: asignacion.contador } : doc.extraccion!));
@@ -1279,7 +1296,7 @@ const Revision: React.FC<{
 
   return (
     <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <p className="text-xs text-slate-600 mb-3">Compruebe cada dato contra la factura (botón «Ver»). Lectura propuesta con confianza {Math.round((e.confianza ?? 0) * 100)} %.</p>
+      <p className="text-xs text-slate-600 mb-3">{manual ? 'Escriba cada dato tal como figura en la factura (botón «Ver»). El tipo y el mes se han deducido del nombre del archivo: compruébelos.' : `Compruebe cada dato contra la factura (botón «Ver»). Lectura propuesta con confianza ${Math.round((e.confianza ?? 0) * 100)} %.`}</p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <label className="text-xs font-semibold text-slate-600">Tipo
           <select className={`${input} mt-1`} value={e.tipo} onChange={(ev) => { set('tipo', ev.target.value as TipoFactura); setFuente(''); }}>{Object.entries(TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>

@@ -301,13 +301,20 @@ test('anexo D calculado: «k» No cumple sin inventario del año base y Cumple c
   assert.equal(tabla(construirInforme(d)).find((x) => x[0] === 'k')![3], 'Cumple');
   assert.ok(tabla(sinBase).every((x) => ['Cumple', 'No cumple', 'No aplica'].includes(x[3])));
 });
-test('resumen ejecutivo: cifras clave, principales fuentes y tres conclusiones generadas', () => {
+test('resumen ejecutivo visual: tarjetas de cifras clave, gráficos y tres conclusiones generadas', () => {
   const m = construirInforme(base()); const r = m.resumen!;
   assert.equal(r.titulo, 'Resumen ejecutivo');
-  const kpi = r.bloques[0] as { filas: string[][] }; assert.ok(kpi.filas.some((x) => x[0] === 'Emisiones totales')); assert.ok(kpi.filas.some((x) => /Variación frente al año base/.test(x[0]) && /No existe inventario del año base/.test(x[1])));
-  assert.ok(kpi.filas.some((x) => x[0] === 'Estado de verificación'));
+  const kpis = r.bloques[0] as { k: string; items: Array<{ titulo: string; valor: string; destacado?: boolean; sub?: string }> };
+  assert.equal(kpis.k, 'kpis'); assert.equal(kpis.items[0].titulo, 'Emisiones totales'); assert.equal(kpis.items[0].destacado, true);
+  const titulos = kpis.items.map((x) => x.titulo); for (const t of ['Emisiones directas', 'Energía importada', 'Incertidumbre combinada', 'Verificación']) assert.ok(titulos.includes(t), t);
+  assert.ok(kpis.items.some((x) => /Año base|Variación vs año base/.test(x.titulo) && /No existe inventario del año base/.test(x.sub ?? ''))); // sin año base lo dice
+  assert.ok(kpis.items.every((x) => !/NaN|undefined|null/.test(`${x.valor}${x.sub ?? ''}`)));
+  const graficos = r.bloques.filter((b) => b.k === 'grafico') as Array<{ titulo: string; svg: string }>;
+  assert.equal(graficos.length, 2); assert.match(graficos[0].titulo, /Reparto de las emisiones por fuente/); assert.match(graficos[1].titulo, /Emisiones por categoría/); for (const g of graficos) assert.match(g.svg, /^<svg/);
   const lista = r.bloques.find((b) => b.k === 'lista') as { items: string[] }; assert.equal(lista.items.length, 3); assert.ok(lista.items.every((x) => !/NaN|undefined|null/.test(x)));
-  assert.ok(r.bloques.some((b) => b.k === 'tabla' && b.cab[0] === 'Principales fuentes'));
+  // con año base, el segundo gráfico compara con él
+  const act = resumenActual(); const d = base(); d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase(), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
+  const g2 = (construirInforme(d).resumen!.bloques.filter((b) => b.k === 'grafico') as Array<{ titulo: string }>)[1]; assert.match(g2.titulo, /Comparación con el año base 2019/);
 });
 test('plantilla: cláusula de confidencialidad configurable y citas de la resolución desde datos estructurados', () => {
   assert.match(construirInforme(base()).meta.confidencialidad, /pertenecen a la organización cliente/);

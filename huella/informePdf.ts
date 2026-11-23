@@ -66,6 +66,25 @@ function bloque(b: Bloque, minFilas: number): Unidad {
         ...(b.pie ? [{ text: b.pie, fontSize: 7.5, color: C.pie, margin: [0, 3, 0, 0] }] : []),
       ] }], true);
     }
+    case 'kpis': {
+      // Tarjetas de cifras clave en filas de cuatro (la primera, destacada en azul marino)
+      const filas: typeof b.items[] = [];
+      for (let i = 0; i < b.items.length; i += 4) filas.push(b.items.slice(i, i + 4));
+      const tarjeta = (k: typeof b.items[number]) => ({
+        fillColor: k.destacado ? C.marino : C.zebra, margin: [6, 5, 6, 5],
+        stack: [
+          { text: k.titulo.toUpperCase(), fontSize: 6.5, bold: true, color: k.destacado ? C.cian : C.pie, alignment: 'left', margin: [0, 0, 0, 2] },
+          { text: [{ text: k.valor, fontSize: 17, bold: true, color: k.destacado ? '#FFFFFF' : C.marino }, ...(k.unidad ? [{ text: ` ${k.unidad}`, fontSize: 7.5, color: k.destacado ? '#E8E8E8' : C.pie }] : [])], alignment: 'left', lineHeight: 1.1 },
+          ...(k.sub ? [{ text: k.sub, fontSize: 6.8, color: k.destacado ? '#E8E8E8' : C.pie, alignment: 'left', margin: [0, 2, 0, 0] }] : []),
+        ],
+      });
+      const ancho = (ANCHO - 3 * 6) / 4;
+      return u(filas.map((fila) => ({
+        margin: [0, 0, 0, 6],
+        table: { widths: [ancho, 6, ancho, 6, ancho, 6, ancho], body: [Array.from({ length: 7 }, (_, i) => (i % 2 === 1 ? { text: '', border: [false, false, false, false] } : fila[i / 2] ? tarjeta(fila[i / 2]) : { text: '' }))] },
+        layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+      })), true);
+    }
     case 'tabla': {
       const num = new Set(b.numericas ?? []);
       const { widths, fs } = anchos(b.cab, b.filas, b.cab.length >= 8 ? 7 : 8);
@@ -83,12 +102,22 @@ function bloque(b: Bloque, minFilas: number): Unidad {
   }
 }
 
+const sinNivel = (n: unknown) => { const { headlineLevel: _h, ...resto } = n as Record<string, unknown>; return resto; };
+
 /** Pega cada título al bloque que le sigue cuando este es pequeño (equivale a «keep with next»); si es grande, el título no se queda solo al pie por la regla de posición. */
 function unirTitulos(us: Unidad[]): unknown[] {
   const out: unknown[] = [];
   for (let i = 0; i < us.length; i++) {
-    const x = us[i];
-    if (x.titulo && us[i + 1]?.pequeno) { out.push({ unbreakable: true, stack: [...x.nodos, ...us[i + 1].nodos] }); i++; } else out.push(...x.nodos);
+    if (us[i].titulo) {
+      // Una serie de títulos seguidos (sección + apartado) se pega entera al bloque pequeño que la sigue
+      let j = i; while (us[j + 1]?.titulo) j++;
+      if (us[j + 1]?.pequeno) {
+        // Los títulos agrupados pierden su nivel: el grupo ya no se parte y la regla de posición, aplicada a un nodo interno, provocaba páginas en blanco
+        out.push({ unbreakable: true, stack: [...us.slice(i, j + 1).flatMap((x) => x.nodos.map(sinNivel)), ...us[j + 1].nodos] });
+        i = j + 1; continue;
+      }
+    }
+    out.push(...us[i].nodos);
   }
   return out;
 }

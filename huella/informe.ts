@@ -27,6 +27,7 @@ export type Bloque =
   | { k: 'lista'; items: string[] }
   | { k: 'nota'; texto: string }
   | { k: 'grafico'; titulo: string; svg: string; ancho: number; alto: number; pie?: string }
+  | { k: 'kpis'; items: Array<{ titulo: string; valor: string; unidad?: string; sub?: string; destacado?: boolean }> }
   | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string; /** Notas al pie de las marcas (*, †) que aparecen en la tabla, con su texto del catálogo. */ notas?: string[] };
 export interface Seccion { id: string; titulo: string; bloques: Bloque[] }
 export interface ModeloInforme {
@@ -443,15 +444,26 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const ref = ab?.base ? { pct: variacionPct(totalT, ab.base.total), anioRef: ab.base.anio, tipo: 'base' as const } : ab?.anterior ? { pct: variacionPct(totalT, ab.anterior.total), anioRef: ab.anterior.anio, tipo: 'anterior' as const } : null;
   const principales = fuentesPrincipales(Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), totalT, 5);
   const concl = conclusiones({ anio, total: totalT, cat1: t1, cat2: t2, porFuente: Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), ratioEstancia: indiceTotal > 0 ? totalT / indiceTotal : null, ratioTrabajador: plantillaTotal > 0 ? totalT / plantillaTotal : null, variacion: ref, incertidumbre: { pct: inc.total.pct, valoracion: inc.total.valoracion, principal: inc.total.principal?.fuente ?? null }, pendientes: pendientes.length + bloqueantes.length }, d.resumen);
+  const refAnio = ab?.base ?? ab?.anterior ?? null;
+  const segundoGrafico: Bloque = refAnio
+    ? { k: 'grafico', titulo: `Comparación con ${ab?.base ? 'el año base' : 'el año anterior'} ${refAnio.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Emisiones directas', 'Energía importada', 'Total'], [
+      { nombre: String(refAnio.anio), valores: [refAnio.porCategoria[1] ?? 0, refAnio.porCategoria[2] ?? 0, refAnio.total] },
+      { nombre: String(anio), valores: [t1, t2, totalT] },
+    ], 'Comparación de emisiones') }
+    : { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(CATEGORIAS_ISO.filter((c) => (iso.porCategoria[c.n] ?? 0) > 0).map((c) => ({ nombre: c.resumen, t: iso.porCategoria[c.n] })), 'Emisiones por categoría') };
   const resumen: Seccion = { id: 'R', titulo: 'Resumen ejecutivo', bloques: [
-    { k: 'tabla', cab: ['Indicador', 'Valor'], filas: [
-      ['Emisiones totales', `${fmt(totalT, 'tCO2e')} t CO₂e`], ['Emisiones directas (categoría 1)', `${fmt(t1, 'tCO2e')} t CO₂e`], ['Energía importada (categoría 2)', `${fmt(t2, 'tCO2e')} t CO₂e`],
-      ...(indiceTotal > 0 ? [['Ratio por estancia', `${fmt(totalT / indiceTotal, 'ratio')} t CO₂e`]] : []), ...(plantillaTotal > 0 ? [['Ratio por trabajador', `${fmt(totalT / plantillaTotal, 'ratio')} t CO₂e`]] : []),
-      [ab?.base ? `Variación frente al año base (${ab.base.anio})` : 'Variación frente al año base', ab?.base && ref?.tipo === 'base' && ref.pct != null ? `${fmt(ref.pct, 'porcentaje', { signo: true })} %` : 'No existe inventario del año base'],
-      ['Incertidumbre combinada', inc.total.pct != null ? `±${fmt(inc.total.pct, 'porcentaje')} % (${String(inc.total.valoracion).toLowerCase()})` : '—'],
-      ['Estado de verificación', inv.estado === 'verificado' ? `Verificado${verif?.entidad ? ` por ${verif.entidad}` : ''}${verif?.nivel ? ` (aseguramiento ${verif.nivel.toLowerCase()})` : ''}` : 'Pendiente de verificación'],
+    { k: 'kpis', items: [
+      { titulo: 'Emisiones totales', valor: fmt(totalT, 'tCO2e'), unidad: 't CO₂e', sub: `Inventario ${anio}`, destacado: true },
+      { titulo: 'Emisiones directas', valor: fmt(t1, 'tCO2e'), unidad: 't CO₂e', sub: totalT > 0 ? `${fmt((t1 / totalT) * 100, 'porcentaje')} % · categoría 1` : 'Categoría 1' },
+      { titulo: 'Energía importada', valor: fmt(t2, 'tCO2e'), unidad: 't CO₂e', sub: totalT > 0 ? `${fmt((t2 / totalT) * 100, 'porcentaje')} % · categoría 2` : 'Categoría 2' },
+      ...(indiceTotal > 0 ? [{ titulo: 'Por estancia', valor: fmt(totalT / indiceTotal, 'ratio'), unidad: 't CO₂e', sub: `${fmt(indiceTotal, 'entero')} estancias` }] : []),
+      ...(plantillaTotal > 0 ? [{ titulo: 'Por trabajador', valor: fmt(totalT / plantillaTotal, 'ratio'), unidad: 't CO₂e', sub: `plantilla media ${fmt(plantillaTotal, 'plantilla')}` }] : []),
+      { titulo: ab?.base ? `Variación vs año base ${ab.base.anio}` : 'Año base', valor: ab?.base && ref?.tipo === 'base' && ref.pct != null ? `${fmt(ref.pct, 'porcentaje', { signo: true })} %` : 'Sin datos', sub: ab?.base ? undefined : 'No existe inventario del año base' },
+      { titulo: 'Incertidumbre combinada', valor: inc.total.pct != null ? `±${fmt(inc.total.pct, 'porcentaje')} %` : '—', sub: inc.total.valoracion ? `Valoración ${inc.total.valoracion.toLowerCase()}` : undefined },
+      { titulo: 'Verificación', valor: inv.estado === 'verificado' ? 'Verificado' : 'Pendiente', sub: inv.estado === 'verificado' ? [verif?.entidad, verif?.nivel && `aseguramiento ${verif.nivel.toLowerCase()}`].filter(Boolean).join(' · ') || undefined : 'ISO 14064-3' },
     ] },
-    { k: 'tabla', cab: ['Principales fuentes', 't CO₂e', '% del total'], filas: principales.map((x) => [x.fuente, fmt(x.t, 'tCO2e'), `${fmt(x.pct, 'porcentaje')} %`]), numericas: [1, 2] },
+    { k: 'grafico', titulo: 'Reparto de las emisiones por fuente (t CO₂e)', ...svgAnillo(principales.map((x) => ({ nombre: etiquetaFuente(x.fuente), t: x.t })), 'Reparto de las emisiones por fuente') },
+    segundoGrafico,
     { k: 'h', texto: 'Conclusiones' },
     { k: 'lista', items: concl },
   ] };

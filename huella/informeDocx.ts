@@ -57,6 +57,7 @@ function bloqueADocx(b: Bloque, imagenes: Map<string, Uint8Array>): Array<Paragr
     case 'nota': return [parrafoTexto(b.texto, { size: 8, color: '666666' })];
     case 'h': return [new Paragraph({ keepNext: true, spacing: { before: 200, after: 80 }, children: [run(b.texto, { bold: true, size: 10, color: AZUL })] })];
     case 'lista': return b.items.map((i) => new Paragraph({ bullet: { level: 0 }, alignment: AlignmentType.JUSTIFIED, spacing: { after: 60 }, children: [run(i)] }));
+    case 'kpis': return tabla({ k: 'tabla', cab: ['Indicador', 'Valor'], filas: b.items.map((k) => [k.titulo, `${k.valor}${k.unidad ? ` ${k.unidad}` : ''}${k.sub ? ` · ${k.sub}` : ''}`]) });
     case 'tabla': return tabla(b);
   }
 }

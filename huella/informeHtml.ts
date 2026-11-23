@@ -13,6 +13,7 @@ function bloque(b: Bloque): string {
     case 'nota': return `<p class="nota">${multi(b.texto)}</p>`;
     case 'grafico': return `<figure class="graf"><figcaption>${esc(b.titulo)}</figcaption>${b.svg}${b.pie ? `<p class="pie">${esc(b.pie)}</p>` : ''}</figure>`;
     case 'lista': return `<ul>${b.items.map((i) => `<li>${multi(i)}</li>`).join('')}</ul>`;
+    case 'kpis': return `<div class="kpis">${b.items.map((k) => `<div class="kpi${k.destacado ? ' kpi-d' : ''}"><span>${esc(k.titulo)}</span><b>${esc(k.valor)}${k.unidad ? ` <small>${esc(k.unidad)}</small>` : ''}</b>${k.sub ? `<em>${esc(k.sub)}</em>` : ''}</div>`).join('')}</div>`;
     case 'tabla': {
       const num = new Set(b.numericas ?? []);
       const cab = b.cab.map((c, i) => `<th${num.has(i) ? ' class="n"' : ''}>${esc(c)}</th>`).join('');
@@ -56,6 +57,7 @@ body{font:10pt/1.5 Montserrat,Calibri,Arial,sans-serif;color:#344454;margin:0;-w
 .estado{display:inline-block;margin-top:6mm;padding:1.6mm 4mm;border-radius:1.5mm;font-weight:600;font-size:8.5pt;background:#24CBF5;color:#00093D;letter-spacing:.04em}
 .estado.ok{background:#E6F9E6;color:#006600}
 .resumen{break-after:page;page-break-after:always}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:2.5mm;margin:2mm 0 4mm}.kpi{background:#F2F8FD;border-radius:1.5mm;padding:2.5mm 3mm;break-inside:avoid}.kpi span{display:block;font-size:6.5pt;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#435971}.kpi b{display:block;font-size:15pt;color:#00093D;line-height:1.15}.kpi small{font-size:7pt;font-weight:400}.kpi em{display:block;font-style:normal;font-size:6.8pt;color:#435971}.kpi-d{background:#00093D}.kpi-d span,.kpi-d em{color:#E8E8E8}.kpi-d b{color:#fff}
 .portada .conf{position:absolute;left:24mm;right:24mm;bottom:12mm;font-size:6.5pt;line-height:1.35;color:#E8E8E8;text-align:justify;margin:0}
 .indice{page-break-after:always}
 .indice li{list-style:none;padding:1.6mm 0;border-bottom:.5pt solid #E8E8E8}

@@ -2,6 +2,12 @@
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
+import { resolucionDeAnio, textoResolucion, validarResolucion } from './resolucion.ts';
+import { APARTADOS_ISO, evaluarCorrespondencia } from './correspondenciaIso.ts';
+import { conclusiones, fuentesPrincipales } from './resumenEjecutivo.ts';
+import type { ConfigResumen } from './resumenEjecutivo.ts';
+import { configPlantilla } from './configInforme.ts';
+import type { ConfigPlantillaInforme } from './configInforme.ts';
 import { ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre } from './incertidumbre.ts';
 import type { ConfigIncertidumbre } from './incertidumbre.ts';
 import { textoResponsable, tituloCriterio, validarOrganizacion, CRITERIOS_CONSOLIDACION } from './organizacion.ts';
@@ -24,10 +30,16 @@ export type Bloque =
   | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string; /** Notas al pie de las marcas (*, †) que aparecen en la tabla, con su texto del catálogo. */ notas?: string[] };
 export interface Seccion { id: string; titulo: string; bloques: Bloque[] }
 export interface ModeloInforme {
-  meta: { titulo: string; subtitulo: string; norma: string; estado: string; edicion: string; fecha: string; organizacion: string; anio: number; codigo: string };
+  /** Resumen ejecutivo de una página (cifras clave y tres conclusiones generadas por reglas). */
+  resumen?: Seccion;
+  meta: { /** Cláusula de la portada (si falta, la de por defecto). */ confidencialidad?: string; minFilasSinPartir?: number; titulo: string; subtitulo: string; norma: string; estado: string; edicion: string; fecha: string; organizacion: string; anio: number; codigo: string };
   secciones: Seccion[];
   /** Datos que faltan o conviene revisar antes de entregar el informe al verificador. */
   pendientes: string[];
+}
+
+/** Informe de inventario de GEI: además del modelo común, sus incidencias bloqueantes y la declaración de conformidad que se imprime. */
+export interface ModeloInformeHuella extends ModeloInforme {
   /** Incidencias que impiden entregar el informe (p. ej. los totales no cuadran). */
   bloqueantes: string[];
   /** Declaración de conformidad que se imprime (caso a o b) y lo que falta para el caso a. */
@@ -46,17 +58,21 @@ export interface DatosInforme {
   factores: ConjuntoFactores;
   resultados: ResultadoLinea[];
   totales: Totales;
-  actividad: Array<{ centro: string; categoria: string; fuente: string; cantidad: number; unidad?: string | null; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; documento?: string | null; notas?: string | null; origenElectricidad?: string | null }>;
+  actividad: Array<{ id?: string; documentoId?: string | null; centro: string; categoria: string; fuente: string; cantidad: number; unidad?: string | null; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; documento?: string | null; notas?: string | null; origenElectricidad?: string | null }>;
   anterior?: { anio: number; a1: number; a2: number; total: number } | null;
   exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO (1 a 6) a la que pertenece lo excluido. */ categoriaIso?: number | null; /** Hay una evidencia (documento o referencia) que respalda la exclusión. */ evidencia?: boolean }>;
   /** Evaluación de la significancia de las emisiones indirectas (apartado 5.2.3 de la norma); si falta, no se puede declarar la conformidad completa. */
   /** Año base de la organización, año anterior y año actual (resumen), reglas de recálculo y decisión documentada. */
   anioBase?: { def: AnioBaseDef | null; base: ResumenAnio | null; anterior: ResumenAnio | null; actual: ResumenAnio; config?: Partial<ConfigRecalculo> | null; decision: DecisionRecalculo | null };
+  /** Textos y opciones de la plantilla del informe (confidencialidad, tablas que no se parten). */
+  plantilla?: Partial<ConfigPlantillaInforme> | null;
+  /** Reglas del resumen ejecutivo (umbrales de las conclusiones). */
+  resumen?: Partial<ConfigResumen> | null;
   /** Catálogo de incertidumbres de la organización (si no, el de por defecto). */
   incertidumbre?: Partial<ConfigIncertidumbre> | null;
   significancia?: { plantilla: Array<Pick<SubcategoriaPlantilla, 'codigo' | 'nombre' | 'activa' | 'categoria'>>; evaluaciones: Evaluacion[]; criterios?: Partial<CriteriosSignificancia> | null; textos?: Partial<TextosDeclaracion> | null };
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
-  documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
+  documentos: Array<{ id?: string; nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
   /** Emisiones mensuales por fuente (t CO₂e, 12 valores) para el gráfico de evolución; opcional. */
   mensualPorFuente?: Record<string, number[]>;
   emitidoPor: string;
@@ -67,42 +83,18 @@ export interface DatosInforme {
 const tn = (kg: number) => fmt(kg / 1000, 'tCO2e');
 const pct = (v: number | null | undefined) => { const t = fmtOpc(v, 'porcentaje'); return t === null ? '—' : `${t} %`; };
 const fechaEs = (iso?: string | null) => (iso ? new Date(iso.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }) : '—');
+const variacionPct = (v: number, ref: number) => (ref > 0 ? ((v - ref) / ref) * 100 : null);
 const dash = (x?: string | number | null) => (x === null || x === undefined || x === '' ? '—' : String(x));
 
 const CATEGORIA: Record<string, string> = { combustion_fija: 'Combustión fija', combustion_movil: 'Combustión móvil', fugitiva: 'Emisiones fugitivas (refrigerantes)', electricidad: 'Electricidad adquirida' };
 const ISO_CAT: Record<string, string> = { combustion_fija: 'Categoría 1', combustion_movil: 'Categoría 1', fugitiva: 'Categoría 1', electricidad: 'Categoría 2' };
 const ORIGEN: Record<string, string> = { red: 'Red', autoconsumo: 'Autoconsumo', gdo_renovable_balear: 'GdO renovable de Baleares', gdo_otra: 'GdO renovable (otra)' };
 
-const RESOLUCIONES: Record<number, string> = {
-  2023: 'Resolución del consejero de Empresa, Empleo y Energía por la que se aprueban los factores de emisión de las Illes Balears durante el año 2023 (BOIB n.º 35, de 20 de marzo de 2025), que remite al archivo «Factores de emisión 2007-2023, versión 4» (16/05/2024) del MITECO.',
-  2024: 'Resolución del conseller de Empresa, Autónomos y Energía, a propuesta del director general de Economía Circular, Transición Energética y Cambio Climático, por la que se aprueban los factores de emisión para cuantificar las emisiones de gases de efecto invernadero de las Illes Balears durante el año 2024 (BOIB n.º 35, de 19 de marzo de 2026), que remite al archivo «Factores de emisión 2007-2024, versión 5» (6/05/2025) del MITECO.',
-};
 
 /** Correspondencia entre el contenido obligatorio de la ISO 14064-1 (9.3.1) y los apartados de este informe. */
-export const CORRESPONDENCIA_ISO: Array<[string, string, string]> = [
-  ['a', 'Descripción de la organización que informa', '1'],
-  ['b', 'Persona responsable del informe', '2'],
-  ['c', 'Periodo cubierto', '3'],
-  ['d', 'Límites de la organización', '4'],
-  ['e', 'Límites del informe y criterio de significancia', '5'],
-  ['f', 'Emisiones directas por gas, en t CO₂e', '9'],
-  ['g', 'Tratamiento del CO₂ de origen biogénico', '7.4'],
-  ['h', 'Absorciones de GEI, si se cuantifican', '7.4'],
-  ['i', 'Fuentes o sumideros excluidos y su razón', '6'],
-  ['j', 'Emisiones indirectas por categoría, en t CO₂e', '9'],
-  ['k', 'Año base', '3'],
-  ['l', 'Cambios y recálculos del año base', '3'],
-  ['m', 'Enfoques de cuantificación y sus razones', '7.1'],
-  ['n', 'Cambios de enfoque de cuantificación', '7.1'],
-  ['o', 'Factores de emisión utilizados', '7.3 y Anexo B'],
-  ['p', 'Efecto de las incertidumbres por categoría', '8'],
-  ['q', 'Evaluación de la incertidumbre', '8'],
-  ['r', 'Declaración de conformidad con la norma', '11'],
-  ['s', 'Estado de verificación, tipo y nivel de aseguramiento', '11'],
-  ['t', 'Potenciales de calentamiento y su fuente', '7.3'],
-];
+export const CORRESPONDENCIA_ISO: Array<[string, string, string]> = APARTADOS_ISO;
 
-export function construirInforme(d: DatosInforme): ModeloInforme {
+export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const pendientes: string[] = [];
   const { organizacion: o, inventario: inv, factores: f, totales: tot } = d;
   const anio = inv.anio;
@@ -125,7 +117,9 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const sinIndice = d.centros.filter((c) => !(c.indice > 0)).map((c) => c.nombre);
   const hayPlantilla = d.centros.some((c) => (c.plantilla ?? 0) > 0);
   if (sinIndice.length) pendientes.push(`Sin índice de actividad (estancias): ${sinIndice.join(', ')}.`);
-  if (!RESOLUCIONES[anio]) pendientes.push(`Cite la resolución oficial de factores de emisión de ${anio}: no está incorporada al catálogo.`);
+  const resFactores = f.resolucion ?? resolucionDeAnio(anio);
+  if (!resFactores) pendientes.push(`Cite la resolución oficial de factores de emisión de ${anio}: no está incorporada al catálogo.`);
+  else pendientes.push(...validarResolucion(resFactores).map((x) => `Resolución de factores ${anio}: ${x.charAt(0).toLowerCase()}${x.slice(1)}`));
   if (d.actividad.some((a) => !a.documento)) pendientes.push(`${d.actividad.filter((a) => !a.documento).length} dato(s) de actividad sin factura asociada (el verificador pedirá su evidencia).`);
   if (!d.exclusiones.length) pendientes.push('No hay fuentes excluidas registradas: confirme que el inventario es completo para las categorías 1 y 2.');
 
@@ -175,6 +169,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const sig = d.significancia;
   const estadoSig = sig ? estadoEvaluacion(sig.plantilla, sig.evaluaciones, criterios) : null;
   const iso = resultadosIso(d.resultados, d.factores, d.exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoriaIso })), tot, sig ? resumenPorCategoria(sig.plantilla, sig.evaluaciones, criterios) : {});
+  const dir = evaluarExclusionesDirectas(d.exclusiones.filter((x) => (x.categoriaIso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!x.evidencia })), criterios);
   const subsConDatos = (n: number) => [...new Set(d.actividad.map((a) => CATEGORIA_ISO_FUENTE[a.categoria as keyof typeof CATEGORIA_ISO_FUENTE]).filter((c) => c && c.n === n).map((c) => c.sub))].sort();
   const s5: Seccion = { id: '5', titulo: 'Límites del informe', bloques: [
     { k: 'tabla', cab: ['Categoría (ISO 14064-1)', 'Estado', 'Fuentes o justificación'], filas: iso.categorias.map((c) => [
@@ -217,7 +212,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
       ['Conjunto de factores', f.id], ['Procedencia', f.procedencia], ['Potencial de calentamiento CH₄', `${fmt(f.gwp.ch4, 'pca')} kg CO₂e/kg`], ['Potencial de calentamiento N₂O', `${fmt(f.gwp.n2o, 'pca')} kg CO₂e/kg`],
       ['Fuente de los potenciales', f.gwp.fuente], ['Mix eléctrico balear', `${fmt(f.mixElectrico, 'factor')} kg CO₂e/kWh`],
     ] },
-    { k: 'p', texto: RESOLUCIONES[anio] ?? `Resolución anual de factores de emisión correspondiente al año ${anio}: pendiente de citar.` },
+    { k: 'p', texto: resFactores ? textoResolucion(resFactores) : `Resolución anual de factores de emisión correspondiente al año ${anio}: pendiente de citar.` },
     ...(f.notas.length ? [{ k: 'lista' as const, items: f.notas.map((n) => `Nota sobre los factores: ${n}`) }] : []),
     ...(usados.length ? [{ k: 'tabla' as const, cab: ['Fuente', 'Unidad', 'CO₂ (kg/ud)', 'CH₄ (g/ud)', 'N₂O (g/ud)'], filas: usados.map((k) => [k, dash(f.unidades[k]), fmt(f.combustibles[k].co2, 'factor'), fmt(f.combustibles[k].ch4, 'factor'), fmt(f.combustibles[k].n2o, 'factor')]), numericas: [2, 3, 4] }] : []),
     ...(gasesUsados.length ? [{ k: 'tabla' as const, cab: ['Gas refrigerante', 'PCA'], filas: gasesUsados.map((k) => [k, fmt(f.pcaRefrigerantes[k], 'pca')]), numericas: [1] }] : []),
@@ -364,21 +359,43 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   ] };
 
   // ── 12 Anexos
-  const anexoA: Bloque = { k: 'tabla', cab: ['Centro', 'Categoría', 'Fuente', 'Contador', 'Periodo', 'Cantidad', 'Ud.', 'Evidencia'], filas: d.actividad.map((a) => [
+  // Códigos de evidencia (EV-001…): cada documento recibe el suyo y los anexos de actividad y trazabilidad enlazan con él
+  const ORDEN_CAT = ['combustion_fija', 'combustion_movil', 'fugitiva', 'electricidad'];
+  const docsOrdenados = [...d.documentos].sort((a, b) => a.centro.localeCompare(b.centro) || a.tipo.localeCompare(b.tipo) || (a.periodoDesde ?? '').localeCompare(b.periodoDesde ?? '') || a.nombre.localeCompare(b.nombre));
+  const codigoDoc = new Map<string, string>(); const codigoNombre = new Map<string, string>();
+  docsOrdenados.forEach((x, i) => { const c = `EV-${String(i + 1).padStart(3, '0')}`; if (x.id) codigoDoc.set(x.id, c); codigoNombre.set(x.nombre, c); });
+  const evidenciaDe = (a: { documentoId?: string | null; documento?: string | null; notas?: string | null }) => (a.documentoId && codigoDoc.get(a.documentoId)) || (a.documento && codigoNombre.get(a.documento)) || (a.documento ? a.documento : `Manual: ${a.notas ?? ''}`);
+  const porCatFuenteFecha = <T extends { categoria: string; fuente: string; periodoDesde?: string | null }>(l: T[]) => [...l].sort((a, b) => ORDEN_CAT.indexOf(a.categoria) - ORDEN_CAT.indexOf(b.categoria) || (a.fuente || 'Electricidad').localeCompare(b.fuente || 'Electricidad') || (a.periodoDesde ?? '').localeCompare(b.periodoDesde ?? ''));
+  const periodoTxt = (desde?: string | null, hasta?: string | null) => (desde ? `${fechaEs(desde)} – ${fechaEs(hasta)}` : '—');
+  const anexoA: Bloque = { k: 'tabla', cab: ['Centro', 'Categoría', 'Fuente', 'Contador', 'Periodo', 'Cantidad', 'Ud.', 'Evidencia'], filas: porCatFuenteFecha(d.actividad).map((a) => [
     a.centro, CATEGORIA[a.categoria] ?? a.categoria, a.fuente || (a.origenElectricidad ? `Electricidad · ${ORIGEN[a.origenElectricidad] ?? a.origenElectricidad}` : 'Electricidad'), dash(a.contador),
-    a.periodoDesde ? `${fechaEs(a.periodoDesde)} – ${fechaEs(a.periodoHasta)}` : '—', fmt(a.cantidad, 'actividad'), a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad), a.documento ?? `Manual: ${a.notas ?? ''}`,
+    periodoTxt(a.periodoDesde, a.periodoHasta), fmt(a.cantidad, 'actividad'), a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad), evidenciaDe(a),
   ]), numericas: [5] };
-  const anexoC: Bloque = { k: 'tabla', cab: ['Centro', 'Fuente', 'kg CO₂', 'g CH₄', 'g N₂O', 'kg CO₂e', 'Cálculo'], filas: d.resultados.map((r) => [
-    r.linea.centro, r.linea.fuente || 'Electricidad', fmt(r.kgCO2, 'kgCO2e'), fmt(r.gCH4, 'gramos'), fmt(r.gN2O, 'gramos'), fmt(r.kgCO2e, 'kgCO2e'), r.trazabilidad.factorUsado,
-  ]), numericas: [2, 3, 4, 5] };
+  const actPorId = new Map(d.actividad.filter((a) => a.id).map((a) => [a.id!, a]));
+  const resOrdenados = [...d.resultados].sort((a, b) => ORDEN_CAT.indexOf(a.linea.categoria) - ORDEN_CAT.indexOf(b.linea.categoria) || (a.linea.fuente || 'Electricidad').localeCompare(b.linea.fuente || 'Electricidad') || (actPorId.get(a.linea.id)?.periodoDesde ?? '').localeCompare(actPorId.get(b.linea.id)?.periodoDesde ?? ''));
+  const anexoC: Bloque = { k: 'tabla', cab: ['Centro', 'Fuente', 'Periodo', 'kg CO₂', 'g CH₄', 'g N₂O', 'kg CO₂e', 'Cálculo', 'Evidencia'], filas: resOrdenados.map((r) => { const a = actPorId.get(r.linea.id); return [
+    r.linea.centro, r.linea.fuente || 'Electricidad', a ? periodoTxt(a.periodoDesde, a.periodoHasta) : '—', fmt(r.kgCO2, 'kgCO2e'), fmt(r.gCH4, 'gramos'), fmt(r.gN2O, 'gramos'), fmt(r.kgCO2e, 'kgCO2e'), r.trazabilidad.factorUsado, a ? evidenciaDe(a) : '—',
+  ]; }), numericas: [3, 4, 5, 6] };
+  // Correspondencia con el 9.3.1: cada apartado se marca según los datos
+  const verif = inv.verificacion;
+  const corr = evaluarCorrespondencia({
+    organizacionCompleta: !incOrg.some((x) => x.obligatorio && ['razonSocial', 'cif', 'cnae', 'iae'].includes(x.campo)) && !!o.direccion,
+    responsableCompleto: !incOrg.some((x) => x.obligatorio && x.campo.startsWith('responsable')), criterioConsolidacion: !incOrg.some((x) => x.obligatorio && x.campo.includes('onsolidacion')), centros: d.centros.length,
+    evaluacionCompleta: estadoSig ? estadoSig.completa : null, categoriasSinEvaluar: iso.indirectas.filter((c) => c.estado === 'Sin evaluar').length,
+    exclusiones: { total: d.exclusiones.length, sinJustificar: d.exclusiones.filter((x) => !x.justificacion.trim()).length, directasIncompletas: dir.incidencias.filter((x) => /falta/.test(x)).length },
+    baseDefinida: !!ab?.def, baseConDatos: !!ab?.base, recalculoSinDecision: !!evRec && evRec.incidencias.length > 0, metodologiaDeclarada: ab?.decision?.metodologiaCambiada != null,
+    hayBiogenico: d.actividad.some((a) => a.fuente.includes('**')), resolucionCompleta: !!resFactores && validarResolucion(resFactores).length === 0, conjuntoFijado: inv.conjuntoFijado, gwpConFuente: !!f.gwp.fuente,
+    incertidumbreCalculada: inc.total.pct != null, incidenciasIncertidumbre: inc.incidencias.length, cuadreOk: iso.cuadre.ok,
+    declaracionCaso: declaracion.caso, verificado: inv.estado === 'verificado', verificacionCompleta: !!(verif?.entidad && verif?.nivel && verif?.fecha && verif?.referencia),
+  });
   const s12: Seccion = { id: '12', titulo: 'Anexos', bloques: [
     { k: 'h', texto: 'Anexo A · Datos de actividad' }, anexoA,
     { k: 'h', texto: 'Anexo B · Factores aplicados' }, { k: 'p', texto: 'Los factores y potenciales utilizados figuran en el apartado 7.3 y se conservan íntegros en el inventario (conjunto ' + f.id + ').' },
     { k: 'h', texto: 'Anexo C · Trazabilidad del cálculo por línea' }, anexoC,
     { k: 'h', texto: 'Anexo D · Correspondencia con el contenido del apartado 9.3.1 de la ISO 14064-1' },
-    { k: 'tabla', cab: ['Apartado', 'Contenido', 'Se recoge en'], filas: CORRESPONDENCIA_ISO.map(([a, b, c]) => [a, b, c]) },
+    { k: 'tabla', cab: ['Apartado', 'Contenido', 'Se recoge en', 'Estado', 'Motivo'], filas: corr.map((x) => [x.apartado, x.contenido, x.seccion, x.estado, x.motivo]), pie: 'Estado calculado a partir de los datos del inventario: Cumple, No cumple o No aplica.' },
     { k: 'h', texto: 'Anexo E · Índice de evidencias' },
-    { k: 'tabla', cab: ['Documento', 'Tipo', 'Centro', 'Periodo', 'Estado'], filas: d.documentos.map((x) => [x.nombre, x.tipo, x.centro, x.periodoDesde ? `${fechaEs(x.periodoDesde)} – ${fechaEs(x.periodoHasta)}` : '—', x.estado]) },
+    { k: 'tabla', cab: ['Código', 'Documento', 'Tipo', 'Centro', 'Periodo', 'Estado'], filas: docsOrdenados.map((x) => [codigoNombre.get(x.nombre)!, x.nombre, x.tipo, x.centro, periodoTxt(x.periodoDesde, x.periodoHasta), x.estado]) },
     { k: 'h', texto: 'Anexo F · Registro de no conformidades' },
     d.noConformidades.length
       ? { k: 'tabla', cab: ['Fecha', 'Descripción', 'Medida', 'Responsable', 'Cerrada'], filas: d.noConformidades.map((n) => [fechaEs(n.fecha), n.descripcion, dash(n.medida), dash(n.responsable), fechaEs(n.cerradaEn)]) }
@@ -397,6 +414,8 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     organizacion: o.nombre,
     anio,
     codigo: `HC-${anio}-${o.nombre.normalize('NFD').replace(/[^\w]+/g, '').slice(0, 12).toUpperCase()}`,
+    confidencialidad: configPlantilla(d.plantilla).confidencialidad,
+    minFilasSinPartir: configPlantilla(d.plantilla).minFilasSinPartir,
   };
   const secciones = [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12];
   // Notas al pie: cada marca (*, †) al final del nombre de una fuente o factor genera su nota bajo la tabla donde aparece; sin texto en el catálogo es una incidencia
@@ -408,11 +427,27 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     for (const m of marcas) if (!NOTAS_FUENTES[m]) sinNota.add(m);
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
-  const dir = evaluarExclusionesDirectas(d.exclusiones.filter((x) => (x.categoriaIso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!x.evidencia })), criterios);
   pendientes.push(...dir.incidencias);
   if (estadoSig) for (const x of estadoSig.sinValorar) pendientes.push(`Significancia: falta valorar la subcategoría ${x}.`); else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
   if (estadoSig) { for (const x of estadoSig.excluidasSinJustificar) pendientes.push(`Significancia: la subcategoría ${x} se excluye y falta su justificación.`); for (const x of estadoSig.significativasSinCuantificar) pendientes.push(`Significancia: la subcategoría ${x} es significativa y no está cuantificada.`); }
   for (const c of iso.indirectas) if (c.estado === 'Sin evaluar') pendientes.push(`Categoría ${c.n} (${c.nombre}): indique si es no significativa o está excluida, con su justificación.`);
   const bloqueantes = [...iso.cuadre.incidencias, ...(cerrado ? incOrg.filter((x) => x.obligatorio).map((x) => x.mensaje) : [])];
-  return { meta, secciones, pendientes, bloqueantes, declaracion };
+  // Resumen ejecutivo: cifras clave y conclusiones por reglas (una página)
+  const t1 = iso.porCategoria[1] ?? 0, t2 = iso.porCategoria[2] ?? 0, totalT = iso.totalInventario;
+  const ref = ab?.base ? { pct: variacionPct(totalT, ab.base.total), anioRef: ab.base.anio, tipo: 'base' as const } : ab?.anterior ? { pct: variacionPct(totalT, ab.anterior.total), anioRef: ab.anterior.anio, tipo: 'anterior' as const } : null;
+  const principales = fuentesPrincipales(Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), totalT, 5);
+  const concl = conclusiones({ anio, total: totalT, cat1: t1, cat2: t2, porFuente: Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), ratioEstancia: indiceTotal > 0 ? totalT / indiceTotal : null, ratioTrabajador: plantillaTotal > 0 ? totalT / plantillaTotal : null, variacion: ref, incertidumbre: { pct: inc.total.pct, valoracion: inc.total.valoracion, principal: inc.total.principal?.fuente ?? null }, pendientes: pendientes.length + bloqueantes.length }, d.resumen);
+  const resumen: Seccion = { id: 'R', titulo: 'Resumen ejecutivo', bloques: [
+    { k: 'tabla', cab: ['Indicador', 'Valor'], filas: [
+      ['Emisiones totales', `${fmt(totalT, 'tCO2e')} t CO₂e`], ['Emisiones directas (categoría 1)', `${fmt(t1, 'tCO2e')} t CO₂e`], ['Energía importada (categoría 2)', `${fmt(t2, 'tCO2e')} t CO₂e`],
+      ...(indiceTotal > 0 ? [['Ratio por estancia', `${fmt(totalT / indiceTotal, 'ratio')} t CO₂e`]] : []), ...(plantillaTotal > 0 ? [['Ratio por trabajador', `${fmt(totalT / plantillaTotal, 'ratio')} t CO₂e`]] : []),
+      [ab?.base ? `Variación frente al año base (${ab.base.anio})` : 'Variación frente al año base', ab?.base && ref?.tipo === 'base' && ref.pct != null ? `${fmt(ref.pct, 'porcentaje', { signo: true })} %` : 'No existe inventario del año base'],
+      ['Incertidumbre combinada', inc.total.pct != null ? `±${fmt(inc.total.pct, 'porcentaje')} % (${String(inc.total.valoracion).toLowerCase()})` : '—'],
+      ['Estado de verificación', inv.estado === 'verificado' ? `Verificado${verif?.entidad ? ` por ${verif.entidad}` : ''}${verif?.nivel ? ` (aseguramiento ${verif.nivel.toLowerCase()})` : ''}` : 'Pendiente de verificación'],
+    ] },
+    { k: 'tabla', cab: ['Principales fuentes', 't CO₂e', '% del total'], filas: principales.map((x) => [x.fuente, fmt(x.t, 'tCO2e'), `${fmt(x.pct, 'porcentaje')} %`]), numericas: [1, 2] },
+    { k: 'h', texto: 'Conclusiones' },
+    { k: 'lista', items: concl },
+  ] };
+  return { meta, resumen, secciones, pendientes, bloqueantes, declaracion };
 }

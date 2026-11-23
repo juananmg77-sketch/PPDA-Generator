@@ -10,6 +10,7 @@ import type { DatosCalculadora, LineaActividad } from '../tipos.ts';
 
 const datos: DatosCalculadora = JSON.parse(readFileSync(new URL('../datos/factores-calculadora-2024.1.json', import.meta.url), 'utf-8'));
 const f = construirConjunto(datos, { anioInventario: 2023 });
+f.resolucion = { ...f.resolucion!, enlace: 'https://boib.example/2023/35' }; // cita completa en el ejemplo (en el catálogo real la de 2023 aún no tiene enlace)
 
 const lineas: LineaActividad[] = [
   { id: '1', centro: 'Hotel A', categoria: 'electricidad', fuente: '', cantidad: 100000, origenElectricidad: 'red', contador: 'ES1' },
@@ -274,4 +275,46 @@ test('incertidumbre: el catálogo es configurable, las líneas ajustadas salen c
   const ma = construirInforme(ajustado); assert.match(texto(ma), /Sin factura: lectura estimada\./); assert.match(texto(ma), /Línea ajustada/);
   const sin = base(); sin.resultados = resultados.map((r, i) => (i === 0 ? { ...r, linea: { ...r.linea, incertidumbre: { datoPct: 9 } } } : r));
   assert.ok(construirInforme(sin).pendientes.some((p) => /ajustada sin justificación/.test(p)));
+});
+
+test('anexos: cada evidencia tiene un código EV-001…, y los anexos A y C ordenados por categoría, fuente y fecha enlazan con él con su periodo', () => {
+  const d = base();
+  d.documentos = [{ id: 'd2', nombre: 'b_gas.pdf', tipo: 'gas_natural', centro: 'Hotel A', periodoDesde: '2023-03-01', periodoHasta: '2023-03-31', estado: 'revisado' }, { id: 'd1', nombre: 'a_luz.pdf', tipo: 'electricidad', centro: 'Hotel A', periodoDesde: '2023-01-01', periodoHasta: '2023-01-31', estado: 'revisado' }];
+  d.actividad = [
+    { id: '1', documentoId: 'd1', documento: 'a_luz.pdf', centro: 'Hotel A', categoria: 'electricidad', fuente: '', cantidad: 100000, contador: 'ES1', periodoDesde: '2023-01-01', periodoHasta: '2023-01-31' },
+    { id: '3', documentoId: null, documento: null, notas: 'contador', centro: 'Hotel A', categoria: 'fugitiva', fuente: 'HFC-134a', cantidad: 2, periodoDesde: '2023-06-01', periodoHasta: '2023-06-30' },
+    { id: '2', documentoId: 'd2', documento: 'b_gas.pdf', centro: 'Hotel A', categoria: 'combustion_fija', fuente: 'Gas natural (kWhPCS)*', cantidad: 50000, periodoDesde: '2023-03-01', periodoHasta: '2023-03-31' },
+  ] as never;
+  const m = construirInforme(d); const an = m.secciones.find((x) => x.id === '12')!.bloques.filter((b) => b.k === 'tabla') as Array<{ cab: string[]; filas: string[][] }>;
+  const A = an.find((t) => t.cab[0] === 'Centro' && t.cab.includes('Cantidad'))!;
+  assert.deepEqual(A.filas.map((x) => x[1]), ['Combustión fija', 'Emisiones fugitivas (refrigerantes)', 'Electricidad adquirida']); // por categoría
+  assert.equal(A.filas[2][7], 'EV-001'); assert.equal(A.filas[0][7], 'EV-002'); assert.match(A.filas[1][7], /^Manual/); // electricidad (enero) es la primera evidencia por tipo
+  assert.ok(A.filas[0][4].includes('01/03/2023')); // incluye el periodo
+  const C = an.find((t) => t.cab.includes('Cálculo'))!; assert.deepEqual(C.cab.slice(0, 3), ['Centro', 'Fuente', 'Periodo']); assert.equal(C.cab[C.cab.length - 1], 'Evidencia');
+  const E = an.find((t) => t.cab[0] === 'Código')!; assert.deepEqual(E.filas.map((x) => [x[0], x[1]]), [['EV-001', 'a_luz.pdf'], ['EV-002', 'b_gas.pdf']]);
+});
+test('anexo D calculado: «k» No cumple sin inventario del año base y Cumple con él', () => {
+  const sinBase = construirInforme(base()); const tabla = (m: ReturnType<typeof construirInforme>) => (m.secciones.find((x) => x.id === '12')!.bloques.find((b) => b.k === 'tabla' && b.cab[0] === 'Apartado') as { filas: string[][] }).filas;
+  const k = tabla(sinBase).find((x) => x[0] === 'k')!; assert.equal(k[3], 'No cumple'); assert.match(k[4], /No existe inventario del año base/);
+  assert.equal(tabla(sinBase).length, 20);
+  const act = resumenActual(); const d = base(); d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase(), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
+  assert.equal(tabla(construirInforme(d)).find((x) => x[0] === 'k')![3], 'Cumple');
+  assert.ok(tabla(sinBase).every((x) => ['Cumple', 'No cumple', 'No aplica'].includes(x[3])));
+});
+test('resumen ejecutivo: cifras clave, principales fuentes y tres conclusiones generadas', () => {
+  const m = construirInforme(base()); const r = m.resumen!;
+  assert.equal(r.titulo, 'Resumen ejecutivo');
+  const kpi = r.bloques[0] as { filas: string[][] }; assert.ok(kpi.filas.some((x) => x[0] === 'Emisiones totales')); assert.ok(kpi.filas.some((x) => /Variación frente al año base/.test(x[0]) && /No existe inventario del año base/.test(x[1])));
+  assert.ok(kpi.filas.some((x) => x[0] === 'Estado de verificación'));
+  const lista = r.bloques.find((b) => b.k === 'lista') as { items: string[] }; assert.equal(lista.items.length, 3); assert.ok(lista.items.every((x) => !/NaN|undefined|null/.test(x)));
+  assert.ok(r.bloques.some((b) => b.k === 'tabla' && b.cab[0] === 'Principales fuentes'));
+});
+test('plantilla: cláusula de confidencialidad configurable y citas de la resolución desde datos estructurados', () => {
+  assert.match(construirInforme(base()).meta.confidencialidad, /pertenecen a la organización cliente/);
+  const d = base(); d.plantilla = { confidencialidad: 'Cláusula propia.' }; assert.equal(construirInforme(d).meta.confidencialidad, 'Cláusula propia.');
+  assert.match(texto(construirInforme(base())), /BOIB n\.º 35, de 20 de marzo de 2025.*versión 4/);
+  const sin = base(); sin.factores = { ...f, resolucion: null, anioInventario: 2022 }; sin.inventario.anio = 2022;
+  assert.ok(construirInforme(sin).pendientes.some((p) => /resolución oficial/.test(p)));
+  const incompleta = base(); incompleta.factores = { ...f, resolucion: { ...f.resolucion!, enlace: null } };
+  assert.ok(construirInforme(incompleta).pendientes.some((p) => /enlace/.test(p)));
 });

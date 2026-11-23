@@ -1,5 +1,6 @@
 import type { ConjuntoFactores, DatosCalculadora, FactorCombustible } from './tipos.ts';
 import { fmt } from './formato.ts';
+import { resolucionDeAnio } from './resolucion.ts';
 
 export interface OpcionesConjunto {
   anioInventario: number;
@@ -61,6 +62,7 @@ export function construirConjunto(datos: DatosCalculadora, o: OpcionesConjunto):
     combustibles,
     unidades,
     notas: o.notas ?? [],
+    resolucion: resolucionDeAnio(o.anioInventario),
   };
 }
 

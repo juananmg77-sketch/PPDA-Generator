@@ -1,6 +1,7 @@
 // Representación del informe en HTML preparado para imprimir o guardar como PDF (A4), con el modelo de imagen corporativa de HS Consulting Group
 // (portada de ondas azules con logo blanco, cabecera con logos, pie con banda degradada y «X / Y», tablas de cabecera azul marino).
 import type { Bloque, ModeloInforme } from './informe.ts';
+import { configPlantilla } from './configInforme.ts';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const multi = (s: string) => esc(s).replace(/\n/g, '<br>');
@@ -54,6 +55,7 @@ body{font:10pt/1.5 Montserrat,Calibri,Arial,sans-serif;color:#344454;margin:0;-w
 .portada .edicion{font-size:11pt;margin:0 0 1.5mm;color:#fff}
 .estado{display:inline-block;margin-top:6mm;padding:1.6mm 4mm;border-radius:1.5mm;font-weight:600;font-size:8.5pt;background:#24CBF5;color:#00093D;letter-spacing:.04em}
 .estado.ok{background:#E6F9E6;color:#006600}
+.resumen{break-after:page;page-break-after:always}
 .portada .conf{position:absolute;left:24mm;right:24mm;bottom:12mm;font-size:6.5pt;line-height:1.35;color:#E8E8E8;text-align:justify;margin:0}
 .indice{page-break-after:always}
 .indice li{list-style:none;padding:1.6mm 0;border-bottom:.5pt solid #E8E8E8}
@@ -85,8 +87,9 @@ tbody tr:nth-child(even) td{background:#F2F8FD}
     <p class="edicion" style="font-size:9pt;color:#E8E8E8">${esc(m.meta.norma)} · Código ${esc(m.meta.codigo)}</p>
     <span class="estado${m.meta.estado === 'VERIFICADO' ? ' ok' : ''}">${esc(m.meta.estado)}</span>
   </div>
-  <p class="conf">CONFIDENCIALIDAD: Este documento es propiedad de HS CONSULTING GROUP y contiene información confidencial destinada exclusivamente al cliente identificado en la portada. Queda prohibida su reproducción, distribución o comunicación pública sin autorización expresa y por escrito de HS CONSULTING GROUP.</p>
+  <p class="conf">${esc(configPlantilla({ confidencialidad: m.meta.confidencialidad }).confidencialidad)}</p>
 </div>
+${m.resumen ? `<section class="resumen"><h2>RESUMEN EJECUTIVO</h2>${m.resumen.bloques.map(bloque).join('')}</section>` : ''}
 <div class="indice"><h2>ÍNDICE</h2><ul>${indice}</ul></div>
 ${cuerpo}
 <script>

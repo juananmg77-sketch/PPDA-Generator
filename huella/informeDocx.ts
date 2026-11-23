@@ -4,6 +4,7 @@ import {
   TextWrappingType, VerticalPositionAlign, VerticalPositionRelativeFrom, WidthType, PageBreak, TabStopType,
 } from 'docx';
 import type { Bloque, ModeloInforme } from './informe.ts';
+import { configPlantilla } from './configInforme.ts';
 
 const AZUL = '0002C9', MARINO = '00093D', CABECERA_TABLA = '002060', CIAN = '24CBF5', GRIS = '9D9D9C', ZEBRA = 'F2F8FD', TEXTO = '344454', FUENTE = 'Montserrat';
 const run = (text: string, o: { bold?: boolean; size?: number; color?: string; italics?: boolean } = {}) => new TextRun({ text, font: FUENTE, size: (o.size ?? 10) * 2, bold: o.bold, color: o.color ?? TEXTO, italics: o.italics });
@@ -97,8 +98,13 @@ export async function informeADocx(m: ModeloInforme, logos: Logos = {}, rasteriz
     new Paragraph({ spacing: { after: 60 }, children: [run(m.meta.edicion, { size: 11, color: BLANCO })] }),
     new Paragraph({ spacing: { after: 60 }, children: [run(`${m.meta.norma} · Código ${m.meta.codigo}`, { size: 8.5, color: 'E8E8E8' })] }),
     new Paragraph({ spacing: { before: 160, after: 1800 }, children: [run(`Estado: ${m.meta.estado}`, { bold: true, size: 10, color: m.meta.estado === 'VERIFICADO' ? '7CFC9A' : CIAN })] }),
-    new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [run('CONFIDENCIALIDAD: Este documento es propiedad de HS CONSULTING GROUP y contiene información confidencial destinada exclusivamente al cliente identificado en la portada. Queda prohibida su reproducción, distribución o comunicación pública sin autorización expresa y por escrito de HS CONSULTING GROUP.', { size: 6.5, color: 'E8E8E8' })] }),
+    new Paragraph({ alignment: AlignmentType.JUSTIFIED, children: [run(configPlantilla({ confidencialidad: m.meta.confidencialidad }).confidencialidad, { size: 6.5, color: 'E8E8E8' })] }),
   ];
+  const resumen: Array<Paragraph | Table> = m.resumen ? [
+    new Paragraph({ keepNext: true, spacing: { after: 160 }, border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: CIAN, space: 2 } }, children: [run('RESUMEN EJECUTIVO', { bold: true, size: 11, color: MARINO })] }),
+    ...m.resumen.bloques.flatMap((bl) => bloqueADocx(bl, imagenes)),
+    new Paragraph({ children: [new PageBreak()] }),
+  ] : [];
   const indice: Paragraph[] = [
     new Paragraph({ spacing: { after: 160 }, children: [run('ÍNDICE', { bold: true, size: 11, color: MARINO })] }),
     ...m.secciones.map((s) => new Paragraph({ spacing: { after: 80 }, children: [run(`${s.id}.  `, { bold: true, color: AZUL }), run(s.titulo)] })),
@@ -115,7 +121,7 @@ export async function informeADocx(m: ModeloInforme, logos: Logos = {}, rasteriz
     styles: { default: { document: { run: { font: FUENTE, size: 20, color: TEXTO } } } },
     sections: [
       { properties: { page: { margin: { top: 1080, bottom: 700, left: 1440, right: 1440 } } }, children: portada },
-      { properties: { type: SectionType.NEXT_PAGE, ...margenes }, headers: { default: cabecera }, footers: { default: pie }, children: [...indice, ...cuerpo] },
+      { properties: { type: SectionType.NEXT_PAGE, ...margenes }, headers: { default: cabecera }, footers: { default: pie }, children: [...resumen, ...indice, ...cuerpo] },
     ],
   });
   return Packer.toBlob(doc);

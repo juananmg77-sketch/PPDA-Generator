@@ -38,6 +38,8 @@ export interface ConjuntoFactores {
   unidades: Record<string, string | null>;
   /** Cambios manuales respecto a la versión de partida (cada uno con su justificación). */
   notas: string[];
+  /** Resolución oficial que aprueba estos factores (datos estructurados). */
+  resolucion?: import('./resolucion.ts').ResolucionFactores | null;
 }
 
 export type Categoria = 'combustion_fija' | 'combustion_movil' | 'fugitiva' | 'electricidad';

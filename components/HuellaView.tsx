@@ -8,6 +8,8 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
+import { CONFIG_PLANTILLA_POR_DEFECTO } from '../huella/configInforme';
+import type { ConfigPlantillaInforme } from '../huella/configInforme';
 import { INCERTIDUMBRE_POR_DEFECTO, ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre, incertidumbreLinea, valoracion as valoracionInc } from '../huella/incertidumbre';
 import type { ConfigIncertidumbre } from '../huella/incertidumbre';
 import type { AjusteIncertidumbre, OrigenDato } from '../huella/tipos';
@@ -321,6 +323,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <div className="space-y-4">
                   {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} />}
                   <CatalogoIncertidumbre cfg={cfgInc} onCfg={setCfgInc} falla={falla} />
+                  <CardPlantillaInforme falla={falla} />
                   {inv && <AjustesAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} falla={falla} />}
                   <div className={card}>
                     <div className="flex items-center gap-3">
@@ -2023,6 +2026,29 @@ const CatalogoIncertidumbre: React.FC<{ cfg: Partial<ConfigIncertidumbre> | null
   );
 };
 
+const CardPlantillaInforme: React.FC<{ falla: (e: unknown) => void }> = ({ falla }) => {
+  const [t, setT] = useState('');
+  const [filas, setFilas] = useState(String(CONFIG_PLANTILLA_POR_DEFECTO.minFilasSinPartir));
+  const [guardando, setGuardando] = useState(false);
+  useEffect(() => { huellaService.configuracion<Partial<ConfigPlantillaInforme>>('plantilla_informe').then((c) => { setT(c?.confidencialidad ?? ''); if (c?.minFilasSinPartir) setFilas(String(c.minFilasSinPartir)); }).catch(() => undefined); }, []);
+  const guardar = async () => {
+    setGuardando(true);
+    try { await huellaService.guardarConfiguracion('plantilla_informe', { confidencialidad: t.trim() || null, minFilasSinPartir: Number(filas) || CONFIG_PLANTILLA_POR_DEFECTO.minFilasSinPartir }); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (la plantilla solo la editan los administradores)`)); } finally { setGuardando(false); }
+  };
+  return (
+    <details className={`${card} group`}>
+      <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Plantilla del informe: confidencialidad y paginación</summary>
+      <label className="block text-xs font-semibold text-slate-600 mt-3">Cláusula de confidencialidad de la portada (vacía = texto por defecto)
+        <textarea className={`${input} mt-1`} rows={4} value={t} placeholder={CONFIG_PLANTILLA_POR_DEFECTO.confidencialidad} onChange={(e) => setT(e.target.value)} />
+      </label>
+      <label className="block text-xs font-semibold text-slate-600 mt-3">Las tablas de menos de esta cantidad de filas no se parten entre páginas
+        <input inputMode="numeric" className={`${input} mt-1 w-24`} value={filas} onChange={(e) => setFilas(e.target.value)} />
+      </label>
+      <button className={`${btnP} mt-3`} onClick={guardar} disabled={guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button>
+    </details>
+  );
+};
+
 const AjustesAnioBase: React.FC<{ org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onOrg: (o: Organizacion) => void; falla: (e: unknown) => void }> = ({ org, inv, invs, centros, invCentros, actividad, factores, onOrg, falla }) => {
   const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
   return <PanelAnioBase org={org} invs={invs} ab={ab} onOrg={onOrg} falla={falla} />;
@@ -2665,6 +2691,8 @@ const PanelInforme: React.FC<{
   const sig = useSignificancia(org, inv, falla);
   const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
   const cfgIncInforme = React.useContext(CtxIncertidumbre);
+  const [cfgPlantilla, setCfgPlantilla] = useState<Partial<ConfigPlantillaInforme> | null>(null);
+  useEffect(() => { huellaService.configuracion<Partial<ConfigPlantillaInforme>>('plantilla_informe').then(setCfgPlantilla).catch(() => setCfgPlantilla(null)); }, []);
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
@@ -2689,19 +2717,20 @@ const PanelInforme: React.FC<{
       centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0), plantilla: Number(ic?.plantilla_media ?? 0) }; }),
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: ab.def?.anio ?? inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
-      actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
+      actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ id: a.id, documentoId: a.documento_id, centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
       anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
       significancia: sig.paraInforme,
       anioBase: ab.paraInforme,
       incertidumbre: cfgIncInforme,
+      plantilla: cfgPlantilla,
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
-      documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
+      documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ id: d.id, nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
       mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
         try { return [{ fuente: a.fuente, kgCO2e: calcularLinea({ id: a.id, centro: a.centro_id, categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined }, factores).kgCO2e, desde: a.periodo_desde, hasta: a.periodo_hasta }]; } catch { return []; }
       }), inv.anio),
       emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
     };
-  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme, ab.paraInforme, cfgIncInforme]);
+  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme, ab.paraInforme, cfgIncInforme, cfgPlantilla]);
 
   const modelo = useMemo(() => (datos ? construirInforme(datos) : null), [datos]);
   const html = useMemo(() => (modelo ? informeAHtml(modelo, { baseUrl: window.location.origin }) : ''), [modelo]);

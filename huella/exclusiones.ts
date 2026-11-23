@@ -22,6 +22,9 @@ export interface CalculoExtintores {
   porcentaje: number;
   certificadoPath?: string;
   certificadoNombre?: string;
+  /** Líneas del certificado elegidas para el cálculo (lectura con IA revisada por la persona). */
+  leidoConIA?: boolean;
+  detalle?: Array<{ documento: string; concepto: string; operacion: string; cantidad: number; kgPorExtintor: number; fecha?: string; pagina?: number }>;
 }
 
 /** Porcentaje que supone lo excluido sobre el total que tendría el inventario si se incluyera. */
@@ -44,5 +47,5 @@ const n = (x: number, d = 2) => x.toLocaleString('es-ES', { maximumFractionDigit
 /** Texto de justificación para el informe. */
 export function justificacionExtintores(c: CalculoExtintores): string {
   const filas = c.lineas.map((l) => `${n(l.cantidad, 0)} de ${n(l.kgPorExtintor)} kg`).join(', ');
-  return `Emisión estimada con el certificado anual de mantenimiento${c.certificadoNombre ? ` («${c.certificadoNombre}»)` : ''}: ${n(c.totalExtintores, 0)} extintor(es) de CO₂ recargado(s) (${filas}), es decir ${n(c.kgCO2)} kg de CO₂ = ${n(c.tCO2e, 3)} t CO₂e (PCA 1). Supone el ${n(c.porcentaje, 3)} % del total del inventario (${n(c.totalInventarioT, 2)} t CO₂e sin la exclusión), por debajo del umbral de insignificancia.`;
+  return `Emisión estimada con el certificado anual de mantenimiento${c.certificadoNombre ? ` («${c.certificadoNombre}»)` : ''}${c.leidoConIA ? ' (lectura asistida por IA y revisada por la persona responsable)' : ''}: ${n(c.totalExtintores, 0)} extintor(es) de CO₂ recargado(s) o retimbrado(s) (${filas}), es decir ${n(c.kgCO2)} kg de CO₂ = ${n(c.tCO2e, 3)} t CO₂e (PCA 1). Supone el ${n(c.porcentaje, 3)} % del total del inventario (${n(c.totalInventarioT, 2)} t CO₂e sin la exclusión), por debajo del umbral de insignificancia.`;
 }

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
+import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
+import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
@@ -1636,8 +1638,6 @@ const PanelCierre: React.FC<{
   const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
   const [analisis, setAnalisis] = useState(inv.cierre?.analisisVariacion ?? '');
   const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '' });
-  const [lineasExt, setLineasExt] = useState<Array<{ cantidad: string; kg: string }>>([{ cantidad: '', kg: '' }]);
-  const [certExt, setCertExt] = useState<File | null>(null);
   const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
   const [reabrir, setReabrir] = useState(false);
   const [modalEx, setModalEx] = useState(false);
@@ -1665,9 +1665,33 @@ const PanelCierre: React.FC<{
   }, [inv.id, invs.length]); // eslint-disable-line
 
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
+  type FilaCert = { incluir: boolean; documento: DocumentoExt; concepto: string; operacion: OperacionExt; cantidad: string; kg: string; fecha?: string; pagina?: number; agente: string };
+  const [filasCert, setFilasCert] = useState<FilaCert[]>([]);
+  const [certExt, setCertExt] = useState<File | null>(null);
+  const [certPath, setCertPath] = useState<string | null>(null);
+  const [leyendoCert, setLeyendoCert] = useState(false);
+  const [obsCert, setObsCert] = useState('');
   const esExt = fx.fuente === FUENTE_EXTINTORES;
   const totalInvT = (calculo?.totales.kgCO2eTotal ?? 0) / 1000;
-  const calcExt = useMemo(() => calcularExtintores(lineasExt.map((l) => ({ cantidad: Number(l.cantidad.replace(',', '.')) || 0, kgPorExtintor: Number(l.kg.replace(',', '.')) || 0 })), totalInvT), [lineasExt, totalInvT]);
+  const num = (x: string) => Number(x.replace(',', '.')) || 0;
+  const elegidas = filasCert.filter((f) => f.incluir && num(f.cantidad) > 0 && num(f.kg) > 0);
+  const calcExt = useMemo(() => calcularExtintores(agruparPorKg(elegidas.map((f) => ({ cantidad: num(f.cantidad), kgPorExtintor: num(f.kg) }))), totalInvT), [filasCert, totalInvT]); // eslint-disable-line
+  const cambiarFila = (i: number, c: Partial<FilaCert>) => setFilasCert((l) => l.map((f, k) => (k === i ? { ...f, ...c } : f)));
+  const elegirCert = async (f: File | null) => {
+    setCertExt(f); setFilasCert([]); setCertPath(null); setObsCert('');
+    if (!f) return;
+    setLeyendoCert(true);
+    try {
+      const path = await huellaService.subirCertificadoExclusion(f, org.id, inv.id);
+      setCertPath(path);
+      if (f.type === 'application/pdf') {
+        const l = await huellaService.leerExtintores(path);
+        const inc = incluirPorDefecto(l.lineas);
+        setFilasCert(l.lineas.map((x, i) => ({ incluir: inc[i], documento: x.documento, concepto: x.concepto, operacion: x.operacion, agente: x.agente, cantidad: String(x.cantidad), kg: x.kgPorExtintor ? String(x.kgPorExtintor) : '', fecha: x.fecha, pagina: x.pagina })));
+        setObsCert(l.observaciones ?? '');
+      }
+    } catch (e) { falla(e); } finally { setLeyendoCert(false); }
+  };
   const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
   const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const variaciones = previo && calculo ? [
@@ -1719,13 +1743,12 @@ const PanelCierre: React.FC<{
     try {
       let x;
       if (esExt) {
-        const path = await huellaService.subirCertificadoExclusion(certExt!, org.id, inv.id);
-        const c = { ...calcExt, certificadoPath: path, certificadoNombre: certExt!.name };
-        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), calculo: c, certificado_path: path, certificado_nombre: certExt!.name });
+        const c = { ...calcExt, certificadoPath: certPath!, certificadoNombre: certExt!.name, leidoConIA: filasCert.length > 0, detalle: elegidas.map((f) => ({ documento: f.documento, concepto: f.concepto, operacion: f.operacion, cantidad: num(f.cantidad), kgPorExtintor: num(f.kg), fecha: f.fecha, pagina: f.pagina })) };
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), calculo: c, certificado_path: certPath, certificado_nombre: certExt!.name });
       } else {
         x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
       }
-      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '' }); setLineasExt([{ cantidad: '', kg: '' }]); setCertExt(null); setModalEx(false);
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '' }); setFilasCert([]); setCertExt(null); setCertPath(null); setObsCert(''); setModalEx(false);
     } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
   const anadirNc = async () => {
@@ -1860,20 +1883,31 @@ const PanelCierre: React.FC<{
             {fx.fuente === FUENTE_OTRA && <Campo etiqueta="¿Cuál? *" ancho><input className={input} value={fx.otra} onChange={(e) => setFx({ ...fx, otra: e.target.value })} /></Campo>}
             {esExt ? (
               <div className="col-span-2 space-y-3">
-                <Campo etiqueta="Certificado anual de mantenimiento (PDF o imagen) *" ancho>
-                  <input type="file" accept="application/pdf,image/*" className="block w-full text-xs" onChange={(e) => setCertExt(e.target.files?.[0] ?? null)} aria-label="Certificado de mantenimiento de extintores" />
+                <Campo etiqueta="Certificado anual de mantenimiento (PDF) *" ancho>
+                  <input type="file" accept="application/pdf" className="block w-full text-xs" onChange={(e) => elegirCert(e.target.files?.[0] ?? null)} aria-label="Certificado de mantenimiento de extintores" />
                 </Campo>
-                <div className="rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs font-semibold text-slate-700 mb-2">Extintores de CO₂ recargados según el certificado</p>
-                  {lineasExt.map((l, i) => (
-                    <div key={i} className="flex items-end gap-2 mb-2">
-                      <label className="text-xs font-semibold text-slate-600 flex-1">Nº recargados<input inputMode="decimal" className={`${input} mt-1`} value={l.cantidad} onChange={(e) => setLineasExt((x) => x.map((y, k) => (k === i ? { ...y, cantidad: e.target.value } : y)))} /></label>
-                      <label className="text-xs font-semibold text-slate-600 flex-1">Kg de CO₂ por extintor<input inputMode="decimal" className={`${input} mt-1`} placeholder="Ej.: 2 o 5" value={l.kg} onChange={(e) => setLineasExt((x) => x.map((y, k) => (k === i ? { ...y, kg: e.target.value } : y)))} /></label>
-                      {lineasExt.length > 1 && <button className="p-2 text-slate-500 hover:text-red-600" aria-label="Quitar fila" onClick={() => setLineasExt((x) => x.filter((_, k) => k !== i))}><Trash2 size={14} /></button>}
+                {leyendoCert && <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-3 py-2"><Loader2 size={13} className="inline animate-spin mr-2" />Subiendo y leyendo el certificado con IA (puede tardar un minuto)…</p>}
+                {certPath && !leyendoCert && filasCert.length === 0 && <p className="text-xs text-amber-900 bg-amber-50 rounded-lg px-3 py-2">No se han detectado operaciones sobre extintores. Añádalas a mano.</p>}
+                {obsCert && <p className="text-xs text-amber-900 bg-amber-50 rounded-lg px-3 py-2"><strong>Aviso de la lectura:</strong> {obsCert}</p>}
+                {certPath && !leyendoCert && (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-xs font-semibold text-slate-700 mb-1">Operaciones leídas del certificado (propuesta de la IA: compruébelas con el documento)</p>
+                    <p className="text-[11px] text-slate-600 mb-2">Marcadas: las recargas y retimbrados de CO₂ de la factura. Un retimbrado vacía y rellena el extintor, por lo que cuenta como emisión; un extintor nuevo o una simple revisión, no.</p>
+                    <div className="overflow-auto max-h-64">
+                      <table className="w-full text-[11px]"><thead><tr className="text-left text-slate-500"><th className="py-1 pr-1">Incl.</th><th className="pr-2">Concepto</th><th className="pr-2">Operación</th><th className="pr-2">Nº</th><th className="pr-2">Kg/ud.</th><th></th></tr></thead>
+                        <tbody>{filasCert.map((f, i) => (
+                          <tr key={i} className={`border-t border-slate-100 ${f.incluir ? '' : 'text-slate-400'}`}>
+                            <td className="py-1 pr-1"><input type="checkbox" checked={f.incluir} onChange={(e) => cambiarFila(i, { incluir: e.target.checked })} aria-label="Incluir en el cálculo" /></td>
+                            <td className="pr-2">{f.concepto}<span className="block text-[10px] text-slate-400">{f.documento === 'factura' ? 'Factura' : f.documento === 'parte_revision' ? 'Parte de revisión' : 'Otro'}{f.pagina ? ` · pág. ${f.pagina}` : ''}{f.agente !== 'CO2' ? ` · ${f.agente}` : ''}</span></td>
+                            <td className="pr-2"><select className={`${input} !py-1 !text-[11px]`} value={f.operacion} onChange={(e) => cambiarFila(i, { operacion: e.target.value as OperacionExt })}>{Object.entries(OPERACIONES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></td>
+                            <td className="pr-2 w-16"><input inputMode="decimal" className={`${input} !py-1 !text-[11px]`} value={f.cantidad} onChange={(e) => cambiarFila(i, { cantidad: e.target.value })} /></td>
+                            <td className="pr-2 w-16"><input inputMode="decimal" className={`${input} !py-1 !text-[11px]`} value={f.kg} placeholder="kg" onChange={(e) => cambiarFila(i, { kg: e.target.value })} /></td>
+                            <td><button className="p-1 text-slate-400 hover:text-red-600" aria-label="Quitar línea" onClick={() => setFilasCert((l) => l.filter((_, k) => k !== i))}><Trash2 size={12} /></button></td>
+                          </tr>))}</tbody></table>
                     </div>
-                  ))}
-                  <button className={btnS} onClick={() => setLineasExt((x) => [...x, { cantidad: '', kg: '' }])}><Plus size={14} /> Otro tamaño</button>
-                </div>
+                    <button className={`${btnS} mt-2`} onClick={() => setFilasCert((l) => [...l, { incluir: true, documento: 'otro', concepto: 'Línea añadida a mano', operacion: 'recarga', agente: 'CO2', cantidad: '', kg: '' }])}><Plus size={14} /> Añadir línea</button>
+                  </div>
+                )}
                 <div className="rounded-lg bg-blue-50 text-blue-900 text-xs px-3 py-2.5 space-y-0.5">
                   <p><strong>Total de extintores recargados:</strong> {calcExt.totalExtintores.toLocaleString('es-ES')}</p>
                   <p><strong>Emisión:</strong> {calcExt.kgCO2.toLocaleString('es-ES', { maximumFractionDigits: 2 })} kg CO₂ = {calcExt.tCO2e.toLocaleString('es-ES', { maximumFractionDigits: 3 })} t CO₂e (PCA 1; cada recarga repone el CO₂ liberado)</p>
@@ -1889,7 +1923,7 @@ const PanelCierre: React.FC<{
             )}
           </div>
           <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalEx(false)}>Cancelar</button>
-            <button className={btnP} onClick={anadirExclusion} disabled={trabajando || !fx.fuente || (fx.fuente === FUENTE_OTRA && !fx.otra.trim()) || (esExt ? !certExt || calcExt.totalExtintores === 0 : !fx.justificacion.trim())}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Añadir</button></div>
+            <button className={btnP} onClick={anadirExclusion} disabled={trabajando || !fx.fuente || (fx.fuente === FUENTE_OTRA && !fx.otra.trim()) || (esExt ? !certPath || leyendoCert || calcExt.totalExtintores === 0 : !fx.justificacion.trim())}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Añadir</button></div>
         </Modal>
       )}
       {modalNc && abierto && (

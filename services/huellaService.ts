@@ -1,5 +1,6 @@
 // Acceso a los datos de Huella de carbono (tablas hc_*, con RLS) y a la función de lectura de facturas.
 import type { CalculoExtintores } from '../huella/exclusiones';
+import type { LecturaExtintores } from '../huella/extintores';
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
@@ -109,6 +110,16 @@ export const huellaService = {
     const up = await supabase.storage.from('hc-facturas').upload(path, file, { contentType: file.type, upsert: false });
     if (up.error) throw new Error(up.error.message);
     return path;
+  },
+  /** Lee con IA el certificado ya subido (devuelve solo una propuesta que la persona revisa). */
+  async leerExtintores(path: string): Promise<LecturaExtintores & { modelo?: string }> {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
+    const resp = await fetch('/api/leer-extintores', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
+    const cuerpo = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
+    return cuerpo;
   },
   async borrarExclusion(id: string) { ok(await supabase.from('hc_exclusiones').delete().eq('id', id)); },
   async noConformidades(inv: string) { return ok<NoConformidad[]>(await supabase.from('hc_no_conformidades').select('*').eq('inventario_id', inv).order('created_at')); },

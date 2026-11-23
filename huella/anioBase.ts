@@ -12,6 +12,8 @@ export interface ResumenAnio {
   total: number;
   /** Toneladas de CO₂e por fuente (nombre tal como figura en el inventario). */
   porFuente: Record<string, number>;
+  /** Toneladas de CO₂e por tipo de fuente comparable entre años (instalaciones fijas, vehículos, fugitivas, electricidad). Si falta, se deduce del nombre de cada fuente. */
+  porTipo?: Record<string, number>;
   estancias?: number | null;
   plantilla?: number | null;
   /** Id del conjunto de factores con que se calculó (p. ej. «calculadora-2024.1@2024»). */
@@ -70,6 +72,26 @@ export function validarAnioBase(d: AnioBaseDef): string[] {
 }
 
 const kg = (x: number) => x / 1000;
+
+/** Tipos de fuente comparables entre años: los nombres de fuente cambian de un informe a otro, los tipos no. */
+export const TIPOS_FUENTE = ['Combustibles en instalaciones fijas', 'Combustibles en vehículos', 'Emisiones fugitivas (refrigerantes)', 'Electricidad', 'Otras fuentes'] as const;
+const TIPO_POR_CATEGORIA: Record<string, string> = { combustion_fija: TIPOS_FUENTE[0], combustion_movil: TIPOS_FUENTE[1], fugitiva: TIPOS_FUENTE[2], electricidad: TIPOS_FUENTE[3] };
+/** Tipo de fuente a partir del nombre con que figura en un informe (año base introducido a mano o leído por IA). */
+export function tipoDeFuente(nombre: string): string {
+  const n = nombre.toLowerCase();
+  if (/el[eé]ctric/.test(n)) return TIPOS_FUENTE[3];
+  if (/fugitiv|refriger|\br-?\d|hfc|hfo|fluorad|f-?gas/.test(n)) return TIPOS_FUENTE[2];
+  if (/veh[ií]culo|m[oó]vil|flota|gasolina|di[eé]sel|gas[oó]leo a\b|transporte|surtidor/.test(n)) return TIPOS_FUENTE[1];
+  if (/instalaci|fij|caldera|estacionari|gas natural|butano|propano|gas[oó]leo|g\.?l\.?p|fuel|combustible/.test(n)) return TIPOS_FUENTE[0];
+  return TIPOS_FUENTE[4];
+}
+/** Emisiones por tipo de fuente de un año: las calculadas por categoría si constan; si no, las deducidas del nombre de cada fuente. */
+export function emisionesPorTipo(r: ResumenAnio): Record<string, number> {
+  if (r.porTipo) return r.porTipo;
+  const out: Record<string, number> = {};
+  for (const [k, t] of Object.entries(r.porFuente)) { const tp = tipoDeFuente(k); out[tp] = (out[tp] ?? 0) + t; }
+  return out;
+}
 /** Factor aplicado a una línea en kg CO₂e por unidad (el que se compara entre años). */
 function factorDeLinea(r: ResultadoLinea, f: ConjuntoFactores): number | null {
   const l = r.linea;
@@ -82,15 +104,18 @@ function factorDeLinea(r: ResultadoLinea, f: ConjuntoFactores): number | null {
 export function resumenDeInventario(o: { anio: number; resultados: ResultadoLinea[]; totales: Totales; factores: ConjuntoFactores; estancias?: number | null; plantilla?: number | null; centros?: string[] | null }): ResumenAnio {
   const porCategoria: Record<number, number> = {};
   const porFuente: Record<string, number> = {};
+  const porTipo: Record<string, number> = {};
   const factores: Record<string, number> = {};
   for (const r of o.resultados) {
     const c = CATEGORIA_ISO_FUENTE[r.linea.categoria].n;
     porCategoria[c] = (porCategoria[c] ?? 0) + kg(r.kgCO2e);
     const k = r.linea.fuente || 'Electricidad';
     porFuente[k] = (porFuente[k] ?? 0) + kg(r.kgCO2e);
+    const tp = TIPO_POR_CATEGORIA[r.linea.categoria] ?? TIPOS_FUENTE[4];
+    porTipo[tp] = (porTipo[tp] ?? 0) + kg(r.kgCO2e);
     const fa = factorDeLinea(r, o.factores); if (fa != null) factores[k] = fa;
   }
-  return { anio: o.anio, porCategoria, total: kg(o.totales.kgCO2eTotal), porFuente, estancias: o.estancias ?? null, plantilla: o.plantilla ?? null, factoresId: o.factores.id, centros: o.centros ?? null, factores };
+  return { anio: o.anio, porCategoria, total: kg(o.totales.kgCO2eTotal), porFuente, porTipo, estancias: o.estancias ?? null, plantilla: o.plantilla ?? null, factoresId: o.factores.id, centros: o.centros ?? null, factores };
 }
 
 export const ratioEstancia = (r: ResumenAnio | null) => (r && r.estancias && r.estancias > 0 ? r.total / r.estancias : null);
@@ -110,8 +135,10 @@ export function compararAnios(base: ResumenAnio | null, anterior: ResumenAnio | 
     ...cats.map((n) => fila(nombresCategoria[n] ?? `Categoría ${n}`, base ? base.porCategoria[n] ?? 0 : null, anterior ? anterior.porCategoria[n] ?? 0 : null, actual.porCategoria[n] ?? 0)),
     fila('Total', base?.total ?? null, anterior?.total ?? null, actual.total),
   ];
-  const fuentes = [...new Set([...(base ? Object.keys(base.porFuente) : []), ...(anterior ? Object.keys(anterior.porFuente) : []), ...Object.keys(actual.porFuente)])].sort()
-    .map((k) => fila(k, base ? base.porFuente[k] ?? 0 : null, anterior ? anterior.porFuente[k] ?? 0 : null, actual.porFuente[k] ?? 0));
+  // Se compara por tipo de fuente (no por nombre): los nombres de un informe antiguo y de este inventario no coinciden
+  const tb = base ? emisionesPorTipo(base) : null, ta = anterior ? emisionesPorTipo(anterior) : null, tc = emisionesPorTipo(actual);
+  const fuentes = TIPOS_FUENTE.filter((k) => (tb?.[k] ?? 0) > 0 || (ta?.[k] ?? 0) > 0 || (tc[k] ?? 0) > 0)
+    .map((k) => fila(k, tb ? tb[k] ?? 0 : null, ta ? ta[k] ?? 0 : null, tc[k] ?? 0));
   const ratios = [
     fila('t CO₂e por estancia', ratioEstancia(base), ratioEstancia(anterior), ratioEstancia(actual)),
     fila('t CO₂e por trabajador', ratioTrabajador(base), ratioTrabajador(anterior), ratioTrabajador(actual)),

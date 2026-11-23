@@ -325,7 +325,7 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     if (!hayBase) bloques9.push({ k: 'p', texto: 'No existe inventario del año base: la comparación con el año base no se puede realizar.' });
     if (!hayAnt) bloques9.push({ k: 'p', texto: `No existe inventario del año anterior (${anio - 1}) en el sistema.` });
     bloques9.push({ k: 'tabla', cab: cols('Categoría'), filas: cmp.categorias.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
-    bloques9.push({ k: 'tabla', cab: cols('Fuente'), filas: cmp.fuentes.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
+    bloques9.push({ k: 'tabla', cab: cols('Tipo de fuente'), filas: cmp.fuentes.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
     if (cmp.ratios.length) bloques9.push({ k: 'tabla', cab: cols('Ratio').map((c) => c.replace('(t CO₂e)', '')), filas: cmp.ratios.map((x) => fila(x, 'ratio')), numericas: numericas(cols('').length) });
     const grandes = [...cmp.categorias, ...cmp.fuentes].filter((x) => [x.vsBase, x.vsAnterior].some((v) => v != null && Math.abs(v) >= 20));
     const analisis = inv.cierre?.analisisVariacion?.trim();

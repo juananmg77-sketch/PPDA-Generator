@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG_RECALCULO_POR_DEFECTO, compararAnios, configRecalculo, evaluarRecalculo, ratioEstancia, textoRecalculo, validarAnioBase, variacion } from '../anioBase.ts';
+import { CONFIG_RECALCULO_POR_DEFECTO, compararAnios, tipoDeFuente, configRecalculo, evaluarRecalculo, ratioEstancia, textoRecalculo, validarAnioBase, variacion } from '../anioBase.ts';
 import type { AnioBaseDef, ResumenAnio } from '../anioBase.ts';
 
 const r = (anio: number, o: Partial<ResumenAnio> = {}): ResumenAnio => ({ anio, porCategoria: { 1: 40, 2: 60 }, total: 100, porFuente: { Electricidad: 60, 'Gas natural (kWhPCS)*': 40 }, estancias: 10000, plantilla: 50, factoresId: 'calculadora-2023.2@2023', centros: ['Hotel A'], factores: { Electricidad: 0.374, 'Gas natural (kWhPCS)*': 0.182 }, ...o });
@@ -63,4 +63,13 @@ test('la decisión documentada (y su motivo) aparece en el texto; sin ella es in
   assert.match(t, /se recalcula el año base/); assert.match(t, /Se incorpora el Hotel B/); assert.match(t, /Alta de «Hotel B»/);
   assert.equal(evaluarRecalculo(r(2019), act, c, { ...dec, motivo: ' ' }).incidencias.length, 1);
   assert.match(textoRecalculo(evaluarRecalculo(r(2023), r(2024), c, { metodologiaCambiada: false, decision: null, motivo: null }), null, c).join(' '), /no es necesario recalcular/);
+});
+test('la comparación por fuente agrupa por tipo: nombres distintos entre años son comparables', () => {
+  const base = r(2023, { total: 533.94, porCategoria: { 1: 245, 2: 288.94 }, porFuente: { 'Combustible instalaciones fijas': 119.1, 'Combustible vehículos': 6.03, 'Consumo eléctrico': 288.94, 'Emisiones fugitivas': 119.87 } });
+  const act = r(2024, { total: 435, porCategoria: { 1: 165, 2: 270.45 }, porFuente: { Electricidad: 270.45, 'Gas butano (kg)': 0.49, 'Gas natural (kWhPCS)*': 31.18, 'Gas propano (kg)': 2.09, 'R-448A': 131.2 }, porTipo: { 'Combustibles en instalaciones fijas': 33.76, 'Emisiones fugitivas (refrigerantes)': 131.2, Electricidad: 270.45 } });
+  const f = compararAnios(base, null, act).fuentes;
+  assert.deepEqual(f.map((x) => x.concepto), ['Combustibles en instalaciones fijas', 'Combustibles en vehículos', 'Emisiones fugitivas (refrigerantes)', 'Electricidad']);
+  const fij = f[0]; assert.equal(fij.base, 119.1); assert.equal(fij.actual, 33.76);
+  assert.equal(f[3].base, 288.94); assert.equal(f[3].actual, 270.45);
+  assert.equal(tipoDeFuente('R-448A'), 'Emisiones fugitivas (refrigerantes)'); assert.equal(tipoDeFuente('Gasolina (l)'), 'Combustibles en vehículos');
 });

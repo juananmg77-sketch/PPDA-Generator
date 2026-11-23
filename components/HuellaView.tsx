@@ -3013,13 +3013,6 @@ const PanelResultados: React.FC<{ org: Organizacion; invs: Inventario[]; inv: In
         </div>
       </div>
 
-      {porContador.length > 1 && (
-        <details className={`${card} group`}>
-          <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Por contador / punto de suministro <span className="text-xs font-normal text-slate-500">({porContador.length}) · t CO₂e</span></summary>
-          <div className="mt-3"><Tabla filas={porContador} unidad="t CO₂e" /></div>
-        </details>
-      )}
-
       <ResultadosAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />
 
       <details className={`${card} group`}>
@@ -3027,6 +3020,13 @@ const PanelResultados: React.FC<{ org: Organizacion; invs: Inventario[]; inv: In
         <p className="text-xs text-slate-600 mt-2">Cantidad × factor de emisión = CO₂e. Es la misma tabla que en «Consumos»: desde aquí también se puede ver la factura y editar o eliminar el dato.</p>
         <div className="mt-2"><TablaLineas lineas={resultados.map((r) => actividad.find((x) => x.id === r.linea.id)).filter((x): x is Actividad => !!x)} resultados={resultados} factores={factores} centros={centros} docs={docs} inv={inv} abierto={abierto} onCambio={onCambio} falla={falla} /></div>
       </details>
+
+      {porContador.length > 1 && (
+        <details className={`${card} group`}>
+          <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Por contador / punto de suministro <span className="text-xs font-normal text-slate-500">({porContador.length}) · t CO₂e</span></summary>
+          <div className="mt-3"><Tabla filas={porContador} unidad="t CO₂e" /></div>
+        </details>
+      )}
     </div>
   );
 };

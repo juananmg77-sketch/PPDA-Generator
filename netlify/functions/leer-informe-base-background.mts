@@ -3,6 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { usuarioAutorizado } from '../lib/auth.ts';
+import { guardarResultado } from '../lib/resultado.ts';
 import { ESQUEMA_INFORME_BASE, INSTRUCCIONES_INFORME_BASE, limpiarLecturaBase } from '../../huella/lecturaInformeBase.ts';
 import type { LecturaInformeBase } from '../../huella/lecturaInformeBase.ts';
 
@@ -12,7 +13,7 @@ const json = (cuerpo: unknown, status = 200) =>
 const MODELO = 'claude-sonnet-5-5';
 const BYTES_MAX = 25 * 1024 * 1024;
 
-export default async (req: Request): Promise<Response> => {
+const manejar = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
@@ -41,7 +42,7 @@ export default async (req: Request): Promise<Response> => {
     else contenido = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: Buffer.from(bytes).toString('base64') } }];
     contenido.push({ type: 'text', text: 'Extrae los datos del año base de este informe.' });
 
-    const cliente = new Anthropic({ maxRetries: 1, timeout: 55_000 });
+    const cliente = new Anthropic({ maxRetries: 1, timeout: 240_000 });
     const r = await cliente.messages.create({
       model: MODELO, max_tokens: 4000, system: INSTRUCCIONES_INFORME_BASE,
       messages: [{ role: 'user', content: contenido }],
@@ -56,4 +57,13 @@ export default async (req: Request): Promise<Response> => {
   }
 };
 
-export const config = { path: '/api/leer-informe-base' };
+/** Función en segundo plano: responde 202 enseguida y deja el resultado junto al documento (`<ruta>.lectura.json`). */
+export default async (req: Request): Promise<Response> => {
+  const copia = req.clone();
+  const respuesta = await manejar(req);
+  try {
+    const { path } = (await copia.json()) as { path?: string };
+    if (path) await guardarResultado(copia, path, respuesta.status, await respuesta.text());
+  } catch { /* sin ruta válida no hay dónde dejar el resultado */ }
+  return new Response(null, { status: 202 });
+};

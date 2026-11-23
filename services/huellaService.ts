@@ -46,6 +46,28 @@ const ok = <T>(r: { data: T | null; error: { message: string } | null }): T => {
   return (r.data ?? ([] as unknown)) as T;
 };
 
+/** Lanza una lectura con IA en segundo plano (no tiene el límite de tiempo de una función normal) y recoge su resultado, que queda junto al documento. */
+async function leerEnSegundoPlano<T>(nombre: string, path: string): Promise<T> {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
+  const resultado = `${path}.lectura.json`;
+  await supabase.storage.from('hc-facturas').remove([resultado]); // por si quedó uno anterior
+  const resp = await fetch(`/.netlify/functions/${nombre}-background`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
+  if (!resp.ok && resp.status !== 202) throw new Error(`No se pudo iniciar la lectura (${resp.status}).`);
+  const limite = Date.now() + 170_000;
+  while (Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const r = await supabase.storage.from('hc-facturas').download(resultado);
+    if (r.error || !r.data) continue; // aún no está
+    const cuerpo = JSON.parse(await r.data.text()) as { estado?: number; error?: string; detalle?: string } & T;
+    supabase.storage.from('hc-facturas').remove([resultado]).catch(() => undefined);
+    if ((cuerpo.estado ?? 200) >= 400 || cuerpo.error) throw new Error(`${cuerpo.error ?? `Error ${cuerpo.estado}`}${cuerpo.detalle ? ` [${String(cuerpo.detalle).slice(0, 300)}]` : ''}`);
+    return cuerpo as T;
+  }
+  throw new Error('La lectura está tardando más de lo normal. Inténtelo de nuevo o introduzca los datos a mano.');
+}
+
 export const huellaService = {
   async organizaciones() { return ok<Organizacion[]>(await supabase.from('hc_organizaciones').select('*').eq('activa', true).order('nombre')); },
   async crearOrganizacion(o: Partial<Omit<Organizacion, 'id'>> & { nombre: string }) {
@@ -117,25 +139,9 @@ export const huellaService = {
     return path;
   },
   /** Lee con IA el informe del año base ya subido (propuesta que la persona revisa). */
-  async leerInformeBase(path: string): Promise<LecturaInformeBase & { modelo?: string }> {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
-    const resp = await fetch('/api/leer-informe-base', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
-    const cuerpo = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(`${cuerpo.error ?? `Error ${resp.status}`}${cuerpo.detalle ? ` [${String(cuerpo.detalle).slice(0, 300)}]` : ''}`);
-    return cuerpo;
-  },
+  async leerInformeBase(path: string): Promise<LecturaInformeBase & { modelo?: string }> { return leerEnSegundoPlano('leer-informe-base', path); },
   /** Lee con IA el certificado ya subido (devuelve solo una propuesta que la persona revisa). */
-  async leerExtintores(path: string): Promise<LecturaExtintores & { modelo?: string }> {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
-    const resp = await fetch('/api/leer-extintores', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
-    const cuerpo = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
-    return cuerpo;
-  },
+  async leerExtintores(path: string): Promise<LecturaExtintores & { modelo?: string }> { return leerEnSegundoPlano('leer-extintores', path); },
   // ── Significancia de las emisiones indirectas (configuración y evaluación por inventario)
   async plantillaSubcategorias(sector: string) { return ok<Array<SubcategoriaPlantilla & { id: string }>>(await supabase.from('hc_plantillas_subcategorias').select('*').eq('sector', sector).order('orden')); },
   /** Sustituye la plantilla de un sector (solo administradores: lo impone la base de datos). */

@@ -3,6 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { PDFDocument } from 'pdf-lib';
 import { usuarioAutorizado } from '../lib/auth.ts';
+import { guardarResultado } from '../lib/resultado.ts';
 import { ESQUEMA_EXTINTORES, INSTRUCCIONES_EXTINTORES, limpiarLectura } from '../../huella/extintores.ts';
 import type { LecturaExtintores } from '../../huella/extintores.ts';
 
@@ -32,7 +33,7 @@ async function leerTramo(cliente: Anthropic, pdf: Uint8Array, desde: number): Pr
   return { ...l, lineas: (l.lineas ?? []).map((x) => ({ ...x, pagina: x.pagina ? x.pagina + desde : undefined })) };
 }
 
-export default async (req: Request): Promise<Response> => {
+const manejar = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
@@ -49,7 +50,7 @@ export default async (req: Request): Promise<Response> => {
   if (bytes.length > BYTES_MAX) return json({ error: 'El archivo supera 25 MB.' }, 400);
 
   try {
-    const cliente = new Anthropic({ maxRetries: 1, timeout: 50_000 });
+    const cliente = new Anthropic({ maxRetries: 1, timeout: 240_000 });
     const esPdf = String.fromCharCode(...bytes.slice(0, 4)) === '%PDF';
     let tramos: Array<{ datos: Uint8Array; desde: number }>;
     if (esPdf) {
@@ -79,4 +80,13 @@ export default async (req: Request): Promise<Response> => {
   }
 };
 
-export const config = { path: '/api/leer-extintores' };
+/** Función en segundo plano: responde 202 enseguida y deja el resultado junto al documento (`<ruta>.lectura.json`). */
+export default async (req: Request): Promise<Response> => {
+  const copia = req.clone();
+  const respuesta = await manejar(req);
+  try {
+    const { path } = (await copia.json()) as { path?: string };
+    if (path) await guardarResultado(copia, path, respuesta.status, await respuesta.text());
+  } catch { /* sin ruta válida no hay dónde dejar el resultado */ }
+  return new Response(null, { status: 202 });
+};

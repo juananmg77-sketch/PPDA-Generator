@@ -2,6 +2,7 @@
 import type { CalculoExtintores } from '../huella/exclusiones';
 import type { LecturaExtintores } from '../huella/extintores';
 import type { CriteriosSignificancia, SubcategoriaPlantilla } from '../huella/significancia';
+import type { AjusteIncertidumbre } from '../huella/tipos';
 import type { LecturaInformeBase } from '../huella/lecturaInformeBase';
 import type { AnioBaseDef, ConfigRecalculo, DecisionRecalculo } from '../huella/anioBase';
 import { supabase } from './supabase';
@@ -33,7 +34,7 @@ export interface Actividad {
   id: string; inventario_id: string; centro_id: string; documento_id?: string | null; categoria: Categoria; fuente: string;
   cantidad: number; unidad?: string | null; origen_electricidad?: OrigenElectricidad | null;
   periodo_desde?: string | null; periodo_hasta?: string | null; reparto_proporcion: number; reparto_justificacion?: string | null;
-  estado: 'borrador' | 'confirmada'; notas?: string | null; contador?: string | null;
+  estado: 'borrador' | 'confirmada'; notas?: string | null; contador?: string | null; incertidumbre?: AjusteIncertidumbre | null;
 }
 export interface ResultadoLecturaApi {
   extraccion: ExtraccionFactura; incidencias: Incidencia[]; modelo: string; usoRefuerzo: boolean;

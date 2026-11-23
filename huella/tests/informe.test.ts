@@ -253,3 +253,25 @@ test('organización: avisos si la razón social coincide con el nombre comercial
   const d = base(); d.organizacion.razonSocial = 'Grupo Demo'; assert.ok(construirInforme(d).pendientes.some((x) => /coincide con el nombre comercial/.test(x)));
   d.organizacion.razonSocial = 'Grupo Demo Hoteles, S.A.'; assert.ok(construirInforme(d).pendientes.some((x) => /no encaja con el CIF/.test(x)));
 });
+
+import { calcularIncertidumbre } from '../incertidumbre.ts';
+test('incertidumbre en el informe: tabla por categoría con t CO₂e, ±%, valoración y principal fuente, y una frase para el total', () => {
+  const m = construirInforme(base()); const s8 = m.secciones.find((x) => x.id === '8')!;
+  const tabla = s8.bloques.find((b) => b.k === 'tabla') as { cab: string[]; filas: string[][] };
+  assert.deepEqual(tabla.cab, ['Categoría', 'Emisiones (t CO₂e)', 'Incertidumbre', 'Valoración', 'Principal fuente de incertidumbre']);
+  assert.ok(tabla.filas.some((fila) => /Emisiones directas/.test(fila[0]))); assert.ok(tabla.filas.some((fila) => /Energía importada/.test(fila[0])));
+  const total = tabla.filas[tabla.filas.length - 1]; assert.equal(total[0], 'Total del inventario'); assert.match(total[2], /^±[\d.]+,\d %$/); assert.match(total[3], /Baja|Media|Alta/);
+  assert.match(total[4], /% de la varianza/);
+  const inc = calcularIncertidumbre(resultados, f);
+  assert.match(texto(m), new RegExp(`incertidumbre combinada del inventario es de ±${inc.total.pct!.toFixed(1).replace('.', ',')} %`));
+  assert.match(texto(m), /raíz de la suma de cuadrados/); assert.match(texto(m), /intervalos de confianza del 95 %/);
+});
+test('incertidumbre: el catálogo es configurable, las líneas ajustadas salen con su justificación y los ajustes sin ella son pendientes', () => {
+  const d = base(); d.incertidumbre = { factor: { mixElectrico: 8 } as never, umbrales: { baja: 2, media: 4, alta: 6 } as never };
+  const t = texto(construirInforme(d));
+  assert.match(t, /Mix eléctrico[^]*?±8,0 %/); assert.match(t, /Baja hasta ±2,0 %/);
+  const ajustado = base(); ajustado.resultados = resultados.map((r, i) => (i === 0 ? { ...r, linea: { ...r.linea, incertidumbre: { origen: 'estimacion' as const, justificacion: 'Sin factura: lectura estimada.' } } } : r));
+  const ma = construirInforme(ajustado); assert.match(texto(ma), /Sin factura: lectura estimada\./); assert.match(texto(ma), /Línea ajustada/);
+  const sin = base(); sin.resultados = resultados.map((r, i) => (i === 0 ? { ...r, linea: { ...r.linea, incertidumbre: { datoPct: 9 } } } : r));
+  assert.ok(construirInforme(sin).pendientes.some((p) => /ajustada sin justificación/.test(p)));
+});

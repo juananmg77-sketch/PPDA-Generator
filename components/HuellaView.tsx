@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
+import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Gauge, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
@@ -8,6 +8,9 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
+import { INCERTIDUMBRE_POR_DEFECTO, ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre, incertidumbreLinea, valoracion as valoracionInc } from '../huella/incertidumbre';
+import type { ConfigIncertidumbre } from '../huella/incertidumbre';
+import type { AjusteIncertidumbre, OrigenDato } from '../huella/tipos';
 import { CRITERIOS_CONSOLIDACION, avisosRazonSocial, validarOrganizacion } from '../huella/organizacion';
 import type { CriterioConsolidacion } from '../huella/organizacion';
 import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
@@ -84,8 +87,13 @@ const Segmentos: React.FC<{ valor: string; opciones: Array<[string, string]>; on
   </div>
 );
 
+/** Catálogo de incertidumbres de la aplicación (de la configuración; si no hay, el de por defecto). */
+const CtxIncertidumbre = React.createContext<Partial<ConfigIncertidumbre> | null>(null);
+
 export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol?: RolHuella }> = ({ onBack, currentUser, rol = 'consultor' }) => {
   const esConsultor = rol === 'consultor';
+  const [cfgInc, setCfgInc] = useState<Partial<ConfigIncertidumbre> | null>(null);
+  useEffect(() => { huellaService.configuracion<Partial<ConfigIncertidumbre>>('incertidumbre').then(setCfgInc).catch(() => setCfgInc(null)); }, []);
   const [orgs, setOrgs] = useState<Organizacion[]>([]);
   const [orgId, setOrgId] = useState('');
   const [invs, setInvs] = useState<Inventario[]>([]);
@@ -223,6 +231,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
   }
 
   return (
+    <CtxIncertidumbre.Provider value={cfgInc}>
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row font-sans text-slate-900">
       <aside className="md:w-60 flex-shrink-0 flex flex-col md:border-r border-white/70" style={{ background: 'rgba(255,255,255,.66)', WebkitBackdropFilter: 'blur(14px) saturate(1.2)', backdropFilter: 'blur(14px) saturate(1.2)', color: '#00093D' }}>
         <div className="flex items-center gap-2 px-3 pt-4 pb-2">
@@ -311,6 +320,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {tab === 'ajustes' && esConsultor && (
                 <div className="space-y-4">
                   {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} />}
+                  <CatalogoIncertidumbre cfg={cfgInc} onCfg={setCfgInc} falla={falla} />
                   {inv && <AjustesAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} falla={falla} />}
                   <div className={card}>
                     <div className="flex items-center gap-3">
@@ -328,6 +338,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
         </div>
       </main>
     </div>
+    </CtxIncertidumbre.Provider>
   );
 };
 
@@ -1455,6 +1466,9 @@ const Revision: React.FC<{
 const TablaLineas: React.FC<{
   lineas: Actividad[]; resultados: ResultadoLinea[]; factores: ConjuntoFactores; centros: Centro[]; docs: Documento[]; inv: Inventario; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void;
 }> = ({ lineas, resultados, factores, centros, docs, inv, abierto, onCambio, falla }) => {
+  const cfgInc = configIncertidumbre(React.useContext(CtxIncertidumbre));
+  const [incEdit, setIncEdit] = useState<string | null>(null);
+  const [inc, setInc] = useState({ origen: 'factura' as OrigenDato, dato: '', factor: '', just: '' });
   const [editando, setEditando] = useState<string | null>(null);
   const [m, setM] = useState({ cantidad: '', contador: '', notas: '', desde: '', hasta: '' });
   const [guardando, setGuardando] = useState(false);
@@ -1472,6 +1486,26 @@ const TablaLineas: React.FC<{
     } catch (e) { falla(e); } finally { setGuardando(false); }
   };
   const kg = new Map<string, ResultadoLinea>(resultados.map((r) => [r.linea.id, r] as [string, ResultadoLinea]));
+  /** Valores por defecto de una línea (sin su ajuste) para ofrecerlos y para saber si el ajuste los cambia. */
+  const porDefecto = (r: ResultadoLinea) => incertidumbreLinea({ ...r, linea: { ...r.linea, incertidumbre: undefined } }, factores, cfgInc);
+  const abrirInc = (a: Actividad, r: ResultadoLinea) => {
+    if (incEdit === a.id) { setIncEdit(null); return; }
+    const u = incertidumbreLinea(r, factores, cfgInc);
+    setInc({ origen: u.origen, dato: String(Math.round(u.datoPct * 10) / 10).replace('.', ','), factor: String(Math.round(u.factorPct * 10) / 10).replace('.', ','), just: a.incertidumbre?.justificacion ?? '' });
+    setIncEdit(a.id);
+  };
+  const guardarInc = async (a: Actividad, r: ResultadoLinea) => {
+    const d0 = porDefecto(r); const dato = Number(inc.dato.replace(',', '.')), factor = Number(inc.factor.replace(',', '.'));
+    const ajuste: AjusteIncertidumbre = {};
+    if (inc.origen !== d0.origen) ajuste.origen = inc.origen;
+    if (Math.abs(dato - (inc.origen === d0.origen ? d0.datoPct : cfgInc.dato[inc.origen])) > 0.05) ajuste.datoPct = dato;
+    if (Math.abs(factor - d0.factorPct) > 0.05) ajuste.factorPct = factor;
+    try {
+      const hay = Object.keys(ajuste).length > 0;
+      await huellaService.actualizarActividad(a.id, { incertidumbre: hay ? { ...ajuste, justificacion: inc.just.trim() } : null });
+      setIncEdit(null); onCambio();
+    } catch (e) { falla(e); }
+  };
   // Filtro por categoría y fuente; orden por cualquier columna (clic en el título: mayor a menor y, al repetir, menor a mayor)
   type Col = 'centro' | 'categoria' | 'fuente' | 'contador' | 'cantidad' | 'factor' | 'tco2e' | 'periodo';
   const [fCat, setFCat] = useState<'' | Categoria>('');
@@ -1513,7 +1547,7 @@ const TablaLineas: React.FC<{
       <p className="text-[11px] text-slate-600 ml-auto self-center">{visibles.length} de {lineas.length} líneas · <strong>{num(totalVisT, 3)}</strong> t CO₂e</p>
     </div>
     <div className="overflow-x-auto"><table className="w-full text-xs">
-      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{th('centro', 'Centro', 'py-2 pr-3')}{th('categoria', 'Categoría')}{th('fuente', 'Fuente')}{th('contador', 'Contador')}{th('cantidad', 'Cantidad', 'pr-3 text-right')}{th('factor', 'Factor de emisión', 'pr-3 text-right')}{th('tco2e', 't CO₂e', 'pr-3 text-right')}{th('periodo', 'Origen')}<th /></tr></thead>
+      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{th('centro', 'Centro', 'py-2 pr-3')}{th('categoria', 'Categoría')}{th('fuente', 'Fuente')}{th('contador', 'Contador')}{th('cantidad', 'Cantidad', 'pr-3 text-right')}{th('factor', 'Factor de emisión', 'pr-3 text-right')}{th('tco2e', 't CO₂e', 'pr-3 text-right')}<th className="pr-3 text-right">Incert.</th>{th('periodo', 'Origen')}<th /></tr></thead>
       <tbody>{visibles.map((a) => {
         const r = kg.get(a.id);
         const ud = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : factores.unidades[a.fuente] ?? (a.unidad ?? '');
@@ -1529,15 +1563,35 @@ const TablaLineas: React.FC<{
               <td className="pr-3 text-right tabular-nums">{num(a.cantidad, 2)} <span className="text-slate-500">{ud}</span></td>
               <td className="pr-3 text-right tabular-nums">{factor === null ? '—' : <>{num(factor, 4)} <span className="text-slate-500">kg CO₂e/{ud || 'ud'}</span></>}</td>
               <td className="pr-3 text-right tabular-nums font-semibold">{r ? num(r.kgCO2e / 1000, 3) : '—'}</td>
+              <td className="pr-3 text-right tabular-nums text-slate-600" title={r ? (() => { const u = incertidumbreLinea(r, factores, cfgInc); return `Dato ±${fmt(u.datoPct, 'porcentaje')} % (${ORIGENES_DATO[u.origen]}) · factor ±${fmt(u.factorPct, 'porcentaje')} %${u.ajustada ? ' · ajustada' : ''}`; })() : ''}>{r ? <>±{fmt(incertidumbreLinea(r, factores, cfgInc).pct, 'porcentaje')} %{a.incertidumbre ? <span className="text-amber-600"> ✎</span> : ''}</> : '—'}</td>
               <td className="pr-3 text-slate-600">{a.documento_id ? 'Factura' : `Manual: ${a.notas ?? ''}`}{a.periodo_desde ? ` · ${a.periodo_desde}` : ''}</td>
               <td className="text-right whitespace-nowrap">
                 {doc && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" title="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={15} /></button>}
+                {abierto && r && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Incertidumbre" title="Incertidumbre del dato y del factor" onClick={() => abrirInc(a, r)}><Gauge size={15} /></button>}
                 {abierto && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Editar" title="Editar" onClick={() => abrirEditor(a)}><Pencil size={15} /></button>}
                 {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar" title="Eliminar" onClick={async () => { if (confirm('¿Eliminar este dato de actividad?')) { try { await huellaService.borrarActividad(a.id); onCambio(); } catch (e) { falla(e); } } }}><Trash2 size={15} /></button>}
               </td>
             </tr>
+            {abierto && r && incEdit === a.id && (
+              <tr className="border-b border-slate-100"><td colSpan={10} className="pb-3">
+                <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <p className="text-xs text-slate-600 mb-3">La línea hereda del catálogo el origen del dato y el ±% del dato y del factor. Si los cambia, la justificación es obligatoria y consta en el informe.</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <label className="text-xs font-semibold text-slate-600">Origen del dato<select className={`${input} mt-1`} value={inc.origen} onChange={(e) => { const o = e.target.value as OrigenDato; setInc({ ...inc, origen: o, dato: String(cfgInc.dato[o]).replace('.', ',') }); }} aria-label="Origen del dato">{(Object.keys(ORIGENES_DATO) as OrigenDato[]).map((o) => <option key={o} value={o}>{ORIGENES_DATO[o]}</option>)}</select></label>
+                    <label className="text-xs font-semibold text-slate-600">Dato ±%<input inputMode="decimal" className={`${input} mt-1`} value={inc.dato} onChange={(e) => setInc({ ...inc, dato: e.target.value })} aria-label="Incertidumbre del dato" /></label>
+                    <label className="text-xs font-semibold text-slate-600">Factor ±% (todas sus componentes)<input inputMode="decimal" className={`${input} mt-1`} value={inc.factor} onChange={(e) => setInc({ ...inc, factor: e.target.value })} aria-label="Incertidumbre del factor" /></label>
+                    <div className="text-[11px] text-slate-500 self-end pb-2">Por defecto: dato ±{fmt(porDefecto(r).datoPct, 'porcentaje')} % · factor ±{fmt(porDefecto(r).factorPct, 'porcentaje')} %</div>
+                    <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-4">Justificación del ajuste<input className={`${input} mt-1`} value={inc.just} placeholder="Obligatoria si cambia algún valor" onChange={(e) => setInc({ ...inc, just: e.target.value })} aria-label="Justificación del ajuste" /></label>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button className={btnP} onClick={() => guardarInc(a, r)} disabled={!(Number(inc.dato.replace(',', '.')) >= 0) || !(Number(inc.factor.replace(',', '.')) >= 0) || ((inc.origen !== porDefecto(r).origen || Math.abs(Number(inc.dato.replace(',', '.')) - (inc.origen === porDefecto(r).origen ? porDefecto(r).datoPct : cfgInc.dato[inc.origen])) > 0.05 || Math.abs(Number(inc.factor.replace(',', '.')) - porDefecto(r).factorPct) > 0.05) && !inc.just.trim())}><CheckCircle2 size={14} /> Guardar</button>
+                    <button className={btnS} onClick={() => setIncEdit(null)}>Cancelar</button>
+                  </div>
+                </div>
+              </td></tr>
+            )}
             {abierto && editando === a.id && (
-              <tr className="border-b border-slate-100"><td colSpan={9} className="pb-3">
+              <tr className="border-b border-slate-100"><td colSpan={10} className="pb-3">
                 {doc && doc.extraccion
                   ? <Revision key={doc.id} doc={doc} factores={factores} inv={inv} otras={docs} corregir onHecho={() => { setEditando(null); onCambio(); }} falla={falla} />
                   : (
@@ -1709,7 +1763,7 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
   const nombre = (id: string) => centros.find((c) => c.id === id)?.nombre ?? id;
   const lineas: LineaActividad[] = []; const fallos: string[] = [];
   for (const a of actividad.filter((x) => x.estado === 'confirmada')) {
-    lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, evidencia: a.documento_id ?? undefined, contador: a.contador ?? undefined,
+    lineas.push({ id: a.id, centro: nombre(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, incertidumbre: a.incertidumbre ?? undefined, evidencia: a.documento_id ?? undefined, contador: a.contador ?? undefined,
       reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined });
   }
   const validas = lineas.filter((l) => { try { calcularInventario([l], factores); return true; } catch (e) { fallos.push(`${l.centro} · ${l.fuente || 'electricidad'}: ${e instanceof Error ? e.message : e}`); return false; } });
@@ -1932,6 +1986,39 @@ const TarjetaAnioBase: React.FC<{ ab: ReturnType<typeof useAnioBase>; anio: numb
           <tr key={x.concepto} className="border-b border-slate-100"><td className="py-1.5 pr-3">{x.concepto}</td>{base && <td className="pr-3 text-right tabular-nums">{fmt(x.base, mag)}</td>}{anterior && <td className="pr-3 text-right tabular-nums">{fmt(x.anterior, mag)}</td>}<td className="pr-3 text-right tabular-nums font-semibold">{fmt(x.actual, mag)}</td>{base && <td className="pr-3 text-right tabular-nums">{pc(x.vsBase)}</td>}{anterior && <td className="text-right tabular-nums">{pc(x.vsAnterior)}</td>}</tr>
         ))}</tbody>
       </table></div>
+    </details>
+  );
+};
+
+const CatalogoIncertidumbre: React.FC<{ cfg: Partial<ConfigIncertidumbre> | null; onCfg: (c: ConfigIncertidumbre) => void; falla: (e: unknown) => void }> = ({ cfg, onCfg, falla }) => {
+  const c0 = configIncertidumbre(cfg);
+  const aTexto = (x: number) => String(x).replace('.', ',');
+  const [v, setV] = useState({ ...Object.fromEntries(Object.entries(c0.dato).map(([k, x]) => [`d_${k}`, aTexto(x)])), ...Object.fromEntries(Object.entries(c0.factor).map(([k, x]) => [`f_${k}`, aTexto(x)])), ...Object.fromEntries(Object.entries(c0.umbrales).map(([k, x]) => [`u_${k}`, aTexto(x)])) } as Record<string, string>);
+  const [guardando, setGuardando] = useState(false);
+  const n = (k: string) => Number((v[k] ?? '').replace(',', '.'));
+  const valido = (Object.values(v) as string[]).every((x) => x.trim() !== '' && Number(x.replace(',', '.')) >= 0);
+  const guardar = async () => {
+    const nuevo: ConfigIncertidumbre = {
+      dato: Object.fromEntries((Object.keys(c0.dato) as OrigenDato[]).map((k) => [k, n(`d_${k}`)])) as ConfigIncertidumbre['dato'],
+      factor: Object.fromEntries(Object.keys(c0.factor).map((k) => [k, n(`f_${k}`)])) as ConfigIncertidumbre['factor'],
+      umbrales: { baja: n('u_baja'), media: n('u_media'), alta: n('u_alta') },
+    };
+    setGuardando(true);
+    try { await huellaService.guardarConfiguracion('incertidumbre', nuevo); onCfg(nuevo); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (el catálogo solo lo editan los administradores)`)); } finally { setGuardando(false); }
+  };
+  const campo = (k: string, etiqueta: string) => <label key={k} className="text-xs font-semibold text-slate-600">{etiqueta}<div className="flex items-center gap-1 mt-1"><span className="text-slate-400">±</span><input inputMode="decimal" className={`${input} w-20`} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} aria-label={etiqueta} /><span className="text-slate-400">%</span></div></label>;
+  const nombresFactor: Record<string, string> = { co2Combustible: 'Factor de CO₂ de combustibles', ch4: 'Factor de CH₄', n2o: 'Factor de N₂O', mixElectrico: 'Mix eléctrico', pcaGasPuro: 'PCA de gases puros', pcaMezcla: 'PCA de mezclas' };
+  return (
+    <details className={`${card} group`}>
+      <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Catálogo de incertidumbres (ISO 14064-1, 8.3)</summary>
+      <p className="text-xs text-slate-600 mt-2 mb-3">Valores por defecto (±%, intervalo de confianza del 95 %) que heredan las líneas de cálculo; cada línea los puede ajustar con justificación. Son valores orientativos: el verificador puede pedir otros.</p>
+      <p className="text-xs font-semibold text-slate-700 mb-1">Dato de actividad, según su origen</p>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">{(Object.keys(c0.dato) as OrigenDato[]).map((k) => campo(`d_${k}`, ORIGENES_DATO[k]))}</div>
+      <p className="text-xs font-semibold text-slate-700 mb-1">Factor, según su tipo</p>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">{Object.keys(c0.factor).map((k) => campo(`f_${k}`, nombresFactor[k] ?? k))}</div>
+      <p className="text-xs font-semibold text-slate-700 mb-1">Valoración cualitativa (hasta cada umbral)</p>
+      <div className="grid grid-cols-3 gap-3 mb-3">{campo('u_baja', 'Baja hasta')}{campo('u_media', 'Media hasta')}{campo('u_alta', 'Alta hasta (por encima, muy alta)')}</div>
+      <button className={btnP} onClick={guardar} disabled={!valido || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar catálogo</button>
     </details>
   );
 };
@@ -2577,6 +2664,7 @@ const PanelInforme: React.FC<{
 }> = ({ soloLectura, org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
   const sig = useSignificancia(org, inv, falla);
   const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
+  const cfgIncInforme = React.useContext(CtxIncertidumbre);
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
@@ -2605,6 +2693,7 @@ const PanelInforme: React.FC<{
       anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
       significancia: sig.paraInforme,
       anioBase: ab.paraInforme,
+      incertidumbre: cfgIncInforme,
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
       documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
       mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
@@ -2612,7 +2701,7 @@ const PanelInforme: React.FC<{
       }), inv.anio),
       emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
     };
-  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme, ab.paraInforme]);
+  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme, ab.paraInforme, cfgIncInforme]);
 
   const modelo = useMemo(() => (datos ? construirInforme(datos) : null), [datos]);
   const html = useMemo(() => (modelo ? informeAHtml(modelo, { baseUrl: window.location.origin }) : ''), [modelo]);
@@ -2779,6 +2868,7 @@ const PanelInforme: React.FC<{
 
 // ───────────────────────────── Resultados ─────────────────────────────
 const PanelResultados: React.FC<{ org: Organizacion; invs: Inventario[]; inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; docs: Documento[]; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void; factores: ConjuntoFactores | null }> = ({ org, invs, inv, centros, invCentros, actividad, docs, abierto, onCambio, falla, factores }) => {
+  const cfgIncR = React.useContext(CtxIncertidumbre);
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
 
   if (!factores || !calculo) return <div className={`${card} text-sm text-slate-600`}><Loader2 className="inline animate-spin mr-2" size={14} />Cargando factores de emisión…</div>;
@@ -2813,6 +2903,7 @@ const PanelResultados: React.FC<{ org: Organizacion; invs: Inventario[]; inv: In
         {kpi('Por estancia', indice > 0 ? ratio(totales.kgCO2eTotal, indice) * 1000 : 0, indice > 0 ? `kg CO₂e/estancia (${num(indice)} estancias)` : 'Indique estancias en Centros')}
         {plantilla > 0 && kpi('Por trabajador', ratio(totales.kgCO2eTotal, plantilla) * 1000, `kg CO₂e/trabajador (plantilla media ${num(plantilla, 2)})`)}
       </div>
+      {(() => { const u = calcularIncertidumbre(resultados, factores, cfgIncR); return u.total.pct == null ? null : <p className="text-xs text-slate-600 -mt-2">Incertidumbre combinada: <strong>±{fmt(u.total.pct, 'porcentaje')} %</strong> ({u.total.valoracion?.toLowerCase()}) · principal fuente: {u.total.principal?.fuente ?? '—'}. Método 1 del IPCC; ajustable por línea en la tabla de consumos (icono del medidor).</p>; })()}
 
       <div className="grid lg:grid-cols-2 gap-4">
         <div className={card}>

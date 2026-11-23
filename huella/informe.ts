@@ -2,6 +2,8 @@
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
+import { ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre } from './incertidumbre.ts';
+import type { ConfigIncertidumbre } from './incertidumbre.ts';
 import { textoResponsable, tituloCriterio, validarOrganizacion, CRITERIOS_CONSOLIDACION } from './organizacion.ts';
 import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
 import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarEvaluacion, evaluarExclusionesDirectas, resumenPorCategoria } from './significancia.ts';
@@ -50,6 +52,8 @@ export interface DatosInforme {
   /** Evaluación de la significancia de las emisiones indirectas (apartado 5.2.3 de la norma); si falta, no se puede declarar la conformidad completa. */
   /** Año base de la organización, año anterior y año actual (resumen), reglas de recálculo y decisión documentada. */
   anioBase?: { def: AnioBaseDef | null; base: ResumenAnio | null; anterior: ResumenAnio | null; actual: ResumenAnio; config?: Partial<ConfigRecalculo> | null; decision: DecisionRecalculo | null };
+  /** Catálogo de incertidumbres de la organización (si no, el de por defecto). */
+  incertidumbre?: Partial<ConfigIncertidumbre> | null;
   significancia?: { plantilla: Array<Pick<SubcategoriaPlantilla, 'codigo' | 'nombre' | 'activa' | 'categoria'>>; evaluaciones: Evaluacion[]; criterios?: Partial<CriteriosSignificancia> | null; textos?: Partial<TextosDeclaracion> | null };
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
   documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
@@ -223,16 +227,26 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     { k: 'p', texto: `Cálculo realizado con ${VERSION_MOTOR}, que reproduce las fórmulas de la calculadora oficial del Registro balear. Cada línea conserva el factor aplicado y la fórmula (Anexo C), de modo que el resultado es reproducible.` },
   ] };
 
-  // ── 8
+  // ── 8 · Incertidumbre (ISO 14064-1, 8.3 y 9.3.1 p/q): método 1 del IPCC, combinando por fuente, categoría y total
+  const cfgInc = configIncertidumbre(d.incertidumbre);
+  const inc = calcularIncertidumbre(d.resultados, f, d.incertidumbre);
+  pendientes.push(...inc.incidencias);
+  const mpct = (v: number | null) => (v == null ? '—' : `±${fmt(v, 'porcentaje')} %`);
+  const ajustadas = inc.lineas.filter((x) => x.ajustada);
   const s8: Seccion = { id: '8', titulo: 'Incertidumbre', bloques: [
-    { k: 'p', texto: 'Se realiza una evaluación cualitativa de la incertidumbre, proporcionada al alcance del inventario.' },
-    { k: 'tabla', cab: ['Elemento', 'Incertidumbre', 'Comentario'], filas: [
-      ['Datos de actividad de facturas (electricidad, gas, combustibles)', 'Muy baja', 'Proceden de mediciones facturadas; cada dato se contrasta con la factura.'],
-      ['Datos introducidos manualmente', 'Media', 'Dependen de la lectura o el registro interno de la organización.'],
-      ['Factores de emisión de CO₂', 'Baja', 'Factores oficiales del Registro balear / MITECO.'],
-      ['Factores de CH₄ y N₂O', 'Media', 'Mayor variabilidad en los factores por defecto.'],
-      ['Recarga de refrigerantes', 'Baja a media', 'Depende del registro de mantenimiento de los equipos.'],
-    ] },
+    { k: 'p', texto: 'La incertidumbre se cuantifica con el método 1 del IPCC (Directrices 2006, vol. 1, cap. 3): cada línea combina la incertidumbre de su dato de actividad y la de su factor con la raíz de la suma de cuadrados, y las fuentes, las categorías y el total se obtienen con la raíz de la suma de cuadrados de las incertidumbres absolutas. Los valores son intervalos de confianza del 95 % y proceden del catálogo de incertidumbres por defecto (indicado al final), ajustable con justificación en cada línea.' },
+    { k: 'tabla', cab: ['Categoría', 'Emisiones (t CO₂e)', 'Incertidumbre', 'Valoración', 'Principal fuente de incertidumbre'], filas: [
+      ...inc.porCategoria.map((c) => [CATEGORIAS_ISO[c.n - 1].resumen, fmt(c.emision / 1000, 'tCO2e'), mpct(c.pct), c.valoracion ?? '—', c.principal ? `${c.principal.fuente} (${fmt(c.principal.peso, 'porcentaje')} % de la varianza)` : '—']),
+      ['Total del inventario', fmt(inc.total.emision / 1000, 'tCO2e'), mpct(inc.total.pct), inc.total.valoracion ?? '—', inc.total.principal ? `${inc.total.principal.fuente} (${fmt(inc.total.principal.peso, 'porcentaje')} % de la varianza)` : '—'],
+    ], numericas: [1, 2], pie: `Valoración cualitativa: Baja hasta ±${fmt(cfgInc.umbrales.baja, 'porcentaje')} %, Media hasta ±${fmt(cfgInc.umbrales.media, 'porcentaje')} %, Alta hasta ±${fmt(cfgInc.umbrales.alta, 'porcentaje')} %, Muy alta por encima.` },
+    { k: 'p', texto: inc.total.pct != null ? `La incertidumbre combinada del inventario es de ${mpct(inc.total.pct)} (±${fmt(inc.total.absoluta / 1000, 'tCO2e')} t CO₂e sobre ${fmt(inc.total.emision / 1000, 'tCO2e')} t CO₂e), con un nivel de confianza del 95 %; su valoración cualitativa es ${String(inc.total.valoracion).toLowerCase()}.` : 'No se puede calcular la incertidumbre combinada: el inventario no tiene emisiones.' },
+    { k: 'tabla', cab: ['Fuente', 'Emisiones (t CO₂e)', 'Incertidumbre', 'Valoración'], filas: inc.porFuente.map((x) => [x.nombre, fmt(x.emision / 1000, 'tCO2e'), mpct(x.pct), x.valoracion ?? '—']), numericas: [1, 2] },
+    ...(ajustadas.length ? [{ k: 'tabla' as const, cab: ['Línea ajustada', 'Origen del dato', 'Dato', 'Factor', 'Justificación'], filas: ajustadas.map((x) => [x.fuente, ORIGENES_DATO[x.origen], mpct(x.datoPct), mpct(x.factorPct), x.justificacion ?? '—']), numericas: [2, 3], pie: 'Líneas cuya incertidumbre se ha ajustado respecto al catálogo.' }] : []),
+    { k: 'tabla', cab: ['Catálogo de incertidumbres por defecto', 'Incertidumbre'], filas: [
+      ...(Object.keys(cfgInc.dato) as Array<keyof typeof cfgInc.dato>).map((k) => [`Dato de actividad: ${ORIGENES_DATO[k].toLowerCase()}`, mpct(cfgInc.dato[k])]),
+      ['Factor de CO₂ de combustibles', mpct(cfgInc.factor.co2Combustible)], ['Factor de CH₄', mpct(cfgInc.factor.ch4)], ['Factor de N₂O', mpct(cfgInc.factor.n2o)], ['Mix eléctrico', mpct(cfgInc.factor.mixElectrico)],
+      ['PCA de gases puros', mpct(cfgInc.factor.pcaGasPuro)], ['PCA de mezclas', mpct(cfgInc.factor.pcaMezcla)],
+    ], numericas: [1] },
   ] };
 
   // ── 9

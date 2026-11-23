@@ -58,7 +58,13 @@ export interface LineaActividad {
   contador?: string;
   /** Si se aplica un reparto (p. ej. 85/15) se guarda aquí la proporción y su justificación. */
   reparto?: { proporcion: number; justificacion: string };
+  /** Ajuste de las incertidumbres de la línea respecto al catálogo (con su justificación). */
+  incertidumbre?: AjusteIncertidumbre;
 }
+
+/** Origen del dato de actividad: determina su incertidumbre por defecto. */
+export type OrigenDato = 'factura' | 'albaran' | 'lectura_interna' | 'estimacion' | 'parte_mantenimiento';
+export interface AjusteIncertidumbre { origen?: OrigenDato; /** ±% del dato de actividad. */ datoPct?: number; /** ±% del factor (todas sus componentes). */ factorPct?: number; justificacion?: string }
 
 export interface ResultadoLinea {
   linea: LineaActividad;

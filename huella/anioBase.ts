@@ -125,7 +125,7 @@ export const ratioTrabajador = (r: ResumenAnio | null) => (r && r.plantilla && r
 export const variacion = (v: number | null | undefined, ref: number | null | undefined): number | null => (v == null || ref == null || !(ref > 0) ? null : ((v - ref) / ref) * 100);
 
 export interface FilaComparacion { concepto: string; base: number | null; anterior: number | null; actual: number | null; vsBase: number | null; vsAnterior: number | null }
-export interface Comparacion { categorias: FilaComparacion[]; fuentes: FilaComparacion[]; ratios: FilaComparacion[] }
+export interface Comparacion { categorias: FilaComparacion[]; fuentes: FilaComparacion[]; ratios: FilaComparacion[]; /** Tipos de fuente con emisiones en un año y no en el otro: no se comparan (alcance o desglose distinto), se avisan. */ noComparables: string[] }
 
 /** Comparación automática base · anterior · actual por categoría, por fuente y de ratios. null en lo que un año no tiene. */
 export function compararAnios(base: ResumenAnio | null, anterior: ResumenAnio | null, actual: ResumenAnio, nombresCategoria: Record<number, string> = {}): Comparacion {
@@ -137,13 +137,22 @@ export function compararAnios(base: ResumenAnio | null, anterior: ResumenAnio | 
   ];
   // Se compara por tipo de fuente (no por nombre): los nombres de un informe antiguo y de este inventario no coinciden
   const tb = base ? emisionesPorTipo(base) : null, ta = anterior ? emisionesPorTipo(anterior) : null, tc = emisionesPorTipo(actual);
-  const fuentes = TIPOS_FUENTE.filter((k) => (tb?.[k] ?? 0) > 0 || (ta?.[k] ?? 0) > 0 || (tc[k] ?? 0) > 0)
-    .map((k) => fila(k, tb ? tb[k] ?? 0 : null, ta ? ta[k] ?? 0 : null, tc[k] ?? 0));
+  // Solo se comparan emisiones comparables: el tipo debe tener emisiones en ambos años. Si falta en uno (otro alcance, otro desglose o dato no declarado) no se calcula variación.
+  const noComparables: string[] = [];
+  const fuentes = TIPOS_FUENTE.filter((k) => (tb?.[k] ?? 0) > 0 || (ta?.[k] ?? 0) > 0 || (tc[k] ?? 0) > 0).map((k) => {
+    const b = tb ? tb[k] ?? 0 : null, a = ta ? ta[k] ?? 0 : null, c = tc[k] ?? 0;
+    const fa = fila(k, b, a, c);
+    const sinBase = b != null && (b > 0) !== (c > 0), sinAnt = a != null && (a > 0) !== (c > 0);
+    if (sinBase) fa.vsBase = null;
+    if (sinAnt) fa.vsAnterior = null;
+    if ((sinBase || sinAnt) && !noComparables.includes(k)) noComparables.push(k);
+    return fa;
+  });
   const ratios = [
     fila('t CO₂e por estancia', ratioEstancia(base), ratioEstancia(anterior), ratioEstancia(actual)),
     fila('t CO₂e por trabajador', ratioTrabajador(base), ratioTrabajador(anterior), ratioTrabajador(actual)),
   ].filter((r) => r.base != null || r.anterior != null || r.actual != null);
-  return { categorias, fuentes, ratios };
+  return { categorias, fuentes, ratios, noComparables };
 }
 
 export interface Disparador { regla: 'limites' | 'metodologia' | 'factores'; titulo: string; detalle: string[] }

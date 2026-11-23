@@ -73,3 +73,13 @@ test('la comparación por fuente agrupa por tipo: nombres distintos entre años 
   assert.equal(f[3].base, 288.94); assert.equal(f[3].actual, 270.45);
   assert.equal(tipoDeFuente('R-448A'), 'Emisiones fugitivas (refrigerantes)'); assert.equal(tipoDeFuente('Gasolina (l)'), 'Combustibles en vehículos');
 });
+test('solo se comparan fuentes comparables: un tipo ausente en un año no da -100 % y se avisa', () => {
+  const base = r(2023, { porFuente: { 'Combustible vehículos': 6, 'Consumo eléctrico': 289 } });
+  const act = r(2024, { porFuente: { Electricidad: 270, 'Gas natural': 30 } });
+  const c = compararAnios(base, null, act);
+  const veh = c.fuentes.find((x) => x.concepto === 'Combustibles en vehículos')!;
+  assert.equal(veh.vsBase, null);
+  assert.equal(c.fuentes.find((x) => x.concepto === 'Combustibles en instalaciones fijas')!.vsBase, null);
+  assert.ok(c.fuentes.find((x) => x.concepto === 'Electricidad')!.vsBase != null);
+  assert.deepEqual(c.noComparables.sort(), ['Combustibles en instalaciones fijas', 'Combustibles en vehículos']);
+});

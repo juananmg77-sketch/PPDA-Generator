@@ -2049,7 +2049,8 @@ const PanelInforme: React.FC<{
       anio: inv.anio, verificacion: true,
       gases: conjunto ? { oficiales: lista, pca: conMezclas(conjunto).pcaRefrigerantes } : undefined,
       organizacion: { nombre: org.nombre, cif: org.cif, cnae: org.cnae },
-      centros: centros.map((c) => ({ nombre: c.nombre, enBaleares: c.en_baleares, isla: c.isla, municipio: c.municipio, direccion: c.direccion })),
+      centros: centros.map((c) => ({ nombre: c.nombre, enBaleares: c.en_baleares, isla: c.isla, municipio: c.municipio, direccion: c.direccion, latitud: c.latitud != null ? Number(c.latitud) : null, longitud: c.longitud != null ? Number(c.longitud) : null })),
+      plantillaTotal: invCentros.reduce((t, c) => t + Number(c.plantilla_media || 0), 0),
       indice: estancias > 0 ? { nombre: 'Estancias', valor: estancias, unidades: 'estancias' } : undefined,
       lineas: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({
         centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad) * Number(a.reparto_proporcion ?? 1),

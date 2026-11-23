@@ -95,3 +95,10 @@ test('un gas que la calculadora no trae va a «Otros» con su nombre y su PCA; s
   assert.ok(planCalculadora(d).avisos.some((a) => /R-448A.*«Otros».*1\.?387/.test(a)));
   d.gases.pca = {}; assert.throws(() => planCalculadora(d), /no tiene su PCA/);
 });
+
+import { tipoOrganizacionPorPlantilla } from '../calculadoraOficial.ts';
+test('tipo de organización por plantilla', () => {
+  assert.equal(tipoOrganizacionPorPlantilla(63.465), 'Mediana');
+  assert.equal(tipoOrganizacionPorPlantilla(9), 'Micro');
+  assert.equal(tipoOrganizacionPorPlantilla(0), null);
+});

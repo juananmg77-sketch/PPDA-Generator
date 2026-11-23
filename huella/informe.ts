@@ -54,6 +54,7 @@ const ORIGEN: Record<string, string> = { red: 'Red', autoconsumo: 'Autoconsumo',
 
 const RESOLUCIONES: Record<number, string> = {
   2023: 'Resolución del consejero de Empresa, Empleo y Energía por la que se aprueban los factores de emisión de las Illes Balears durante el año 2023 (BOIB n.º 35, de 20 de marzo de 2025), que remite al archivo «Factores de emisión 2007-2023, versión 4» (16/05/2024) del MITECO.',
+  2024: 'Resolución del conseller de Empresa, Autónomos y Energía, a propuesta del director general de Economía Circular, Transición Energética y Cambio Climático, por la que se aprueban los factores de emisión para cuantificar las emisiones de gases de efecto invernadero de las Illes Balears durante el año 2024 (BOIB n.º 35, de 19 de marzo de 2026), que remite al archivo «Factores de emisión 2007-2024, versión 5» (6/05/2025) del MITECO.',
 };
 
 /** Correspondencia entre el contenido obligatorio de la ISO 14064-1 (9.3.1) y los apartados de este informe. */

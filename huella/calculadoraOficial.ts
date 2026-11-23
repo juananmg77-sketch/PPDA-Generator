@@ -15,12 +15,20 @@ export interface LineaOficial {
   /** Comercializadora (electricidad). */
   proveedor?: string;
 }
-export interface CentroOficial { nombre: string; enBaleares: boolean; isla?: string | null; municipio?: string | null; direccion?: string | null }
+export interface CentroOficial { nombre: string; enBaleares: boolean; isla?: string | null; municipio?: string | null; direccion?: string | null; latitud?: number | null; longitud?: number | null }
+
+/** Tamaño de la organización por plantilla (criterio de la UE: <10 micro, <50 pequeña, <250 mediana). El volumen de negocio debe confirmarlo la persona que revisa. */
+export function tipoOrganizacionPorPlantilla(plantilla: number): 'Micro' | 'Pequeña' | 'Mediana' | 'Gran empresa' | null {
+  if (!(plantilla > 0)) return null;
+  return plantilla < 10 ? 'Micro' : plantilla < 50 ? 'Pequeña' : plantilla < 250 ? 'Mediana' : 'Gran empresa';
+}
 export interface DatosOficiales {
   anio: number;
   organizacion: { nombre: string; cif?: string | null; cnae?: string | null };
   centros: CentroOficial[];
   indice?: { nombre: string; valor: number; unidades: string };
+  /** Plantilla media total de la organización (suma de los centros), para deducir el tipo de organización. */
+  plantillaTotal?: number;
   /** El libro se entrega para verificación (o ya verificado). */
   verificacion: boolean;
   lineas: LineaOficial[];
@@ -76,7 +84,9 @@ export function planCalculadora(d: DatosOficiales): PlanCalculadora {
   poner(o, 'D6', d.organizacion.nombre); poner(o, 'J6', d.organizacion.cif);
   const sector = sectorDesdeCnae(d.organizacion.cnae);
   if (sector) poner(o, 'D9', sector); else pendientes.push('Sector de la organización (falta el CNAE).');
-  pendientes.push('Tipo de organización (Micro, Pequeña, Mediana, Gran empresa…): no consta en la aplicación.');
+  const tipoOrg = tipoOrganizacionPorPlantilla(d.plantillaTotal ?? 0);
+  if (tipoOrg) { poner(o, 'K6', tipoOrg); avisos.push(`Tipo de organización «${tipoOrg}»: deducido de la plantilla media (${(d.plantillaTotal ?? 0).toLocaleString('es-ES')}); confirme que el volumen de negocio o el balance no cambia la categoría.`); }
+  else pendientes.push('Tipo de organización (Micro, Pequeña, Mediana, Gran empresa…): falta la plantilla media.');
   poner(o, 'H11', d.verificacion ? 'Sí' : 'No');
   poner(o, 'J14', 'No');
   poner(o, 'O6', d.organizacion.nombre); poner(o, 'P6', d.organizacion.cif); poner(o, 'Q6', 'Sí');
@@ -88,11 +98,11 @@ export function planCalculadora(d: DatosOficiales): PlanCalculadora {
     const r = CAP.centros[0] + i;
     poner(o, `E${r}`, c.nombre); poner(o, `G${r}`, c.enBaleares ? 'Sí' : 'No');
     if (c.enBaleares) { poner(o, `H${r}`, c.isla); poner(o, `I${r}`, c.municipio); }
-    poner(o, `J${r}`, c.direccion); poner(o, `M${r}`, d.organizacion.nombre);
+    poner(o, `J${r}`, c.direccion); poner(o, `K${r}`, c.latitud); poner(o, `L${r}`, c.longitud); poner(o, `M${r}`, d.organizacion.nombre);
   });
   if (d.centros.some((c) => !c.enBaleares)) avisos.push('Hay centros fuera de las Illes Balears: la hoja 2.1 (registro balear) solo admite centros baleares; su electricidad no se ha trasladado correctamente.');
   if (d.centros.some((c) => c.enBaleares && (!c.isla || !c.municipio))) pendientes.push('Isla y municipio de algún centro balear (el libro los exige y son listas cerradas).');
-  pendientes.push('Coordenadas (latitud y longitud) de los centros.');
+  if (d.centros.some((c) => c.latitud == null || c.longitud == null)) pendientes.push('Coordenadas (latitud y longitud) de algún centro.');
 
   // 1.1 Instalaciones fijas
   const fijas = agrupar(d.lineas.filter((l) => l.categoria === 'combustion_fija'), (l) => `${l.centro}|${l.fuente}`, (l) => l.cantidad);

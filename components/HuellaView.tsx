@@ -23,7 +23,7 @@ import { conMezclas, normalizarGas } from '../huella/mezclas';
 import { aplicarEnvases, esEnvase, fuenteGlp, KG_BOMBONA_BUTANO } from '../huella/glp';
 import type { ModoGas } from '../huella/gas';
 import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
-import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad } from '../huella/tipos';
+import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad, ResultadoLinea } from '../huella/tipos';
 
 type Pestana = 'resumen' | 'centros' | 'facturas' | 'consumos' | 'resultados' | 'cierre' | 'ajustes';
 export type RolHuella = 'consultor' | 'cliente';
@@ -286,9 +286,9 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <PanelFacturas rol={rol} org={org} inv={inv} abierto={!!abierto} centros={centros} docs={docs} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} cargando={cargando} setCargando={setCargando} currentUser={currentUser} />
               )}
               {tab === 'consumos' && inv && (
-                <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} factores={factores} onCambio={recargarInv} falla={falla} />
+                <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} docs={docs} factores={factores} onCambio={recargarInv} falla={falla} />
               )}
-              {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />}
+              {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} docs={docs} abierto={!!abierto && esConsultor} onCambio={recargarInv} falla={falla} factores={factores} />}
               {tab === 'cierre' && inv && (
                 <div className="space-y-4">
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
@@ -1436,8 +1436,80 @@ const Revision: React.FC<{
   );
 };
 
+
+// ───────────────────────────── Tabla de líneas de actividad (la misma en «Consumos» y en «Trazabilidad por línea») ─────────────────────────────
+const TablaLineas: React.FC<{
+  lineas: Actividad[]; resultados: ResultadoLinea[]; factores: ConjuntoFactores; centros: Centro[]; docs: Documento[]; inv: Inventario; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void;
+}> = ({ lineas, resultados, factores, centros, docs, inv, abierto, onCambio, falla }) => {
+  const [editando, setEditando] = useState<string | null>(null);
+  const [m, setM] = useState({ cantidad: '', contador: '', notas: '', desde: '', hasta: '' });
+  const [guardando, setGuardando] = useState(false);
+  const nombreCentro = (id: string) => centros.find((c) => c.id === id)?.nombre ?? '—';
+  const abrirEditor = (a: Actividad) => {
+    if (editando === a.id) { setEditando(null); return; }
+    setM({ cantidad: String(a.cantidad), contador: a.contador ?? '', notas: a.notas ?? '', desde: a.periodo_desde ?? '', hasta: a.periodo_hasta ?? '' });
+    setEditando(a.id);
+  };
+  const guardarManual = async (a: Actividad) => {
+    setGuardando(true);
+    try {
+      await huellaService.actualizarActividad(a.id, { cantidad: Number(m.cantidad.replace(',', '.')), contador: m.contador.trim() || null, notas: m.notas.trim() || null, periodo_desde: m.desde || null, periodo_hasta: m.hasta || null });
+      setEditando(null); onCambio();
+    } catch (e) { falla(e); } finally { setGuardando(false); }
+  };
+  const kg = new Map<string, ResultadoLinea>(resultados.map((r) => [r.linea.id, r] as [string, ResultadoLinea]));
+  return (
+    <div className="overflow-x-auto"><table className="w-full text-xs">
+      <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">Factor de emisión</th><th className="pr-3 text-right">t CO₂e</th><th className="pr-3">Origen</th><th /></tr></thead>
+      <tbody>{lineas.map((a) => {
+        const r = kg.get(a.id);
+        const ud = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : factores.unidades[a.fuente] ?? (a.unidad ?? '');
+        const base = Number(a.cantidad) * Number(a.reparto_proporcion ?? 1);
+        const factor = r && base > 0 ? r.kgCO2e / base : null;
+        const doc = a.documento_id ? docs.find((d) => d.id === a.documento_id) : undefined;
+        return (
+          <React.Fragment key={a.id}>
+            <tr className="border-b border-slate-100">
+              <td className="py-1.5 pr-3">{nombreCentro(a.centro_id)}</td><td className="pr-3">{CATEGORIAS[a.categoria]}</td>
+              <td className="pr-3">{a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : 'Electricidad')}</td>
+              <td className="pr-3 text-slate-600">{a.contador || '—'}</td>
+              <td className="pr-3 text-right tabular-nums">{num(a.cantidad, 2)} <span className="text-slate-500">{ud}</span></td>
+              <td className="pr-3 text-right tabular-nums">{factor === null ? '—' : <>{num(factor, 4)} <span className="text-slate-500">kg CO₂e/{ud || 'ud'}</span></>}</td>
+              <td className="pr-3 text-right tabular-nums font-semibold">{r ? num(r.kgCO2e / 1000, 3) : '—'}</td>
+              <td className="pr-3 text-slate-600">{a.documento_id ? 'Factura' : `Manual: ${a.notas ?? ''}`}{a.periodo_desde ? ` · ${a.periodo_desde}` : ''}</td>
+              <td className="text-right whitespace-nowrap">
+                {doc && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" title="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={15} /></button>}
+                {abierto && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Editar" title="Editar" onClick={() => abrirEditor(a)}><Pencil size={15} /></button>}
+                {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar" title="Eliminar" onClick={async () => { if (confirm('¿Eliminar este dato de actividad?')) { try { await huellaService.borrarActividad(a.id); onCambio(); } catch (e) { falla(e); } } }}><Trash2 size={15} /></button>}
+              </td>
+            </tr>
+            {abierto && editando === a.id && (
+              <tr className="border-b border-slate-100"><td colSpan={9} className="pb-3">
+                {doc && doc.extraccion
+                  ? <Revision key={doc.id} doc={doc} factores={factores} inv={inv} otras={docs} corregir onHecho={() => { setEditando(null); onCambio(); }} falla={falla} />
+                  : (
+                    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <label className="text-xs font-semibold text-slate-600">Cantidad ({ud || 'unidad'})<input inputMode="decimal" className={`${input} mt-1`} value={m.cantidad} onChange={(e) => setM({ ...m, cantidad: e.target.value })} /></label>
+                        <label className="text-xs font-semibold text-slate-600">Contador / CUPS<input className={`${input} mt-1`} value={m.contador} onChange={(e) => setM({ ...m, contador: e.target.value })} /></label>
+                        <label className="text-xs font-semibold text-slate-600">Desde<input type="date" className={`${input} mt-1`} value={m.desde} onChange={(e) => setM({ ...m, desde: e.target.value })} /></label>
+                        <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" className={`${input} mt-1`} value={m.hasta} onChange={(e) => setM({ ...m, hasta: e.target.value })} /></label>
+                        <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-4">Origen del dato<input className={`${input} mt-1`} value={m.notas} onChange={(e) => setM({ ...m, notas: e.target.value })} /></label>
+                      </div>
+                      <div className="mt-3 flex gap-2"><button className={btnP} disabled={guardando || m.cantidad.trim() === '' || !(Number(m.cantidad.replace(',', '.')) >= 0)} onClick={() => guardarManual(a)}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button><button className={btnS} onClick={() => setEditando(null)}>Cancelar</button></div>
+                    </div>
+                  )}
+              </td></tr>
+            )}
+          </React.Fragment>
+        );
+      })}</tbody>
+    </table></div>
+  );
+};
+
 // ───────────────────────────── Actividad (alta manual y listado) ─────────────────────────────
-const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Centro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onCambio: () => void; falla: (e: unknown) => void }> = ({ inv, abierto, centros, actividad, factores, onCambio, falla }) => {
+const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Centro[]; actividad: Actividad[]; docs: Documento[]; factores: ConjuntoFactores | null; onCambio: () => void; falla: (e: unknown) => void }> = ({ inv, abierto, centros, actividad, docs, factores, onCambio, falla }) => {
   const [centro, setCentro] = useState(''); const [cat, setCat] = useState<Categoria>('combustion_fija'); const [fuente, setFuente] = useState('');
   const [cantidad, setCantidad] = useState(''); const [origen, setOrigen] = useState<OrigenElectricidad>('red'); const [nota, setNota] = useState(''); const [contador, setContador] = useState('');
   const [formAbierto, setFormAbierto] = useState(false); const [fCentro, setFCentro] = useState(''); const [fFuente, setFFuente] = useState(''); const [fContador, setFContador] = useState(''); const [metrica, setMetrica] = useState<'co2e' | 'consumo'>('co2e');
@@ -1454,6 +1526,7 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
   const etiquetaFuente = (a: Actividad) => a.fuente || 'Electricidad';
   const fuentesDisp = (Array.from(new Set(actividad.map(etiquetaFuente))) as string[]).sort();
   const contadoresDisp = (Array.from(new Set(actividad.map((a) => a.contador || ''))) as string[]).filter(Boolean).sort();
+  const calculoAct = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
   const filtradas = actividad.filter((a) => (!fCentro || a.centro_id === fCentro) && (!fFuente || etiquetaFuente(a) === fFuente) && (!fContador || (a.contador || '') === fContador));
   return (
     <div className="space-y-4">
@@ -1478,31 +1551,16 @@ const PanelActividad: React.FC<{ inv: Inventario; abierto: boolean; centros: Cen
           </div>
         </Modal>
       )}
-      <div className={card}>
-        <div className="flex items-center gap-3 mb-3">
+      <details className={`${card} group`} open>
+        <summary className="cursor-pointer list-none flex items-center gap-3 mb-3">
+          <ChevronRight size={15} className="transition-transform group-open:rotate-90 shrink-0" />
           <h2 className="flex-1 text-sm font-bold text-slate-800">Consumos confirmados ({filtradas.length}{filtradas.length !== actividad.length ? ` de ${actividad.length}` : ''})</h2>
-          {abierto && <button className={btnS} onClick={() => setFormAbierto(true)}><Plus size={14} /> Añadir consumo a mano</button>}
-        </div>
-        {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay consumos. Suba facturas o añada un consumo a mano.</p> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Categoría</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Origen</th><th /></tr></thead>
-              <tbody>
-                {filtradas.map((a) => (
-                  <tr key={a.id} className="border-b border-slate-100">
-                    <td className="py-2 pr-3">{nombreCentro(a.centro_id)}</td><td className="pr-3">{CATEGORIAS[a.categoria]}</td>
-                    <td className="pr-3">{a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : '—')}</td>
-                    <td className="pr-3 text-xs text-slate-600">{a.contador || '—'}</td>
-                    <td className="pr-3 text-right tabular-nums">{num(a.cantidad, 2)}</td>
-                    <td className="pr-3 text-xs text-slate-600">{a.documento_id ? 'Factura' : `Manual: ${a.notas ?? ''}`}{a.periodo_desde ? ` · ${a.periodo_desde}` : ''}</td>
-                    <td className="text-right">{abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar" onClick={async () => { if (confirm('¿Eliminar este dato de actividad?')) { try { await huellaService.borrarActividad(a.id); onCambio(); } catch (e) { falla(e); } } }}><Trash2 size={15} /></button>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {abierto && <button className={btnS} onClick={(e) => { e.preventDefault(); setFormAbierto(true); }}><Plus size={14} /> Añadir consumo a mano</button>}
+        </summary>
+        {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay consumos. Suba facturas o añada un consumo a mano.</p> : !factores || !calculoAct ? <p className="text-sm text-slate-600"><Loader2 size={14} className="inline animate-spin mr-2" />Cargando factores de emisión…</p> : (
+          <TablaLineas lineas={filtradas} resultados={calculoAct.resultados} factores={factores} centros={centros} docs={docs} inv={inv} abierto={abierto} onCambio={onCambio} falla={falla} />
         )}
-      </div>
+      </details>
     </div>
   );
 };
@@ -2168,7 +2226,7 @@ const PanelInforme: React.FC<{
 };
 
 // ───────────────────────────── Resultados ─────────────────────────────
-const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; factores: ConjuntoFactores | null }> = ({ inv, centros, invCentros, actividad, factores }) => {
+const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; docs: Documento[]; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void; factores: ConjuntoFactores | null }> = ({ inv, centros, invCentros, actividad, docs, abierto, onCambio, falla, factores }) => {
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
 
   if (!factores || !calculo) return <div className={`${card} text-sm text-slate-600`}><Loader2 className="inline animate-spin mr-2" size={14} />Cargando factores de emisión…</div>;
@@ -2190,13 +2248,6 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   const totalT = totales.kgCO2eTotal / 1000;
   const fmtT = (v: number) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 });
 
-  // Trazabilidad: solo cantidad y factor de emisión (kg CO₂e por unidad) para llegar a los kg de CO₂e
-  const filaTraza = (r: (typeof resultados)[number]) => {
-    const l = r.linea;
-    const ud = l.categoria === 'electricidad' ? 'kWh' : l.categoria === 'fugitiva' ? 'kg' : factores.unidades[l.fuente] ?? '';
-    const base = l.cantidad * (l.reparto?.proporcion ?? 1);
-    return { ud, factor: base > 0 ? r.kgCO2e / base : null };
-  };
   const kpi = (titulo: string, kg: number, sub?: string) => (
     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4"><p className="text-[11px] font-semibold text-slate-600">{titulo}</p><p className="text-2xl font-extrabold text-header mt-1 tabular-nums">{t(kg)}</p><p className="text-[11px] text-slate-500">{sub ?? 't CO₂e'}</p></div>
   );
@@ -2281,16 +2332,8 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
 
       <details className={`${card} group`}>
         <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Trazabilidad por línea <span className="text-xs font-normal text-slate-500">({resultados.length})</span></summary>
-        <p className="text-xs text-slate-600 mt-2">Cantidad × factor de emisión = kg de CO₂e.</p>
-        <div className="overflow-x-auto mt-2"><table className="w-full text-xs">
-          <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Fuente</th><th className="pr-3">Contador</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3 text-right">Factor de emisión</th><th className="text-right">kg CO₂e</th></tr></thead>
-          <tbody>{resultados.map((r) => { const f = filaTraza(r); return (
-            <tr key={r.linea.id} className="border-b border-slate-100"><td className="py-1.5 pr-3">{r.linea.centro}</td><td className="pr-3">{r.linea.fuente || 'Electricidad'}</td><td className="pr-3">{r.linea.contador || '—'}</td>
-              <td className="pr-3 text-right tabular-nums">{num(r.linea.cantidad, 2)} {f.ud}</td>
-              <td className="pr-3 text-right tabular-nums">{f.factor === null ? '—' : <>{num(f.factor, 4)} <span className="text-slate-500">kg CO₂e/{f.ud || 'ud'}</span></>}</td>
-              <td className="text-right tabular-nums font-semibold">{num(r.kgCO2e, 1)}</td></tr>
-          ); })}</tbody>
-        </table></div>
+        <p className="text-xs text-slate-600 mt-2">Cantidad × factor de emisión = CO₂e. Es la misma tabla que en «Consumos»: desde aquí también se puede ver la factura y editar o eliminar el dato.</p>
+        <div className="mt-2"><TablaLineas lineas={resultados.map((r) => actividad.find((x) => x.id === r.linea.id)).filter((x): x is Actividad => !!x)} resultados={resultados} factores={factores} centros={centros} docs={docs} inv={inv} abierto={abierto} onCambio={onCambio} falla={falla} /></div>
       </details>
     </div>
   );

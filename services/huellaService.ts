@@ -172,6 +172,7 @@ export const huellaService = {
   async fijarOrigenActividadDocumento(documentoId: string, origen: OrigenElectricidad) { ok(await supabase.from('hc_actividad').update({ origen_electricidad: origen }).eq('documento_id', documentoId)); },
   /** Quita la línea de actividad generada por una factura (para sustituirla por el dato corregido a mano). */
   async borrarActividadDocumento(documentoId: string) { ok(await supabase.from('hc_actividad').delete().eq('documento_id', documentoId)); },
+  async actualizarActividad(id: string, c: Partial<Omit<Actividad, 'id' | 'inventario_id'>>) { return ok<Actividad>(await supabase.from('hc_actividad').update(c).eq('id', id).select().single()); },
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */

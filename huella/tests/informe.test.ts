@@ -107,3 +107,16 @@ test('informe: con plantilla media añade el ratio por trabajador; sin ella no c
   assert.match(con, /Ratio global por trabajador/);
   assert.match(con, /63,47|63,465/);
 });
+
+import { desgloseGases } from '../gases.ts';
+test('desglose por gas: CO₂, CH₄, N₂O y cada fluorado con su PCA; la suma es el total del inventario', () => {
+  const filas = desgloseGases(resultados, f);
+  assert.deepEqual(filas.map((x) => x.gas).slice(0, 3), ['CO₂', 'CH₄', 'N₂O']);
+  const hfc = filas.find((x) => x.gas === 'HFC-134a')!;
+  assert.equal(hfc.fluorado, true); assert.equal(hfc.familia, 'HFC'); assert.equal(hfc.toneladasGas, 0.002); assert.equal(hfc.pca, f.pcaRefrigerantes['HFC-134a']);
+  assert.ok(Math.abs(hfc.toneladasCO2e - 0.002 * f.pcaRefrigerantes['HFC-134a']) < 1e-9);
+  const suma = filas.reduce((t, x) => t + x.toneladasCO2e, 0);
+  assert.ok(Math.abs(suma * 1000 - totales.kgCO2eTotal) < 1e-6, `${suma * 1000} vs ${totales.kgCO2eTotal}`);
+  const m = construirInforme(base());
+  assert.match(JSON.stringify(m), /9\.2 Resultados por tipo de gas/); assert.match(JSON.stringify(m), /HFC-134a/);
+});

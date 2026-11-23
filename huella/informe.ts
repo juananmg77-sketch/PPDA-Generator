@@ -2,6 +2,7 @@
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
+import { desgloseGases } from './gases.ts';
 
 export const VERSION_MOTOR = 'HS GREEN huella 1.0';
 
@@ -208,7 +209,8 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const merc = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const indiceTotal = d.centros.reduce((s, c) => s + (c.indice > 0 ? c.indice : 0), 0);
   const plantillaTotal = d.centros.reduce((s, c) => s + ((c.plantilla ?? 0) > 0 ? c.plantilla! : 0), 0);
-  const g = tot.kgCO2PorGas;
+  const gases = desgloseGases(d.resultados, d.factores);
+  const totalGases = gases.reduce((t, x) => t + x.toneladasCO2e, 0);
   // Gráficos de resultados (SVG)
   const fuenteT: Record<string, number> = {};
   for (const r of d.resultados) { const k = etiquetaFuente(r.linea.fuente); fuenteT[k] = (fuenteT[k] ?? 0) + r.kgCO2e / 1000; }
@@ -234,9 +236,12 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     { k: 'h', texto: '9.1 Resultados por categoría' },
     { k: 'tabla', cab: ['Categoría', 'Emisiones (t CO₂e)'], filas: [['1 · Emisiones directas (Alcance 1)', tn(tot.kgCO2eAlcance1)], ['2 · Energía importada (Alcance 2, criterio del registro)', tn(tot.kgCO2eAlcance2)], ['Total', tn(tot.kgCO2eTotal)]], numericas: [1], pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
     { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales([{ nombre: '1 · Emisiones directas', t: tot.kgCO2eAlcance1 / 1000 }, { nombre: '2 · Energía importada', t: tot.kgCO2eAlcance2 / 1000 }], 'Emisiones por categoría'), pie: 'Alcance 1 (combustibles, refrigerantes) y Alcance 2 (electricidad) del inventario.' },
-    { k: 'h', texto: '9.2 Resultados por gas' },
-    { k: 'tabla', cab: ['Gas', 'Emisiones (t CO₂e)'], filas: [['CO₂', tn(g.co2)], ['CH₄', tn(g.ch4_co2e, 3)], ['N₂O', tn(g.n2o_co2e, 3)], ['Fluorados (refrigerantes)', tn(g.fluorados_co2e)]], numericas: [1] },
-    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales([{ nombre: 'CO₂', t: g.co2 / 1000 }, { nombre: 'CH₄', t: g.ch4_co2e / 1000 }, { nombre: 'N₂O', t: g.n2o_co2e / 1000 }, { nombre: 'Fluorados (refrigerantes)', t: g.fluorados_co2e / 1000 }], 'Emisiones por gas', 3), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
+    { k: 'h', texto: '9.2 Resultados por tipo de gas' },
+    { k: 'tabla', cab: ['Gas', 'Familia', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)', '% del total'], filas: [
+      ...gases.map((x) => [x.gas, x.familia, num(x.toneladasGas, x.fluorado || x.gas !== 'CO₂' ? 4 : 2), num(x.pca, 0), tn(x.toneladasCO2e * 1000, x.gas === 'CH₄' || x.gas === 'N₂O' ? 3 : 2), totalGases > 0 ? `${num((x.toneladasCO2e / totalGases) * 100, 1)} %` : '—']),
+      ['Total', '', '', '', tn(totalGases * 1000), '100 %'],
+    ], numericas: [2, 3, 4, 5], pie: 'Cada gas en toneladas del propio gas; las emisiones de CO₂e resultan de multiplicarlas por su potencial de calentamiento global (PCA). Los gases fluorados de las recargas se expresan en CO₂e igual que el CH₄ y el N₂O, con el PCA de cada gas del conjunto de factores utilizado.' },
+    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales(gases.filter((x) => x.toneladasCO2e > 0 || !x.fluorado).map((x) => ({ nombre: x.fluorado ? `${x.gas} (${x.familia})` : x.gas, t: x.toneladasCO2e })), 'Emisiones por gas', 3), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
     { k: 'h', texto: '9.4 Resultados por centro' },

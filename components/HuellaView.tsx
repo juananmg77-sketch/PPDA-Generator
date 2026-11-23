@@ -7,6 +7,7 @@ import { redactarCorreoPendientes } from '../huella/correo';
 import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
+import { desgloseGases } from '../huella/gases';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { emisionesMensuales } from '../huella/graficos';
@@ -1624,7 +1625,7 @@ const PanelCierre: React.FC<{
     if (!factores || !calculo || previo === undefined) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
+      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,
@@ -2021,7 +2022,6 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   const elec = resultados.filter((r) => r.electricidad);
   const ubic = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eUbicacion ?? 0), 0);
   const merc = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
-  const gas = totales.kgCO2PorGas;
   const acum: Record<string, number> = {};
   for (const r of resultados) { const k = `${r.linea.centro} · ${r.linea.contador || 'sin contador'}`; acum[k] = (acum[k] ?? 0) + r.kgCO2e; }
   const porContador = (Object.keys(acum) as string[]).map((k) => [k, acum[k]] as [string, number]);
@@ -2107,7 +2107,7 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
       <div className="grid md:grid-cols-2 gap-4">
         <div className={card}>
           <h3 className="text-sm font-bold text-slate-800 mb-2">Por gas (t CO₂e)</h3>
-          <Tabla filas={[['CO₂', gas.co2], ['CH₄', gas.ch4_co2e], ['N₂O', gas.n2o_co2e], ['Fluorados (refrigerantes)', gas.fluorados_co2e]]} />
+          <Tabla filas={desgloseGases(resultados, factores).filter((x) => !x.fluorado || x.toneladasCO2e > 0).map((x): [string, number] => [x.fluorado ? `${x.gas} (${x.familia})` : x.gas, x.toneladasCO2e * 1000])} />
         </div>
         <div className={card}>
           <h3 className="text-sm font-bold text-slate-800 mb-2">Electricidad: dos métodos (t CO₂e)</h3>

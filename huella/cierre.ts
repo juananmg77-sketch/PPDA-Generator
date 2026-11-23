@@ -8,7 +8,7 @@ export type DestinoCierre = 'facturas' | 'consumos' | 'centros';
 export interface DetalleCierre { texto: string; nota?: string }
 export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string; /** Qué elementos concretos afecta. */ detalle?: DetalleCierre[]; /** Pantalla donde se resuelve. */ ir?: DestinoCierre; irEtiqueta?: string }
 
-export interface DocCierre { nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null }
+export interface DocCierre { nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -34,10 +34,42 @@ export interface EntradaCierre {
   exclusionTotal?: number; // % total (5 por defecto)
 }
 
+const DIA = 86400000;
+const aFecha = (iso?: string | null) => { const t = iso ? Date.parse(`${iso.slice(0, 10)}T12:00:00Z`) : NaN; return Number.isNaN(t) ? null : t; };
+/** Días en que dos periodos facturados coinciden (0 si solo se tocan en un extremo). */
+const diasSolape = (a: DocCierre, b: DocCierre) => {
+  const a1 = aFecha(a.periodoDesde), a2 = aFecha(a.periodoHasta), b1 = aFecha(b.periodoDesde), b2 = aFecha(b.periodoHasta);
+  if (a1 === null || a2 === null || b1 === null || b2 === null) return 0;
+  return Math.max(0, (Math.min(a2, b2) - Math.max(a1, b1)) / DIA);
+};
+
+/**
+ * Series de facturas de un mismo suministro. Se agrupa por centro, tipo y contador, y luego se FUSIONAN las series de un mismo centro y tipo
+ * que nunca facturan a la vez (solape de más de 3 días): son el mismo suministro con el identificador escrito de otra forma
+ * (nº de contador, CUPS, CUPS mal leído o sin contador). Dos contadores reales facturan a la vez y no se fusionan.
+ */
+export function seriesDeSuministro(docs: DocCierre[]): Array<{ tipo: string; contador: string; items: DocCierre[] }> {
+  const base = agruparPorTipoYContador(docs, (d) => `${d.centro ?? ''}\u0000${d.tipo}`, (d) => d.contador);
+  const padre = base.map((_, i) => i);
+  const raiz = (i: number): number => (padre[i] === i ? i : (padre[i] = raiz(padre[i])));
+  for (let i = 0; i < base.length; i++) for (let j = i + 1; j < base.length; j++) {
+    if (base[i].tipo !== base[j].tipo) continue;
+    const concurrentes = base[i].items.some((a) => base[j].items.some((b) => diasSolape(a, b) > 3));
+    if (!concurrentes) padre[raiz(j)] = raiz(i);
+  }
+  const m = new Map<number, { tipo: string; contadores: string[]; items: DocCierre[] }>();
+  base.forEach((g, i) => {
+    const r = raiz(i); const e = m.get(r) ?? { tipo: g.tipo.split('\u0000')[1], contadores: [], items: [] };
+    if (g.contador !== 'sin contador') e.contadores.push(g.contador);
+    e.items.push(...g.items); m.set(r, e);
+  });
+  return [...m.values()].map((e) => ({ tipo: e.tipo, contador: e.contadores.length ? e.contadores.join(' + ') : 'sin contador', items: e.items }));
+}
+
 /** Huecos de meses (entre el primer y el último mes cubierto) en cada serie de facturas de electricidad o gas. */
 export function huecosMensuales(docs: DocCierre[], anio: number): Array<{ tipo: string; contador: string; faltan: string[] }> {
   const validas = docs.filter((d) => d.estado === 'revisado' && (d.tipo === 'electricidad' || d.tipo === 'gas_natural'));
-  return agruparPorTipoYContador(validas, (d) => d.tipo, (d) => d.contador)
+  return seriesDeSuministro(validas)
     .map((g) => {
       const cubiertos = new Set(g.items.flatMap((d) => mesesTocados(d.periodoDesde, d.periodoHasta, anio)));
       if (cubiertos.size === 0) return { tipo: g.tipo, contador: g.contador, faltan: [] as string[] };
@@ -47,6 +79,17 @@ export function huecosMensuales(docs: DocCierre[], anio: number): Array<{ tipo: 
       return { tipo: g.tipo, contador: g.contador, faltan };
     })
     .filter((x) => x.faltan.length > 0);
+}
+
+/** Facturas confirmadas que repiten periodo y cantidad de otra del mismo centro y tipo (aunque el contador esté escrito distinto): se contarían dos veces. */
+export function facturasDuplicadas(docs: DocCierre[]): DocCierre[][] {
+  const m = new Map<string, DocCierre[]>();
+  for (const d of docs) {
+    if (d.estado !== 'revisado' || !d.periodoDesde || !d.periodoHasta || !(Number(d.cantidad) > 0)) continue;
+    const k = `${d.centro ?? ''}|${d.tipo}|${d.periodoDesde}|${d.periodoHasta}|${d.cantidad}`;
+    m.set(k, [...(m.get(k) ?? []), d]);
+  }
+  return [...m.values()].filter((g) => g.length > 1);
 }
 
 /** Evalúa el criterio de insignificancia sobre porcentajes estimados de fuentes excluidas. */
@@ -84,6 +127,11 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   if (sinOrigen > 0) add('info', 'origen_electricidad', `${sinOrigen} factura(s) de electricidad sin garantía de origen acreditada: se tratan como energía de red (mix balear). Si alguna tiene garantía de origen renovable o autoconsumo, aplíquelo abajo a todas o corríjalo en esa factura antes de cerrar.`, { detalle: sinOrigenDocs.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
   for (const h of huecosMensuales(e.docs, e.anio)) add('aviso', 'hueco_meses', `${h.tipo === 'electricidad' ? 'Electricidad' : 'Gas natural'}${h.contador !== 'sin contador' ? ` (${h.contador})` : ''}: faltan facturas de ${h.faltan.join(', ')}.`, { ir: 'facturas', irEtiqueta: 'Subir facturas' });
+
+  const dups = facturasDuplicadas(e.docs);
+  if (dups.length > 0) add('error', 'facturas_duplicadas', `${dups.length} factura(s) repetida(s) (mismo centro, periodo y cantidad): se contarían dos veces. Elimine o rechace la repetida.`, { detalle: dups.flatMap((g) => g.map((d, i) => ({ texto: nom(d), nota: i === 0 ? 'misma factura que las siguientes' : 'repetida' }))), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
+  const ceros = e.docs.filter((d) => d.estado === 'revisado' && d.cantidad === 0 && d.tipo !== 'otro');
+  if (ceros.length > 0) add('aviso', 'consumo_cero', `${ceros.length} factura(s) confirmadas con consumo 0: compruebe que no falta una página o una lectura (el consumo quedaría subestimado).`, { detalle: ceros.map((d) => ({ texto: nom(d) })), ir: 'facturas', irEtiqueta: 'Ir a las facturas' });
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;

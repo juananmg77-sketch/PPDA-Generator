@@ -1,5 +1,6 @@
 // Correo tipo al cliente con lo que falta por aportar para cerrar el cálculo. Solo redacta un borrador: lo revisa y lo envía una persona.
 import { mesesTocados } from './mensual.ts';
+import { seriesDeSuministro } from './cierre.ts';
 import type { DocCierre } from './cierre.ts';
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -20,24 +21,18 @@ export interface CorreoPendientes {
   hayPendientes: boolean;
 }
 
-/** Meses sin factura de cada serie (centro + tipo + contador). Una serie sin ninguna factura confirmada o leída no se reclama: no se sabe si existe. */
+/** Meses sin factura de cada suministro (centro + tipo; los identificadores distintos de un mismo suministro se unen). Un suministro sin ninguna factura confirmada o leída no se reclama: no se sabe si existe. */
 export function mesesSinFactura(docs: DocCierre[], anio: number, anioCompleto: boolean): SerieFaltante[] {
-  const m = new Map<string, { centro: string; tipo: string; contador: string; cubiertos: Set<number> }>();
-  for (const d of docs) {
-    if ((d.estado !== 'revisado' && d.estado !== 'leido') || (d.tipo !== 'electricidad' && d.tipo !== 'gas_natural')) continue;
-    const centro = d.centro ?? 'Centro sin nombre'; const contador = (d.contador ?? '').trim() || 'sin contador';
-    const k = `${centro}\u0000${d.tipo}\u0000${contador}`;
-    const s = m.get(k) ?? { centro, tipo: d.tipo, contador, cubiertos: new Set<number>() };
-    for (const x of mesesTocados(d.periodoDesde, d.periodoHasta, anio)) s.cubiertos.add(x);
-    m.set(k, s);
-  }
+  const utiles = docs.filter((d) => (d.estado === 'revisado' || d.estado === 'leido') && (d.tipo === 'electricidad' || d.tipo === 'gas_natural'));
   const out: SerieFaltante[] = [];
-  for (const s of m.values()) {
-    if (s.cubiertos.size === 0) continue;
-    const desde = anioCompleto ? 0 : Math.min(...s.cubiertos), hasta = anioCompleto ? 11 : Math.max(...s.cubiertos);
+  for (const s of seriesDeSuministro(utiles)) {
+    const cubiertos = new Set<number>();
+    for (const d of s.items) for (const x of mesesTocados(d.periodoDesde, d.periodoHasta, anio)) cubiertos.add(x);
+    if (cubiertos.size === 0) continue;
+    const desde = anioCompleto ? 0 : Math.min(...cubiertos), hasta = anioCompleto ? 11 : Math.max(...cubiertos);
     const faltan: string[] = [];
-    for (let i = desde; i <= hasta; i++) if (!s.cubiertos.has(i)) faltan.push(MESES[i]);
-    if (faltan.length) out.push({ centro: s.centro, tipo: s.tipo, contador: s.contador, faltan });
+    for (let i = desde; i <= hasta; i++) if (!cubiertos.has(i)) faltan.push(MESES[i]);
+    if (faltan.length) out.push({ centro: s.items[0].centro ?? 'Centro sin nombre', tipo: s.tipo, contador: s.contador, faltan });
   }
   return out.sort((a, b) => a.centro.localeCompare(b.centro) || a.tipo.localeCompare(b.tipo));
 }

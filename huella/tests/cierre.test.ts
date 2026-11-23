@@ -111,3 +111,29 @@ test('cierre: avisa (info) de centros sin plantilla media solo si se ha usado', 
   assert.ok(!evaluarCierre({ ...base, centrosSinPlantilla: [] }).items.some((i) => i.codigo === 'plantilla_media'));
   assert.ok(evaluarCierre({ ...base, centrosSinPlantilla: ['Hotel B'] }).puedeCerrar);
 });
+
+// ── Caso real: un mismo contrato de gas con tres identificadores distintos ──
+import { facturasDuplicadas, seriesDeSuministro } from '../cierre.ts';
+const g = (nombre: string, contador: string | null, d: string, h: string, cantidad: number) => ({ nombre, centro: 'Hotel A', estado: 'revisado' as const, tipo: 'gas_natural', contador, periodoDesde: d, periodoHasta: h, cantidad });
+const gasAstoria = [
+  g('ene (falta 2ª pág.)', null, '2023-12-21', '2024-01-23', 0), g('feb', 'ES0238833000167922NX', '2024-01-23', '2024-02-21', 0), g('mar', '816000231', '2024-02-21', '2024-03-20', 5930),
+  g('abr1 DUPLICADO', 'ES0238330000167922NX', '2024-03-20', '2024-04-02', 7389), g('abr1', '816000231', '2024-03-20', '2024-04-02', 7389), g('abr2', '816000231', '2024-04-02', '2024-04-22', 11354),
+  g('may', 'ES0238330000167922NX', '2024-04-22', '2024-05-27', 23287), g('jun', '816000231', '2024-05-27', '2024-06-20', 16091), g('jul', '816000231', '2024-06-20', '2024-07-22', 21295),
+  g('ago', 'ES0238330000167922NX', '2024-07-22', '2024-08-23', 21509), g('sep', 'ES0238330000167922NX', '2024-08-23', '2024-09-21', 20005.67), g('oct', '816000231', '2024-09-21', '2024-10-22', 18287.27),
+  g('nov', 'ES0238330000167922NX', '2024-10-22', '2024-11-21', 25765), g('dic', null, '2024-12-01', '2024-12-31', 0),
+];
+test('un mismo suministro con identificadores distintos no genera huecos falsos; se detectan duplicado y consumos a cero', () => {
+  assert.equal(seriesDeSuministro(gasAstoria).length, 1);
+  assert.deepEqual(huecosMensuales(gasAstoria, 2024), []);
+  const dup = facturasDuplicadas(gasAstoria); assert.equal(dup.length, 1); assert.deepEqual(dup[0].map((d) => d.nombre).sort(), ['abr1', 'abr1 DUPLICADO']);
+  const r = evaluarCierre({ ...base, docs: gasAstoria });
+  assert.equal(r.puedeCerrar, false);
+  assert.ok(r.items.some((i) => i.codigo === 'facturas_duplicadas' && i.nivel === 'error'));
+  assert.deepEqual(r.items.find((i) => i.codigo === 'consumo_cero')!.detalle!.map((d) => d.texto), ['ene (falta 2ª pág.)', 'feb', 'dic']);
+  assert.ok(!r.items.some((i) => i.codigo === 'hueco_meses'));
+});
+test('dos contadores que facturan a la vez siguen siendo series distintas', () => {
+  const a = [g('a1', 'A', '2024-01-01', '2024-01-31', 10), g('a2', 'A', '2024-04-01', '2024-04-30', 10), g('b1', 'B', '2024-01-01', '2024-03-31', 10)];
+  assert.equal(seriesDeSuministro(a).length, 2);
+  assert.deepEqual(huecosMensuales(a, 2024)[0].faltan, ['feb', 'mar']);
+});

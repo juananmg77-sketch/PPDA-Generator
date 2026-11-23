@@ -2,6 +2,7 @@
 import type { CalculoExtintores } from '../huella/exclusiones';
 import type { LecturaExtintores } from '../huella/extintores';
 import type { CriteriosSignificancia, SubcategoriaPlantilla } from '../huella/significancia';
+import type { LecturaInformeBase } from '../huella/lecturaInformeBase';
 import type { AnioBaseDef, ConfigRecalculo, DecisionRecalculo } from '../huella/anioBase';
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
@@ -113,6 +114,16 @@ export const huellaService = {
     const up = await supabase.storage.from('hc-facturas').upload(path, file, { contentType: file.type, upsert: false });
     if (up.error) throw new Error(up.error.message);
     return path;
+  },
+  /** Lee con IA el informe del año base ya subido (propuesta que la persona revisa). */
+  async leerInformeBase(path: string): Promise<LecturaInformeBase & { modelo?: string }> {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
+    const resp = await fetch('/api/leer-informe-base', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
+    const cuerpo = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
+    return cuerpo;
   },
   /** Lee con IA el certificado ya subido (devuelve solo una propuesta que la persona revisa). */
   async leerExtintores(path: string): Promise<LecturaExtintores & { modelo?: string }> {

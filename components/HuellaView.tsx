@@ -19,7 +19,8 @@ import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { generarInformePdf } from '../huella/informePdf';
 import { emisionesMensuales } from '../huella/graficos';
-import { fmt, fmtOpc } from '../huella/formato';
+import { fmt, fmtLibre, fmtOpc } from '../huella/formato';
+import { resumenDeLectura } from '../huella/lecturaInformeBase';
 import { huellaService, EvaluacionDB, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { conPcaManual } from '../huella/factores';
@@ -1747,26 +1748,54 @@ const ModalAnioBase: React.FC<{ org: Organizacion; invs: Inventario[]; onOrg: (o
   const [invId, setInvId] = useState(d?.inventarioId ?? invs[0]?.id ?? '');
   const m = d?.manual;
   const [f, setF] = useState({ anio: String(d?.anio ?? ''), c1: m ? String(m.porCategoria[1] ?? 0).replace('.', ',') : '', c2: m ? String(m.porCategoria[2] ?? 0).replace('.', ',') : '', est: m?.estancias ? String(m.estancias) : '', plan: m?.plantilla ? String(m.plantilla).replace('.', ',') : '', fid: m?.factoresId ?? '', centros: (m?.centros ?? []).join(', '), origen: d?.origen ?? '', evid: d?.evidenciaUrl ?? '', just: d?.justificacion ?? '' });
-  const [archivo, setArchivo] = useState<File | null>(null);
+  const [ev, setEv] = useState<{ path: string; nombre: string } | null>(d?.evidenciaPath ? { path: d.evidenciaPath, nombre: d.evidenciaNombre ?? 'informe' } : null);
+  const [porFuente, setPorFuente] = useState<Record<string, number>>(m?.porFuente ?? {});
+  const [leyendo, setLeyendo] = useState(false);
+  const [avisosLectura, setAvisosLectura] = useState<string[]>([]);
   const [guardando, setGuardando] = useState(false);
   const num = (x: string) => Number(x.replace(',', '.'));
   const inv = invs.find((i) => i.id === invId);
+  /** Sube el informe del año base (queda como evidencia) y la IA propone los datos para que se revisen. */
+  const subirYLeer = async (file: File | null) => {
+    if (!file) return;
+    setLeyendo(true); setAvisosLectura([]);
+    try {
+      const path = await huellaService.subirCertificadoExclusion(file, org.id, 'anio-base');
+      setEv({ path, nombre: file.name }); setModo('manual');
+      if (file.type !== 'application/pdf') { setAvisosLectura(['Solo se leen PDF: el documento queda como evidencia; introduzca los datos a mano.']); return; }
+      const l = await huellaService.leerInformeBase(path);
+      const { resumen, avisos } = resumenDeLectura(l);
+      setAvisosLectura([...avisos, ...(l.observaciones ? [l.observaciones] : [])]);
+      if (resumen) {
+        setPorFuente(resumen.porFuente);
+        setF((x) => ({ ...x, anio: resumen.anio ? String(resumen.anio) : x.anio, c1: fmtLibre(resumen.porCategoria[1] ?? 0, 2).replace(/\./g, ''), c2: fmtLibre(resumen.porCategoria[2] ?? 0, 2).replace(/\./g, ''),
+          est: resumen.estancias ? String(resumen.estancias) : x.est, plan: resumen.plantilla ? String(resumen.plantilla).replace('.', ',') : x.plan, fid: resumen.factoresId ?? x.fid, centros: resumen.centros ? resumen.centros.join(', ') : x.centros,
+          origen: x.origen || `Informe de huella${resumen.anio ? ` ${resumen.anio}` : ''}${l.organizacion ? ` de ${l.organizacion}` : ''}${l.verificador ? `, verificado por ${l.verificador}` : ''}${l.referenciaVerificacion ? ` (ref. ${l.referenciaVerificacion})` : ''}`.trim() }));
+      }
+    } catch (e) { falla(e); } finally { setLeyendo(false); }
+  };
   const def = (): AnioBaseDef => modo === 'inventario'
-    ? { anio: inv?.anio ?? 0, inventarioId: invId, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: d?.evidenciaNombre ?? null, evidenciaPath: d?.evidenciaPath ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) }
-    : { anio: Number(f.anio), inventarioId: null, manual: { anio: Number(f.anio), porCategoria: { 1: num(f.c1) || 0, 2: num(f.c2) || 0 }, total: (num(f.c1) || 0) + (num(f.c2) || 0), porFuente: {}, estancias: f.est ? num(f.est) : null, plantilla: f.plan ? num(f.plan) : null, factoresId: f.fid.trim() || null, centros: f.centros.trim() ? f.centros.split(',').map((x) => x.trim()).filter(Boolean) : null, factores: null }, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: d?.evidenciaNombre ?? null, evidenciaPath: d?.evidenciaPath ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) };
+    ? { anio: inv?.anio ?? 0, inventarioId: invId, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: ev?.nombre ?? null, evidenciaPath: ev?.path ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) }
+    : { anio: Number(f.anio), inventarioId: null, manual: { anio: Number(f.anio), porCategoria: { 1: num(f.c1) || 0, 2: num(f.c2) || 0 }, total: (num(f.c1) || 0) + (num(f.c2) || 0), porFuente, estancias: f.est ? num(f.est) : null, plantilla: f.plan ? num(f.plan) : null, factoresId: f.fid.trim() || null, centros: f.centros.trim() ? f.centros.split(',').map((x) => x.trim()).filter(Boolean) : null, factores: null }, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: ev?.nombre ?? null, evidenciaPath: ev?.path ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) };
   const previa = def();
-  const incid = validarAnioBase({ ...previa, ...(archivo ? { evidenciaNombre: archivo.name, evidenciaPath: 'pendiente' } : {}) });
+  const incid = validarAnioBase(previa);
   const guardar = async () => {
     setGuardando(true);
     try {
-      const x = def();
-      if (archivo) { x.evidenciaPath = await huellaService.subirCertificadoExclusion(archivo, org.id, 'anio-base'); x.evidenciaNombre = archivo.name; }
-      onOrg(await huellaService.guardarAnioBaseOrganizacion(org.id, x)); onCerrar();
+      onOrg(await huellaService.guardarAnioBaseOrganizacion(org.id, def())); onCerrar();
     } catch (e) { falla(e); } finally { setGuardando(false); }
   };
   return (
     <Modal titulo="Año base de la organización" onCerrar={onCerrar}>
       <div className="space-y-3 text-xs max-h-[70vh] overflow-y-auto pr-1">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-3">
+          <p className="font-semibold text-blue-900 mb-1">¿Tiene el informe del año base en PDF?</p>
+          <p className="text-[11px] text-blue-800 mb-2">Súbalo y la IA propone los datos (año, categorías 1 y 2, estancias, plantilla, factores, centros y fuentes). El informe queda como evidencia. Compruebe cada dato antes de guardar.</p>
+          <input type="file" accept="application/pdf,image/*" className="block w-full text-xs" disabled={leyendo} onChange={(e) => void subirYLeer(e.target.files?.[0] ?? null)} aria-label="Informe del año base" />
+          {leyendo && <p className="mt-2 text-blue-900"><Loader2 size={13} className="inline animate-spin mr-2" />Subiendo y leyendo el informe con IA (puede tardar un minuto)…</p>}
+          {ev && !leyendo && <p className="mt-2 text-blue-900">Evidencia: <strong>{ev.nombre}</strong></p>}
+          {avisosLectura.length > 0 && <ul className="mt-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisosLectura.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+        </div>
         <div className="flex gap-4">
           <label className="flex items-center gap-2 font-semibold"><input type="radio" checked={modo === 'inventario'} onChange={() => setModo('inventario')} /> Vincular a un inventario existente</label>
           <label className="flex items-center gap-2 font-semibold"><input type="radio" checked={modo === 'manual'} onChange={() => setModo('manual')} /> Introducir los datos a mano</label>
@@ -1786,7 +1815,6 @@ const ModalAnioBase: React.FC<{ org: Organizacion; invs: Inventario[]; onOrg: (o
             <label className="font-semibold text-slate-600 col-span-2">Centros incluidos (separados por comas; permite evaluar el cambio de límites)<input className={`${input} mt-1`} value={f.centros} onChange={(e) => setF({ ...f, centros: e.target.value })} /></label>
             <label className="font-semibold text-slate-600 col-span-2">Origen de los datos *<input className={`${input} mt-1`} value={f.origen} placeholder="Ej.: informe de huella 2019 verificado por…" onChange={(e) => setF({ ...f, origen: e.target.value })} /></label>
             <label className="font-semibold text-slate-600 col-span-2">Evidencia: enlace *<input className={`${input} mt-1`} value={f.evid} onChange={(e) => setF({ ...f, evid: e.target.value })} /></label>
-            <label className="font-semibold text-slate-600 col-span-2">…o suba el documento<input type="file" accept="application/pdf,image/*" className="block w-full text-xs mt-1" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} /></label>
           </div>
         )}
         <label className="block font-semibold text-slate-600">Justificación de la elección del año base *

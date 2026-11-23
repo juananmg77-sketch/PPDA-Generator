@@ -20,6 +20,8 @@ export interface EntradaCierre {
   /** Descripción de cada dato que no se puede calcular (opcional). */
   fallosDetalle?: string[];
   centrosSinIndice: string[];
+  /** Centros sin plantilla media cuando otros sí la tienen (el ratio por trabajador quedaría incompleto). */
+  centrosSinPlantilla?: string[];
   factoresId: string;
   factoresFijados: boolean;
   /** Totales del año y del anterior (si hay inventario previo) para el análisis de variaciones. */
@@ -73,6 +75,8 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   if (e.actividadManual > 0) add('info', 'datos_manuales', `${e.actividadManual} dato(s) introducidos a mano sin factura: el verificador pedirá su evidencia.`);
 
   if (e.centrosSinIndice.length > 0) add('aviso', 'indice_actividad', `Sin índice de actividad (estancias) en: ${e.centrosSinIndice.join(', ')}. Los ratios no se calcularán para ellos (válido si el centro estuvo cerrado).`, { ir: 'centros', irEtiqueta: 'Indicar las estancias' });
+
+  if ((e.centrosSinPlantilla ?? []).length > 0) add('info', 'plantilla_media', `Sin plantilla media en: ${e.centrosSinPlantilla!.join(', ')}. El ratio por trabajador solo contará los centros que la tienen.`, { ir: 'centros', irEtiqueta: 'Indicar la plantilla' });
 
   // Origen de la electricidad: se pregunta aquí, una sola vez, y no en cada factura
   const sinOrigenDocs = e.docs.filter((d) => d.estado === 'revisado' && d.tipo === 'electricidad' && (!d.origenElectricidad || d.origenElectricidad === 'desconocida'));

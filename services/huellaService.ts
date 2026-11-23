@@ -17,7 +17,7 @@ export interface Verificacion { entidad?: string; nivel?: string; fecha?: string
 export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
 export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
-export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; notas?: string | null }
+export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; /** Plantilla media del año (trabajadores), para el ratio por trabajador. */ plantilla_media?: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
   periodo_desde?: string | null; periodo_hasta?: string | null; archivo_path: string; nombre_archivo?: string | null;

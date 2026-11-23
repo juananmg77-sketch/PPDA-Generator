@@ -508,6 +508,7 @@ const PanelResumen: React.FC<{
   const esConsultor = rol === 'consultor';
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
   const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
+  const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const porRevisar = docs.filter((d) => d.estado === 'leido').length;
   const sinLeer = docs.filter((d) => d.estado === 'subido').length;
   const huecos = huecosMensuales(docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta })), inv.anio);
@@ -532,11 +533,12 @@ const PanelResumen: React.FC<{
   return (
     <div className="space-y-4">
       {calculo && confirmadas > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${plantilla > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           {kpi('Total', t(calculo.totales.kgCO2eTotal), 't CO₂e')}
           {kpi('Emisiones directas', t(calculo.totales.kgCO2eAlcance1), 't CO₂e · Alcance 1')}
           {kpi('Electricidad', t(calculo.totales.kgCO2eAlcance2), 't CO₂e · Alcance 2')}
           {kpi('Por estancia', indice > 0 ? ratio(calculo.totales.kgCO2eTotal, indice).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—', indice > 0 ? 'kg CO₂e por estancia' : 'Falta indicar las estancias')}
+          {plantilla > 0 && kpi('Por trabajador', ratio(calculo.totales.kgCO2eTotal, plantilla).toLocaleString('es-ES', { maximumFractionDigits: 0 }), `kg CO₂e · plantilla media ${plantilla.toLocaleString('es-ES', { maximumFractionDigits: 2 })}`)}
         </div>
       ) : <div className={`${card} text-sm text-slate-600`}>Los resultados aparecerán aquí en cuanto haya facturas revisadas.</div>}
 
@@ -830,7 +832,7 @@ const PanelCentros: React.FC<{
   };
   const guardar = async (c: Centro, cambios: Partial<InventarioCentro>) => {
     if (!inv) return;
-    const base = invCentros.find((x) => x.centro_id === c.id) ?? { inventario_id: inv.id, centro_id: c.id, indice_actividad: 0 };
+    const base = invCentros.find((x) => x.centro_id === c.id) ?? { inventario_id: inv.id, centro_id: c.id, indice_actividad: 0, plantilla_media: 0 };
     try { await huellaService.guardarInventarioCentro({ ...base, ...cambios }); onGuardado(); } catch (e) { falla(e); }
   };
   const [anadir, setAnadir] = useState<null | 'suite' | 'mano'>(null);
@@ -906,11 +908,11 @@ const PanelCentros: React.FC<{
 
       <div className={card}>
         <h2 className="text-sm font-bold text-slate-800">Periodo operativo e índice de actividad {inv ? `(${inv.anio})` : ''}</h2>
-        <p className="text-xs text-slate-600 mt-1 mb-3">Si un centro estuvo cerrado o abrió a mitad de año, indique su periodo. El índice (estancias) puede ser 0: los ratios solo se calculan cuando es mayor que 0.</p>
+        <p className="text-xs text-slate-600 mt-1 mb-3">Si un centro estuvo cerrado o abrió a mitad de año, indique su periodo. El índice (estancias) puede ser 0: los ratios solo se calculan cuando es mayor que 0. La plantilla media del año (de la empresa, según el listado de la Seguridad Social) es opcional y sirve para el ratio por trabajador.</p>
         {!inv ? <p className="text-sm text-slate-600">Abra un cálculo para indicar estos datos.</p> : centros.length === 0 ? <p className="text-sm text-slate-600">Añada al menos un centro.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Operativo desde</th><th className="pr-3">Hasta</th><th>Estancias</th></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Centro</th><th className="pr-3">Operativo desde</th><th className="pr-3">Hasta</th><th className="pr-3">Estancias</th><th>Plantilla media</th></tr></thead>
               <tbody>
                 {centros.map((c) => {
                   const x = invCentros.find((y) => y.centro_id === c.id);
@@ -919,7 +921,8 @@ const PanelCentros: React.FC<{
                       <td className="py-2 pr-3 font-semibold text-slate-800">{c.nombre}<span className="block text-[11px] font-normal text-slate-500">{[c.municipio, c.en_baleares ? c.isla : 'Fuera de Baleares'].filter(Boolean).join(' · ')}</span></td>
                       <td className="pr-3"><input type="date" className={input} disabled={!abierto} defaultValue={x?.operativo_desde ?? ''} onBlur={(e) => guardar(c, { operativo_desde: e.target.value || null })} aria-label={`Desde ${c.nombre}`} /></td>
                       <td className="pr-3"><input type="date" className={input} disabled={!abierto} defaultValue={x?.operativo_hasta ?? ''} onBlur={(e) => guardar(c, { operativo_hasta: e.target.value || null })} aria-label={`Hasta ${c.nombre}`} /></td>
-                      <td><input type="number" min={0} className={input} disabled={!abierto} defaultValue={x?.indice_actividad ?? 0} onBlur={(e) => guardar(c, { indice_actividad: Math.max(0, Number(e.target.value) || 0) })} aria-label={`Estancias ${c.nombre}`} /></td>
+                      <td className="pr-3"><input type="number" min={0} className={input} disabled={!abierto} defaultValue={x?.indice_actividad ?? 0} onBlur={(e) => guardar(c, { indice_actividad: Math.max(0, Number(e.target.value) || 0) })} aria-label={`Estancias ${c.nombre}`} /></td>
+                      <td><input type="number" min={0} step="any" className={input} disabled={!abierto} defaultValue={x?.plantilla_media ?? 0} onBlur={(e) => guardar(c, { plantilla_media: Math.max(0, Number(e.target.value) || 0) })} aria-label={`Plantilla media ${c.nombre}`} /></td>
                     </tr>
                   );
                 })}
@@ -1610,6 +1613,7 @@ const PanelCierre: React.FC<{
 
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
   const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
+  const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const variaciones = previo && calculo ? [
     { nombre: 'Alcance 1', actual: calculo.totales.kgCO2eAlcance1, anterior: previo.a1 },
     { nombre: 'Alcance 2', actual: calculo.totales.kgCO2eAlcance2, anterior: previo.a2 },
@@ -1625,6 +1629,7 @@ const PanelCierre: React.FC<{
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,
       centrosSinIndice: centros.filter((c) => !(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad > 0)).map((c) => c.nombre),
+      centrosSinPlantilla: plantilla > 0 ? centros.filter((c) => !(Number(invCentros.find((x) => x.centro_id === c.id)?.plantilla_media) > 0)).map((c) => c.nombre) : [],
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
       exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
@@ -1855,7 +1860,7 @@ const PanelInforme: React.FC<{
     const nombreCentro = (id: string) => centros.find((x) => x.id === id)?.nombre ?? id;
     return {
       organizacion: { nombre: org.nombre, cif: org.cif, direccion: org.direccion, cnae: org.cnae, iae: org.iae, criterio: org.criterio_consolidacion ?? 'control', consultorEmail: org.consultor_email },
-      centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0) }; }),
+      centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0), plantilla: Number(ic?.plantilla_media ?? 0) }; }),
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
       actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
@@ -1948,6 +1953,7 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   if (!factores || !calculo) return <div className={`${card} text-sm text-slate-600`}><Loader2 className="inline animate-spin mr-2" size={14} />Cargando factores de emisión…</div>;
   const { totales, resultados, fallos } = calculo;
   const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
+  const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const elec = resultados.filter((r) => r.electricidad);
   const ubic = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eUbicacion ?? 0), 0);
   const merc = elec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
@@ -1977,11 +1983,12 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
   return (
     <div className="space-y-4">
       {fallos.length > 0 && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-xs space-y-1" role="alert">{fallos.map((f, i) => <p key={i}><AlertTriangle size={12} className="inline mr-1" />{f} (excluido del cálculo hasta corregirlo)</p>)}</div>}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${plantilla > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
         {kpi('Alcance 1 · emisiones directas', totales.kgCO2eAlcance1)}
         {kpi('Alcance 2 · electricidad', totales.kgCO2eAlcance2, 't CO₂e (criterio registro balear)')}
         {kpi('Total', totales.kgCO2eTotal)}
         {kpi('Por estancia', indice > 0 ? ratio(totales.kgCO2eTotal, indice) * 1000 : 0, indice > 0 ? `kg CO₂e/estancia (${num(indice)} estancias)` : 'Indique estancias en Centros')}
+        {plantilla > 0 && kpi('Por trabajador', ratio(totales.kgCO2eTotal, plantilla) * 1000, `kg CO₂e/trabajador (plantilla media ${num(plantilla, 2)})`)}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">

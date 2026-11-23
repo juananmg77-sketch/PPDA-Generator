@@ -104,3 +104,10 @@ test('correo: lista faltantes, ilegibles y electricidad sin garantía; sin pendi
   const ok = redactarCorreoPendientes({ organizacion: 'Cadena X', anio: 2024, anioCompleto: false, docs: [rv('Hotel A', 'electricidad', 'C1', '2024-01-01', '2024-01-31', 'no')], remitente: 'J' });
   assert.equal(ok.hayPendientes, false); assert.match(ok.cuerpo, /no hay documentación pendiente/);
 });
+
+test('cierre: avisa (info) de centros sin plantilla media solo si se ha usado', () => {
+  const sin = evaluarCierre({ ...base, centrosSinPlantilla: ['Hotel B'] }).items.find((i) => i.codigo === 'plantilla_media');
+  assert.ok(sin && sin.nivel === 'info' && /Hotel B/.test(sin.mensaje));
+  assert.ok(!evaluarCierre({ ...base, centrosSinPlantilla: [] }).items.some((i) => i.codigo === 'plantilla_media'));
+  assert.ok(evaluarCierre({ ...base, centrosSinPlantilla: ['Hotel B'] }).puedeCerrar);
+});

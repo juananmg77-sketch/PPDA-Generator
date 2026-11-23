@@ -22,7 +22,7 @@ export interface ModeloInforme {
 
 export interface DatosInforme {
   organizacion: { nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio: 'control' | 'participacion'; consultorEmail?: string | null };
-  centros: Array<{ nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; enBaleares: boolean; unidades?: number | null; operativoDesde?: string | null; operativoHasta?: string | null; indice: number }>;
+  centros: Array<{ nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; enBaleares: boolean; unidades?: number | null; operativoDesde?: string | null; operativoHasta?: string | null; indice: number; /** Plantilla media del año (trabajadores). */ plantilla?: number }>;
   inventario: {
     anio: number; estado: string; anioBase?: number | null; cerradoEn?: string | null; conjuntoFijado: boolean;
     cierre?: { analisisVariacion?: string; reaperturas?: Array<{ fecha: string; usuario: string; motivo: string }> } | null;
@@ -93,6 +93,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   if (!cerrado) pendientes.push('El inventario no está cerrado: el informe es un borrador y sus cifras pueden cambiar.');
   if (!inv.conjuntoFijado) pendientes.push('Los factores de emisión no están fijados en el inventario.');
   const sinIndice = d.centros.filter((c) => !(c.indice > 0)).map((c) => c.nombre);
+  const hayPlantilla = d.centros.some((c) => (c.plantilla ?? 0) > 0);
   if (sinIndice.length) pendientes.push(`Sin índice de actividad (estancias): ${sinIndice.join(', ')}.`);
   if (!RESOLUCIONES[anio]) pendientes.push(`Cite la resolución oficial de factores de emisión de ${anio}: no está incorporada al catálogo.`);
   if (d.actividad.some((a) => !a.documento)) pendientes.push(`${d.actividad.filter((a) => !a.documento).length} dato(s) de actividad sin factura asociada (el verificador pedirá su evidencia).`);
@@ -128,7 +129,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   // ── 4
   const s4: Seccion = { id: '4', titulo: 'Límites de la organización', bloques: [
     { k: 'p', texto: `Criterio de consolidación: ${o.criterio === 'control' ? 'control (operativo o financiero)' : 'participación en el capital'}.` },
-    { k: 'tabla', cab: ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, num(c.indice, 0)]), numericas: [3] },
+    { k: 'tabla', cab: hayPlantilla ? ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias', 'Plantilla media'] : ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, num(c.indice, 0), ...(hayPlantilla ? [(c.plantilla ?? 0) > 0 ? num(c.plantilla!, 2) : 'n/a'] : [])]), numericas: hayPlantilla ? [3, 4] : [3] },
   ] };
 
   // ── 5
@@ -206,6 +207,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const ubic = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eUbicacion ?? 0), 0);
   const merc = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const indiceTotal = d.centros.reduce((s, c) => s + (c.indice > 0 ? c.indice : 0), 0);
+  const plantillaTotal = d.centros.reduce((s, c) => s + ((c.plantilla ?? 0) > 0 ? c.plantilla! : 0), 0);
   const g = tot.kgCO2PorGas;
   // Gráficos de resultados (SVG)
   const fuenteT: Record<string, number> = {};
@@ -238,9 +240,10 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
     { k: 'h', texto: '9.4 Resultados por centro' },
-    { k: 'tabla', cab: ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; return [c.nombre, tn(kg), num(c.indice, 0), c.indice > 0 ? num(kg / 1000 / c.indice, 4) : 'n/a']; }), numericas: [1, 2, 3] },
+    { k: 'tabla', cab: hayPlantilla ? ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia', 'Plantilla media', 't CO₂e por trabajador'] : ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; return [c.nombre, tn(kg), num(c.indice, 0), c.indice > 0 ? num(kg / 1000 / c.indice, 4) : 'n/a', ...(hayPlantilla ? [(c.plantilla ?? 0) > 0 ? num(c.plantilla!, 2) : 'n/a', (c.plantilla ?? 0) > 0 ? num(kg / 1000 / c.plantilla!, 4) : 'n/a'] : [])]; }), numericas: hayPlantilla ? [1, 2, 3, 4, 5] : [1, 2, 3] },
     { k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' },
     ...(d.centros.filter((c) => c.indice > 0).length > 1 ? [{ k: 'grafico' as const, titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' }] : []),
+    ...(hayPlantilla ? [{ k: 'p' as const, texto: plantillaTotal > 0 ? `Ratio global por trabajador: ${num(tot.kgCO2eTotal / 1000 / plantillaTotal, 4)} t CO₂e por trabajador (plantilla media ${num(plantillaTotal, 2)}).` : 'No se calcula el ratio por trabajador.' }] : []),
     { k: 'p', texto: indiceTotal > 0 ? `Ratio global: ${num(tot.kgCO2eTotal / 1000 / indiceTotal, 4)} t CO₂e por estancia (${num(indiceTotal, 0)} estancias).` : 'No se calcula el ratio global: no hay índice de actividad.' },
   ];
   if (d.anterior) {

@@ -97,3 +97,13 @@ test('el informe incluye gráficos en Resultados: reparto, evolución mensual (s
   const sinMensual = construirInforme({ ...base(), anterior: null }).secciones.find((s) => s.id === '9')!.bloques.filter((b) => b.k === 'grafico');
   assert.equal(sinMensual.length, 4); // reparto por fuente + categoría + gas + centro
 });
+
+test('informe: con plantilla media añade el ratio por trabajador; sin ella no cambia', () => {
+  const sin = texto(construirInforme(base()));
+  assert.ok(!/por trabajador/.test(sin));
+  const d = base(); d.centros[0].plantilla = 63.465;
+  const con = texto(construirInforme(d));
+  assert.match(con, /t CO₂e por trabajador/);
+  assert.match(con, /Ratio global por trabajador/);
+  assert.match(con, /63,47|63,465/);
+});

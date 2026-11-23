@@ -43,7 +43,8 @@ export function conMezclas(f: ConjuntoFactores): ConjuntoFactores {
     if (v === null) continue;
     nuevas[nombre] = v;
     const mz = MEZCLAS[nombre];
-    notas.push(`PCA de ${nombre} (mezcla no incluida en la calculadora oficial): ${v.toLocaleString('es-ES')}, media ponderada por masa de sus componentes con los PCA de este conjunto (${Object.entries(mz.componentes).map(([c, x]) => `${c} ${Math.round(x * 100)} %`).join(', ')}; HFO: AR6 ${Object.entries(PCA_HFO).map(([c, x]) => `${c} ${x}`).join(', ')}). ${mz.fuente}`);
+    const comp = Object.entries(mz.componentes).map(([c, x]) => `${c} ${Math.round(x * 100)} % × ${(f.pcaRefrigerantes[c] ?? PCA_HFO[c]).toLocaleString('es-ES')}`).join('; ');
+    notas.push(`PCA de ${nombre} (mezcla sin PCA propio en la calculadora oficial; se declara en «Otros»): ${v.toLocaleString('es-ES')} kg CO2e/kg, media ponderada por masa de los PCA individuales de sus componentes en su última revisión, los de este conjunto de factores (${comp}; HFO según AR6), aunque no coincidan con los usados en años anteriores. ${mz.fuente}`);
   }
   if (!notas.length) return f;
   return { ...f, pcaRefrigerantes: { ...f.pcaRefrigerantes, ...nuevas }, notas: [...f.notas.filter((n) => !notas.includes(n)), ...notas] };

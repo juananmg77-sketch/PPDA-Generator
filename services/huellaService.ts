@@ -1,12 +1,13 @@
 // Acceso a los datos de Huella de carbono (tablas hc_*, con RLS) y a la función de lectura de facturas.
 import type { CalculoExtintores } from '../huella/exclusiones';
 import type { LecturaExtintores } from '../huella/extintores';
+import type { CriteriosSignificancia, SubcategoriaPlantilla } from '../huella/significancia';
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
 import type { HotelSuite } from '../huella/hotelesSuite';
 
-export interface Organizacion { id: string; nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null; suite_cadena?: string | null }
+export interface Organizacion { id: string; nombre: string; /** Criterios de significancia propios de la organización (si no, los de por defecto). */ config_significancia?: Partial<CriteriosSignificancia> | null; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null; suite_cadena?: string | null }
 export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null; latitud?: number | string | null; longitud?: number | string | null; suite_hotel_id?: string | null; suite_codigo?: string | null; suite_actualizado?: string | null }
 export interface CierreDatos {
   analisisVariacion?: string;
@@ -16,7 +17,8 @@ export interface CierreDatos {
 }
 export interface FilaBiblioteca { inventario: Inventario; organizacion: Organizacion; centros: number }
 export interface Verificacion { entidad?: string; nivel?: string; fecha?: string; referencia?: string }
-export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO 14064-1 (1 a 6) a la que pertenece lo excluido. */ categoria_iso?: number | null; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
+export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Enlace o referencia de la evidencia de la exclusión. */ evidencia_url?: string | null; /** Categoría ISO 14064-1 (1 a 6) a la que pertenece lo excluido. */ categoria_iso?: number | null; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
+export interface EvaluacionDB { id: string; inventario_id: string; categoria: number; codigo: string; nombre: string; magnitud_pct: number | null; influencia: 'alta' | 'media' | 'baja' | null; datos: 'buenos' | 'parciales' | 'no_disponibles' | null; requisitos: boolean | null; resultado: 'significativa' | 'no_significativa' | null; justificacion: string | null; cuantificada: boolean }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
 export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; /** Plantilla media del año (trabajadores), para el ratio por trabajador. */ plantilla_media?: number; notas?: string | null }
@@ -121,6 +123,19 @@ export const huellaService = {
     if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
     return cuerpo;
   },
+  // ── Significancia de las emisiones indirectas (configuración y evaluación por inventario)
+  async plantillaSubcategorias(sector: string) { return ok<Array<SubcategoriaPlantilla & { id: string }>>(await supabase.from('hc_plantillas_subcategorias').select('*').eq('sector', sector).order('orden')); },
+  /** Sustituye la plantilla de un sector (solo administradores: lo impone la base de datos). */
+  async guardarPlantilla(sector: string, filas: SubcategoriaPlantilla[]) {
+    ok(await supabase.from('hc_plantillas_subcategorias').delete().eq('sector', sector));
+    if (filas.length) ok(await supabase.from('hc_plantillas_subcategorias').insert(filas.map((f, i) => ({ sector, categoria: f.categoria, codigo: f.codigo, nombre: f.nombre, descripcion: f.descripcion ?? null, orden: i + 1, activa: f.activa }))));
+  },
+  async configuracion<T>(clave: string): Promise<T | null> { const r = await supabase.from('hc_configuracion').select('valor').eq('clave', clave).maybeSingle(); if (r.error) throw new Error(r.error.message); return (r.data?.valor as T) ?? null; },
+  async guardarConfiguracion(clave: string, valor: unknown) { ok(await supabase.from('hc_configuracion').upsert({ clave, valor, updated_at: new Date().toISOString() }, { onConflict: 'clave' })); },
+  async evaluaciones(inv: string) { return ok<EvaluacionDB[]>(await supabase.from('hc_evaluaciones_significancia').select('*').eq('inventario_id', inv).order('codigo')); },
+  async guardarEvaluacion(x: Omit<EvaluacionDB, 'id'>) { return ok<EvaluacionDB>(await supabase.from('hc_evaluaciones_significancia').upsert({ ...x, updated_at: new Date().toISOString() }, { onConflict: 'inventario_id,codigo' }).select().single()); },
+  async borrarEvaluacion(id: string) { ok(await supabase.from('hc_evaluaciones_significancia').delete().eq('id', id)); },
+  async guardarCriteriosOrganizacion(org: string, c: Partial<CriteriosSignificancia>) { return ok<Organizacion>(await supabase.from('hc_organizaciones').update({ config_significancia: c }).eq('id', org).select().single()); },
   async borrarExclusion(id: string) { ok(await supabase.from('hc_exclusiones').delete().eq('id', id)); },
   async noConformidades(inv: string) { return ok<NoConformidad[]>(await supabase.from('hc_no_conformidades').select('*').eq('inventario_id', inv).order('created_at')); },
   async crearNoConformidad(x: Omit<NoConformidad, 'id' | 'fecha'>) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').insert(x).select().single()); },

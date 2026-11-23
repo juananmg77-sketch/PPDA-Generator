@@ -8,6 +8,8 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
+import { PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
+import type { CriteriosSignificancia, Evaluacion, Influencia, SubcategoriaPlantilla, TextosDeclaracion, Valoracion } from '../huella/significancia';
 import { CNAE_HOTEL, centroDesdeHotel, coordenada, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
@@ -15,7 +17,8 @@ import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { generarInformePdf } from '../huella/informePdf';
 import { emisionesMensuales } from '../huella/graficos';
-import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
+import { fmtOpc } from '../huella/formato';
+import { huellaService, EvaluacionDB, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { conPcaManual } from '../huella/factores';
 import { calcularInventario, calcularLinea, ratio } from '../huella/motor';
@@ -294,7 +297,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
                 <div className="space-y-4">
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
                   {esConsultor && pasoCierre === 'cierre'
-                    ? <PanelCierre org={org} onCambio={recargarInv} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
+                    ? <PanelCierre org={org} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} onCambio={recargarInv} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} onIr={(d) => setTab(d)} />
                     : <PanelInforme soloLectura={!esConsultor} org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} docs={docs} actividad={actividad} factores={factores} usuario={currentUser} falla={falla}
                         onInventario={(i) => setInvs((l) => l.map((x) => (x.id === i.id ? { ...x, ...i } : x)))} />}
@@ -1704,11 +1707,172 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
 }
 
 // ───────────────────────────── Cierre del cálculo ─────────────────────────────
+// ───────────────────────────── Significancia de las emisiones indirectas (ISO 14064-1, 5.2.3 y anexo H) ─────────────────────────────
+const aEvaluacion = (x: EvaluacionDB): Evaluacion => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: x.magnitud_pct == null ? null : Number(x.magnitud_pct), influencia: x.influencia, datos: x.datos, requisitos: x.requisitos, resultado: x.resultado, justificacion: x.justificacion, cuantificada: x.cuantificada });
+
+/** Plantilla del sector, evaluaciones del inventario, criterios de la organización y textos de la declaración. */
+function useSignificancia(org: Organizacion, inv: Inventario, falla: (e: unknown) => void) {
+  const sector = sectorDeCnae(org.cnae);
+  const [plantilla, setPlantilla] = useState<Array<SubcategoriaPlantilla & { id?: string }>>([]);
+  const [evals, setEvals] = useState<EvaluacionDB[]>([]);
+  const [textos, setTextos] = useState<Partial<TextosDeclaracion> | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([huellaService.plantillaSubcategorias(sector), huellaService.evaluaciones(inv.id), huellaService.configuracion<TextosDeclaracion>('declaracion')])
+      .then(([p, e, t]) => { if (!vivo) return; setPlantilla(p.length ? p : PLANTILLAS_POR_DEFECTO[sector] ?? []); setEvals(e); setTextos(t); })
+      .catch(falla);
+    return () => { vivo = false; };
+  }, [sector, inv.id, version]); // eslint-disable-line
+  const criterios = useMemo(() => criteriosDe(org.config_significancia), [org.config_significancia]);
+  const evaluaciones = useMemo(() => evals.map(aEvaluacion), [evals]);
+  // Con plantilla del sector y al menos una subcategoría valorada hay evaluación; si no, «no realizada» (null)
+  const estado = useMemo(() => (plantilla.length && evals.length ? estadoEvaluacion(plantilla, evaluaciones, criterios) : null), [plantilla, evals, evaluaciones, criterios]);
+  const paraInforme = useMemo(() => ({ plantilla: plantilla.map((p) => ({ codigo: p.codigo, nombre: p.nombre, activa: p.activa, categoria: p.categoria })), evaluaciones, criterios: org.config_significancia ?? null, textos }), [plantilla, evaluaciones, org.config_significancia, textos]);
+  return { sector, plantilla, evals, criterios, estado, textos, paraInforme: plantilla.length && evals.length ? paraInforme : undefined, recargar: () => setVersion((v) => v + 1) };
+}
+
+const NIVELES: Record<string, string> = { alta: 'Alta', media: 'Media', baja: 'Baja' };
+const CALIDAD: Record<string, string> = { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' };
+
+const FilaSignificancia: React.FC<{ s: SubcategoriaPlantilla; e: EvaluacionDB | undefined; criterios: CriteriosSignificancia; inv: Inventario; abierto: boolean; onGuardado: () => void; falla: (e: unknown) => void }> = ({ s, e, criterios, inv, abierto, onGuardado, falla }) => {
+  const [v, setV] = useState({ mag: e?.magnitud_pct != null ? String(e.magnitud_pct).replace('.', ',') : '', inf: e?.influencia ?? '', dat: e?.datos ?? '', req: e?.requisitos == null ? '' : e.requisitos ? 'si' : 'no', just: e?.justificacion ?? '', cuant: !!e?.cuantificada });
+  useEffect(() => { setV({ mag: e?.magnitud_pct != null ? String(e.magnitud_pct).replace('.', ',') : '', inf: e?.influencia ?? '', dat: e?.datos ?? '', req: e?.requisitos == null ? '' : e.requisitos ? 'si' : 'no', just: e?.justificacion ?? '', cuant: !!e?.cuantificada }); }, [e?.id, e?.magnitud_pct, e?.influencia, e?.datos, e?.requisitos, e?.justificacion, e?.cuantificada]); // eslint-disable-line
+  const val = (x: typeof v): Valoracion => ({ magnitudPct: x.mag.trim() === '' ? null : Number(x.mag.replace(',', '.')), influencia: (x.inf || null) as Valoracion['influencia'], datos: (x.dat || null) as Valoracion['datos'], requisitos: x.req === '' ? null : x.req === 'si' });
+  const r = evaluarSignificancia(val(v), criterios);
+  const guardar = async (x: typeof v) => {
+    const va = val(x);
+    if (va.magnitudPct != null && !(va.magnitudPct >= 0)) return;
+    try {
+      await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: va.magnitudPct, influencia: va.influencia, datos: va.datos, requisitos: va.requisitos, resultado: evaluarSignificancia(va, criterios).resultado, justificacion: x.just.trim() || null, cuantificada: x.cuant });
+      onGuardado();
+    } catch (err) { falla(err); }
+  };
+  const cambiar = (c: Partial<typeof v>, ahora = true) => { const n = { ...v, ...c }; setV(n); if (ahora) void guardar(n); };
+  const sel = 'rounded-md border border-slate-300 px-1.5 py-1 text-[11px] bg-white w-full disabled:bg-slate-50';
+  return (
+    <tr className="border-b border-slate-100 align-top">
+      <td className="py-2 pr-2 text-[11px]"><span className="font-semibold">{s.codigo}</span> {s.nombre}</td>
+      <td className="pr-2 w-20">{criterios.activos.magnitud && <input inputMode="decimal" className={sel} disabled={!abierto} value={v.mag} placeholder="%" aria-label={`Magnitud estimada de ${s.nombre}`} onChange={(ev) => setV({ ...v, mag: ev.target.value })} onBlur={() => void guardar(v)} />}</td>
+      <td className="pr-2 w-24">{criterios.activos.influencia && <select className={sel} disabled={!abierto} value={v.inf} aria-label={`Influencia sobre ${s.nombre}`} onChange={(ev) => cambiar({ inf: ev.target.value as typeof v.inf })}><option value="">—</option>{Object.entries(NIVELES).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
+      <td className="pr-2 w-28">{criterios.activos.datos && <select className={sel} disabled={!abierto} value={v.dat} aria-label={`Calidad de los datos de ${s.nombre}`} onChange={(ev) => cambiar({ dat: ev.target.value as typeof v.dat })}><option value="">—</option>{Object.entries(CALIDAD).map(([k, t]) => <option key={k} value={k}>{t}</option>)}</select>}</td>
+      <td className="pr-2 w-20">{criterios.activos.requisitos && <select className={sel} disabled={!abierto} value={v.req} aria-label={`Requisitos sobre ${s.nombre}`} onChange={(ev) => cambiar({ req: ev.target.value })}><option value="">—</option><option value="si">Sí</option><option value="no">No</option></select>}</td>
+      <td className="pr-2 w-28"><span className={`text-[10px] font-bold px-2 py-1 rounded-full ${r.resultado === 'significativa' ? 'bg-amber-100 text-amber-800' : r.resultado === 'no_significativa' ? 'bg-slate-100 text-slate-700' : 'bg-red-50 text-red-700'}`} title={r.completa ? r.motivos.join('; ') || 'Ningún criterio alcanza el umbral' : `Falta: ${r.sinValorar.join(', ')}`}>{r.resultado === 'significativa' ? 'Significativa' : r.resultado === 'no_significativa' ? 'No significativa' : 'Sin valorar'}</span></td>
+      <td className="pr-2 w-16 text-center">{r.resultado === 'significativa' && <input type="checkbox" disabled={!abierto} checked={v.cuant} aria-label={`${s.nombre} cuantificada`} onChange={(ev) => cambiar({ cuant: ev.target.checked })} />}</td>
+      <td><input className={`${sel} ${r.resultado === 'no_significativa' && !v.just.trim() ? 'border-red-400' : ''}`} disabled={!abierto} value={v.just} placeholder={r.resultado === 'no_significativa' ? 'Justificación obligatoria' : 'Justificación'} aria-label={`Justificación de ${s.nombre}`} onChange={(ev) => setV({ ...v, just: ev.target.value })} onBlur={() => void guardar(v)} /></td>
+    </tr>
+  );
+};
+
+const PanelSignificancia: React.FC<{ org: Organizacion; inv: Inventario; abierto: boolean; sig: ReturnType<typeof useSignificancia>; onOrg: (o: Organizacion) => void; falla: (e: unknown) => void }> = ({ org, inv, abierto, sig, onOrg, falla }) => {
+  const [modal, setModal] = useState(false);
+  const [creando, setCreando] = useState(false);
+  const faltan = sig.plantilla.filter((s) => s.activa && !sig.evals.some((e) => e.codigo === s.codigo));
+  const crear = async () => {
+    setCreando(true);
+    try { for (const s of faltan) await huellaService.guardarEvaluacion({ inventario_id: inv.id, categoria: s.categoria, codigo: s.codigo, nombre: s.nombre, magnitud_pct: null, influencia: null, datos: null, requisitos: null, resultado: null, justificacion: null, cuantificada: false }); sig.recargar(); } catch (e) { falla(e); } finally { setCreando(false); }
+  };
+  const e = sig.estado;
+  return (
+    <div className={card}>
+      <div className="flex items-center gap-3 mb-1 flex-wrap">
+        <h2 className="flex-1 text-sm font-bold text-slate-800">Significancia de las emisiones indirectas (ISO 14064-1, 5.2.3)</h2>
+        <button className={btnS} onClick={() => setModal(true)}><Settings size={14} /> Criterios, plantilla y textos</button>
+        {abierto && faltan.length > 0 && <button className={btnP} onClick={crear} disabled={creando}>{creando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {sig.evals.length ? `Añadir ${faltan.length} subcategoría(s) de la plantilla` : 'Cargar la plantilla del sector'}</button>}
+      </div>
+      <p className="text-xs text-slate-600 mb-3">Valore cada subcategoría de las categorías 3 a 6 con los criterios de la organización. Una fuente no significativa se excluye y necesita su justificación; una significativa debe cuantificarse. Plantilla: <strong>{sig.sector === 'hoteles' ? 'hoteles' : 'sector sin plantilla'}</strong>.</p>
+      {sig.plantilla.length === 0 && <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">No hay plantilla de subcategorías para este sector: un administrador debe crearla en «Criterios, plantilla y textos».</p>}
+      {sig.plantilla.length > 0 && (
+        <>
+          <div className="overflow-x-auto"><table className="w-full text-xs">
+            <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2">Subcategoría</th><th className="pr-2">Magnitud (% del total)</th><th className="pr-2">Influencia</th><th className="pr-2">Datos</th><th className="pr-2">Requisitos</th><th className="pr-2">Resultado</th><th className="pr-2 text-center">Cuantif.</th><th>Justificación</th></tr></thead>
+            <tbody>{[3, 4, 5, 6].flatMap((cat) => {
+              const lista = sig.plantilla.filter((s) => s.activa && s.categoria === cat);
+              if (!lista.length) return [];
+              return [<tr key={`c${cat}`}><td colSpan={8} className="pt-3 pb-1 text-[11px] font-bold text-brand-700">{CATEGORIAS_ISO[cat - 1].resumen}</td></tr>, ...lista.map((s) => <FilaSignificancia key={s.codigo} s={s} e={sig.evals.find((x) => x.codigo === s.codigo)} criterios={sig.criterios} inv={inv} abierto={abierto} onGuardado={sig.recargar} falla={falla} />)];
+            })}</tbody>
+          </table></div>
+          <p className={`mt-3 text-xs rounded-lg px-3 py-2 ${e && e.completa && e.significativasCuantificadas ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>
+            {!e ? 'Evaluación no realizada: la declaración del informe será solo con el programa aplicable.' : e.completa && e.significativasCuantificadas ? 'Evaluación completa y significativas cuantificadas: el informe declarará la conformidad con la ISO 14064-1:2018 y con el programa aplicable.' : `Falta para declarar la conformidad con la norma: ${e.faltas.join('; ')}.`}
+          </p>
+        </>
+      )}
+      {modal && <ModalConfigSignificancia org={org} sig={sig} onOrg={onOrg} onCerrar={() => setModal(false)} falla={falla} />}
+    </div>
+  );
+};
+
+const ModalConfigSignificancia: React.FC<{ org: Organizacion; sig: ReturnType<typeof useSignificancia>; onOrg: (o: Organizacion) => void; onCerrar: () => void; falla: (e: unknown) => void }> = ({ org, sig, onOrg, onCerrar, falla }) => {
+  const c0 = sig.criterios;
+  const [c, setC] = useState({ umbral: String(c0.umbralMagnitud).replace('.', ','), mag: c0.activos.magnitud, inf: c0.activos.influencia, dat: c0.activos.datos, req: c0.activos.requisitos, infMin: c0.influenciaMinima, porFuente: String(c0.exclusionDirectaPorFuente).replace('.', ','), total: String(c0.exclusionDirectaTotal).replace('.', ',') });
+  const [filas, setFilas] = useState<Array<SubcategoriaPlantilla>>(sig.plantilla.map((p) => ({ sector: sig.sector, categoria: p.categoria, codigo: p.codigo, nombre: p.nombre, descripcion: p.descripcion, orden: p.orden, activa: p.activa })));
+  const [t, setT] = useState<TextosDeclaracion>({ ...TEXTOS_DECLARACION_POR_DEFECTO, ...(sig.textos ?? {}) });
+  const [trabajando, setTrabajando] = useState('');
+  const n = (x: string) => Number(x.replace(',', '.'));
+  const guardarCriterios = async () => {
+    setTrabajando('c');
+    try { onOrg(await huellaService.guardarCriteriosOrganizacion(org.id, { umbralMagnitud: n(c.umbral), activos: { magnitud: c.mag, influencia: c.inf, datos: c.dat, requisitos: c.req }, influenciaMinima: c.infMin, exclusionDirectaPorFuente: n(c.porFuente), exclusionDirectaTotal: n(c.total) })); onCerrar(); } catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
+  const guardarPlantilla = async () => {
+    setTrabajando('p');
+    try { await huellaService.guardarPlantilla(sig.sector, filas.filter((f) => f.codigo.trim() && f.nombre.trim())); sig.recargar(); onCerrar(); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (la plantilla solo la editan los administradores)`)); } finally { setTrabajando(''); }
+  };
+  const guardarTextos = async () => {
+    setTrabajando('t');
+    try { await huellaService.guardarConfiguracion('declaracion', t); sig.recargar(); onCerrar(); } catch (e) { falla(new Error(`${e instanceof Error ? e.message : e} (los textos solo los editan los administradores)`)); } finally { setTrabajando(''); }
+  };
+  const campo = 'w-full rounded-md border border-slate-300 px-2 py-1.5 text-xs bg-white';
+  return (
+    <Modal titulo="Significancia: criterios, plantilla y textos" onCerrar={onCerrar}>
+      <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+        <section>
+          <h3 className="text-sm font-bold text-slate-800 mb-1">Criterios de {org.nombre}</h3>
+          <p className="text-[11px] text-slate-600 mb-2">Una fuente es significativa si alcanza el umbral de magnitud, si hay un requisito de clientes o normativo, o si la influencia es suficiente y hay datos disponibles. Los criterios desactivados no se exigen.</p>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <label className="font-semibold text-slate-600">Umbral de magnitud (% del total)<input className={`${campo} mt-1`} value={c.umbral} onChange={(e) => setC({ ...c, umbral: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Influencia mínima<select className={`${campo} mt-1`} value={c.infMin} onChange={(e) => setC({ ...c, infMin: e.target.value as Influencia })}>{Object.entries(NIVELES).map(([k, x]) => <option key={k} value={k}>{x}</option>)}</select></label>
+            <label className="font-semibold text-slate-600">Exclusión directa: umbral por fuente (%)<input className={`${campo} mt-1`} value={c.porFuente} onChange={(e) => setC({ ...c, porFuente: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Exclusiones directas: umbral total (%)<input className={`${campo} mt-1`} value={c.total} onChange={(e) => setC({ ...c, total: e.target.value })} /></label>
+            {([['mag', 'Magnitud estimada'], ['inf', 'Nivel de influencia'], ['dat', 'Disponibilidad y calidad de los datos'], ['req', 'Requisitos de clientes o normativos']] as const).map(([k, x]) => (
+              <label key={k} className="flex items-center gap-2 font-semibold text-slate-600"><input type="checkbox" checked={c[k]} onChange={(e) => setC({ ...c, [k]: e.target.checked })} /> {x}</label>
+            ))}
+          </div>
+          <div className="mt-2"><button className={btnP} disabled={!!trabajando} onClick={guardarCriterios}>{trabajando === 'c' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar criterios</button></div>
+        </section>
+        <section>
+          <h3 className="text-sm font-bold text-slate-800 mb-1">Plantilla de subcategorías · sector «{sig.sector}» (administrador)</h3>
+          <div className="space-y-1.5">{filas.map((f, i) => (
+            <div key={i} className="grid grid-cols-[48px_56px_1fr_auto] gap-2 items-center">
+              <select className={campo} value={f.categoria} onChange={(e) => setFilas((l) => l.map((x, k) => (k === i ? { ...x, categoria: Number(e.target.value) as 3 | 4 | 5 | 6 } : x)))}>{[3, 4, 5, 6].map((x) => <option key={x}>{x}</option>)}</select>
+              <input className={campo} value={f.codigo} aria-label="Código" onChange={(e) => setFilas((l) => l.map((x, k) => (k === i ? { ...x, codigo: e.target.value } : x)))} />
+              <input className={campo} value={f.nombre} aria-label="Nombre" onChange={(e) => setFilas((l) => l.map((x, k) => (k === i ? { ...x, nombre: e.target.value } : x)))} />
+              <label className="flex items-center gap-1 text-[11px]"><input type="checkbox" checked={f.activa} onChange={(e) => setFilas((l) => l.map((x, k) => (k === i ? { ...x, activa: e.target.checked } : x)))} /> Activa <button className="ml-1 p-1 text-slate-400 hover:text-red-600" aria-label="Quitar" onClick={() => setFilas((l) => l.filter((_, k) => k !== i))}><Trash2 size={12} /></button></label>
+            </div>))}</div>
+          <div className="mt-2 flex gap-2"><button className={btnS} onClick={() => setFilas((l) => [...l, { sector: sig.sector, categoria: 4, codigo: '', nombre: '', orden: l.length + 1, activa: true }])}><Plus size={14} /> Añadir subcategoría</button><button className={btnP} disabled={!!trabajando} onClick={guardarPlantilla}>{trabajando === 'p' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar plantilla</button></div>
+        </section>
+        <section>
+          <h3 className="text-sm font-bold text-slate-800 mb-1">Textos de la declaración de conformidad (administrador)</h3>
+          <p className="text-[11px] text-slate-600 mb-2">Se pueden usar {'{anio}'}, {'{norma}'}, {'{programa}'} y, en el texto de lo que falta, {'{motivos}'}.</p>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <label className="font-semibold text-slate-600">Norma<input className={`${campo} mt-1`} value={t.norma} onChange={(e) => setT({ ...t, norma: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Programa aplicable<input className={`${campo} mt-1`} value={t.programa} onChange={(e) => setT({ ...t, programa: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">a) Evaluación completa y significativas cuantificadas<textarea className={`${campo} mt-1`} rows={3} value={t.a} onChange={(e) => setT({ ...t, a: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">b) En cualquier otro caso<textarea className={`${campo} mt-1`} rows={3} value={t.b} onChange={(e) => setT({ ...t, b: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">Frase que explica lo que falta (caso b)<textarea className={`${campo} mt-1`} rows={2} value={t.falta} onChange={(e) => setT({ ...t, falta: e.target.value })} /></label>
+          </div>
+          <div className="mt-2"><button className={btnP} disabled={!!trabajando} onClick={guardarTextos}>{trabajando === 't' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar textos</button></div>
+        </section>
+      </div>
+    </Modal>
+  );
+};
+
 const PanelCierre: React.FC<{
-  org: Organizacion; onCambio: () => void; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
+  org: Organizacion; onOrg: (o: Organizacion) => void; onCambio: () => void; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void; onIr: (destino: 'facturas' | 'consumos' | 'centros') => void;
-}> = ({ org, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
+}> = ({ org, onOrg, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
+  const sig = useSignificancia(org, inv, falla);
   const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null); // factura del cierre cuyo dato se está corrigiendo a mano
   const [correo, setCorreo] = useState<{ asunto: string; cuerpo: string } | null>(null);
@@ -1745,7 +1909,8 @@ const PanelCierre: React.FC<{
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
   const [analisis, setAnalisis] = useState(inv.cierre?.analisisVariacion ?? '');
-  const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1' });
+  const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1', evidencia: '' });
+  const [evFile, setEvFile] = useState<File | null>(null);
   const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
   const [reabrir, setReabrir] = useState(false);
   const [modalEx, setModalEx] = useState(false);
@@ -1808,7 +1973,7 @@ const PanelCierre: React.FC<{
     { nombre: 'Total', actual: calculo.totales.kgCO2eTotal, anterior: previo.total },
   ] : undefined;
 
-  const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales) : null), [factores, calculo, exclusiones]);
+  const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales, resumenPorCategoria(sig.plantilla, sig.evals.map(aEvaluacion), sig.criterios)) : null), [factores, calculo, exclusiones, sig.plantilla, sig.evals, sig.criterios]);
   const evaluacion = useMemo(() => {
     if (!factores || !calculo || previo === undefined || !isoCierre) return null;
     return evaluarCierre({
@@ -1822,10 +1987,11 @@ const PanelCierre: React.FC<{
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
       exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      significancia: sig.estado, exclusionesDirectas: evaluarExclusionesDirectas(exclusiones.filter((x) => (x.categoria_iso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!(x.certificado_path || x.evidencia_url) })), sig.criterios).incidencias,
       cuadreIso: isoCierre.cuadre, categoriasSinEvaluar: isoCierre.categorias.filter((c) => c.estado === 'Sin evaluar').map((c) => ({ n: c.n, nombre: c.nombre })),
       ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
     });
-  }, [factores, calculo, isoCierre, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
+  }, [factores, calculo, isoCierre, sig.estado, sig.criterios, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
 
   const guardarAnalisis = async () => {
     if (!abierto || analisis === (inv.cierre?.analisisVariacion ?? '')) return;
@@ -1856,9 +2022,10 @@ const PanelCierre: React.FC<{
         const c = { ...calcExt, certificadoPath: certPath!, certificadoNombre: certExt!.name, leidoConIA: filasCert.length > 0, detalle: elegidas.map((f) => ({ documento: f.documento, concepto: f.concepto, operacion: f.operacion, cantidad: num(f.cantidad), kgPorExtintor: num(f.kg), fecha: f.fecha, pagina: f.pagina })) };
         x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), categoria_iso: 1, calculo: c, certificado_path: certPath, certificado_nombre: certExt!.name });
       } else {
-        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim(), categoria_iso: Number(fx.cat) });
+        const evPath = evFile ? await huellaService.subirCertificadoExclusion(evFile, org.id, inv.id) : null;
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim(), categoria_iso: Number(fx.cat), evidencia_url: fx.evidencia.trim() || null, certificado_path: evPath, certificado_nombre: evFile?.name ?? null });
       }
-      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1' }); setFilasCert([]); setCertExt(null); setCertPath(null); setObsCert(''); setModalEx(false);
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1', evidencia: '' }); setEvFile(null); setFilasCert([]); setCertExt(null); setCertPath(null); setObsCert(''); setModalEx(false);
     } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
   const anadirNc = async () => {
@@ -1960,9 +2127,11 @@ const PanelCierre: React.FC<{
         </div>
       )}
 
+      <PanelSignificancia org={org} inv={inv} abierto={abierto} sig={sig} onOrg={onOrg} falla={falla} />
+
       <div className={card}>
         <div className="flex items-center gap-3 mb-1"><h2 className="flex-1 text-sm font-bold text-slate-800">Fuentes excluidas</h2>{abierto && <button className={btnS} onClick={() => setModalEx(true)}><Plus size={14} /> Añadir exclusión</button>}</div>
-        <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del 3 % y el conjunto como máximo el 5 % de las emisiones (ISO 14064-1, 9.3.1 i).</p>
+        <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del {fmtOpc(sig.criterios.exclusionDirectaPorFuente, 'porcentaje')} % y el conjunto como máximo el {fmtOpc(sig.criterios.exclusionDirectaTotal, 'porcentaje')} % de las emisiones (ISO 14064-1, 9.3.1 i). Las exclusiones de la categoría 1 necesitan el porcentaje estimado y una evidencia.</p>
         {exclusiones.length > 0 && (
           <ul className="divide-y divide-slate-100 mb-3">{exclusiones.map((x) => (
             <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.categoria_iso ? `Cat. ${x.categoria_iso} · ` : ''}{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p>{x.certificado_path && <button className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 underline" onClick={async () => { try { window.open(await huellaService.urlDocumento(x.certificado_path!), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={11} /> Certificado: {x.certificado_nombre ?? 'ver'}</button>}</div>
@@ -2030,11 +2199,18 @@ const PanelCierre: React.FC<{
                 <Campo etiqueta="Categoría ISO 14064-1 *"><select className={input} value={fx.cat} onChange={(e) => setFx({ ...fx, cat: e.target.value })} aria-label="Categoría ISO">{CATEGORIAS_ISO.map((c) => <option key={c.n} value={String(c.n)}>{c.resumen}</option>)}</select></Campo>
                 <Campo etiqueta="% estimado de las emisiones"><input type="number" min={0} step="any" className={input} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></Campo>
                 <Campo etiqueta="Justificación *" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
+                {fx.cat === '1' && (
+                  <>
+                    <Campo etiqueta="Evidencia: enlace o referencia del documento *" ancho><input className={input} value={fx.evidencia} placeholder="Ej.: albarán, certificado, https://…" onChange={(e) => setFx({ ...fx, evidencia: e.target.value })} /></Campo>
+                    <Campo etiqueta="…o suba el documento (PDF o imagen)" ancho><input type="file" accept="application/pdf,image/*" className="block w-full text-xs" onChange={(e) => setEvFile(e.target.files?.[0] ?? null)} /></Campo>
+                    <p className="col-span-2 text-[11px] text-slate-600">Toda exclusión de la categoría 1 necesita el porcentaje estimado y una evidencia; la suma se compara con el umbral configurado.</p>
+                  </>
+                )}
               </>
             )}
           </div>
           <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalEx(false)}>Cancelar</button>
-            <button className={btnP} onClick={anadirExclusion} disabled={trabajando || !fx.fuente || (fx.fuente === FUENTE_OTRA && !fx.otra.trim()) || (esExt ? !certPath || leyendoCert || calcExt.totalExtintores === 0 : !fx.justificacion.trim())}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Añadir</button></div>
+            <button className={btnP} onClick={anadirExclusion} disabled={trabajando || !fx.fuente || (fx.fuente === FUENTE_OTRA && !fx.otra.trim()) || (esExt ? !certPath || leyendoCert || calcExt.totalExtintores === 0 : !fx.justificacion.trim() || (fx.cat === '1' && (fx.porcentaje === '' || !(Number(fx.porcentaje) >= 0) || (!fx.evidencia.trim() && !evFile))))}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Añadir</button></div>
         </Modal>
       )}
       {modalNc && abierto && (
@@ -2095,6 +2271,7 @@ const PanelInforme: React.FC<{
   soloLectura?: boolean; org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; docs: Documento[]; actividad: Actividad[]; factores: ConjuntoFactores | null;
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
 }> = ({ soloLectura, org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
+  const sig = useSignificancia(org, inv, falla);
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
@@ -2120,7 +2297,8 @@ const PanelInforme: React.FC<{
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
       actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
-      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })),
+      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
+      significancia: sig.paraInforme,
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
       documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
       mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
@@ -2128,12 +2306,13 @@ const PanelInforme: React.FC<{
       }), inv.anio),
       emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
     };
-  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario]);
+  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme]);
 
   const modelo = useMemo(() => (datos ? construirInforme(datos) : null), [datos]);
   const html = useMemo(() => (modelo ? informeAHtml(modelo, { baseUrl: window.location.origin }) : ''), [modelo]);
 
   const word = async () => {
+    if (!confirmarDeclaracion()) return;
     if (!modelo) return; setTrabajando('word');
     try {
       const [{ informeADocx }, { svgAPng }, { cargarMarca }] = await Promise.all([import('../huella/informeDocx'), import('../huella/svgPng'), import('../huella/marca')]);
@@ -2182,6 +2361,7 @@ const PanelInforme: React.FC<{
   };
   /** Paquete para el verificador: libro de recálculo + calculadora oficial cumplimentada, en un ZIP. */
   const paquete = async () => {
+    if (!confirmarDeclaracion()) return;
     if (!datos) return; setTrabajando('xlsx'); setNotaExp(null);
     try {
       const [{ paqueteAXlsx }, { zipSync, strToU8 }, lib] = await Promise.all([import('../huella/paquete'), import('fflate'), libroOficial()]);
@@ -2203,8 +2383,11 @@ const PanelInforme: React.FC<{
       setNotaExp({ avisos: lib.avisos, pendientes: lib.pendientes });
     } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
+  /** Antes de la versión final: si la declaración será la del caso b), se avisa de lo que falta. */
+  const confirmarDeclaracion = () => !modelo || modelo.declaracion.caso === 'a' || inv.estado === 'borrador'
+    || confirm(`La declaración de conformidad se generará solo con el programa aplicable («siguiendo la metodología de la ISO 14064-1:2018») porque falta: ${modelo.declaracion.faltas.join('; ')}.\n\n¿Generar la versión final de todos modos?`);
   const pdf = async () => {
-    if (!modelo) return;
+    if (!modelo || !confirmarDeclaracion()) return;
     setTrabajando('pdf');
     try { descargar(await generarInformePdf(modelo, window.location.origin), `${modelo.meta.codigo}_${inv.anio}.pdf`); } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
@@ -2239,6 +2422,13 @@ const PanelInforme: React.FC<{
           {notaExp.avisos.length > 0 && <ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
           {notaExp.pendientes.length > 0 && <><p className="text-xs font-semibold mt-2">Datos que el libro pide y la aplicación no tiene:</p><ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
           <p className="text-[11px] mt-2 text-amber-800">Al abrir el libro en Excel se recalculan solos los resultados (hoja 4.1); compruebe que el total coincide con el de la aplicación.</p>
+        </div>
+      )}
+
+      {modelo.declaracion.caso === 'b' && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-sm text-amber-900">
+          <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={15} /> La declaración de conformidad será parcial</p>
+          <p className="text-xs">El informe declarará la conformidad solo con el programa aplicable, «siguiendo la metodología de la ISO 14064-1:2018». Falta: {modelo.declaracion.faltas.join('; ')}.</p>
         </div>
       )}
 

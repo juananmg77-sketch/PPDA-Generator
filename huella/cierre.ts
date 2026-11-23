@@ -33,6 +33,10 @@ export interface EntradaCierre {
   cuadreIso?: { ok: boolean; incidencias: string[] };
   /** Categorías ISO 3 a 6 (o 2) sin cuantificar, sin exclusión registrada y sin justificación. */
   categoriasSinEvaluar?: Array<{ n: number; nombre: string }>;
+  /** Evaluación de la significancia de las emisiones indirectas; null/undefined = no realizada. */
+  significancia?: { completa: boolean; significativasCuantificadas: boolean; sinValorar: string[]; excluidasSinJustificar: string[]; significativasSinCuantificar: string[]; faltas: string[] } | null;
+  /** Incidencias de las exclusiones de la categoría 1 (falta de % o de evidencia, umbral superado). */
+  exclusionesDirectas?: string[];
   ncAbiertas: number;
   umbralVariacion?: number;
   exclusionPorFuente?: number; // % por fuente (3 por defecto)
@@ -148,6 +152,14 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     else add('ok', 'variacion', 'Variaciones grandes analizadas y justificadas.');
   }
 
+  if (e.exclusionesDirectas && e.exclusionesDirectas.length) add('error', 'exclusiones_directas', 'Las exclusiones de la categoría 1 no cumplen la regla (porcentaje estimado, evidencia y umbral).', { detalle: e.exclusionesDirectas.map((texto) => ({ texto })) });
+  if (e.significancia === null) add('aviso', 'significancia_no_realizada', 'No se ha evaluado la significancia de las emisiones indirectas (ISO 14064-1, 5.2.3): la declaración de conformidad será solo con el programa aplicable.');
+  else if (e.significancia) {
+    const s = e.significancia;
+    if (s.sinValorar.length || s.excluidasSinJustificar.length) add('aviso', 'significancia_incompleta', 'La evaluación de la significancia de las emisiones indirectas está incompleta.', { detalle: [...s.sinValorar.map((texto) => ({ texto, nota: 'sin valorar' })), ...s.excluidasSinJustificar.map((texto) => ({ texto, nota: 'excluida sin justificación' }))] });
+    if (s.significativasSinCuantificar.length) add('aviso', 'significativas_sin_cuantificar', `${s.significativasSinCuantificar.length} fuente(s) indirecta(s) significativa(s) sin cuantificar.`, { detalle: s.significativasSinCuantificar.map((texto) => ({ texto })) });
+    if (!s.completa || !s.significativasCuantificadas) add('aviso', 'declaracion_parcial', 'La declaración de conformidad del informe será solo con el programa aplicable («siguiendo la metodología de la ISO 14064-1:2018»), no con la norma.');
+  }
   if (e.cuadreIso && !e.cuadreIso.ok) add('error', 'cuadre_iso', 'Los resultados por gas o por categoría no cuadran con el total del inventario: no se puede cerrar ni entregar el informe.', { detalle: e.cuadreIso.incidencias.map((texto) => ({ texto })) });
   if ((e.categoriasSinEvaluar ?? []).length > 0) add('aviso', 'categorias_sin_evaluar', `${e.categoriasSinEvaluar!.length} categoría(s) ISO sin evaluar: indique para cada una si es no significativa o está excluida, con su justificación (Fuentes excluidas).`, { detalle: e.categoriasSinEvaluar!.map((c) => ({ texto: `${c.n} · ${c.nombre}` })) });
   if (e.exclusiones.length > 0) {

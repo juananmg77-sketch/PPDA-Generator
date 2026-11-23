@@ -161,3 +161,16 @@ test('las categorías ISO sin evaluar se avisan una a una', () => {
   assert.equal(item.nivel, 'aviso'); assert.equal(item.detalle!.length, 2);
   assert.ok(!evaluarCierre(base).items.some((i) => i.codigo === 'categorias_sin_evaluar'));
 });
+
+test('significancia en el cierre: no realizada, incompleta, significativas sin cuantificar y exclusiones directas', () => {
+  const codigos = (r: ReturnType<typeof evaluarCierre>) => r.items.map((i) => i.codigo);
+  assert.ok(!codigos(evaluarCierre(base)).includes('significancia_no_realizada')); // sin dato: no se avisa
+  assert.ok(codigos(evaluarCierre({ ...base, significancia: null })).includes('significancia_no_realizada'));
+  const mal = evaluarCierre({ ...base, significancia: { completa: false, significativasCuantificadas: false, sinValorar: ['3.1 Transporte'], excluidasSinJustificar: ['3.2 x'], significativasSinCuantificar: ['4.1 Alimentos'], faltas: [] } });
+  for (const c of ['significancia_incompleta', 'significativas_sin_cuantificar', 'declaracion_parcial']) assert.ok(codigos(mal).includes(c), c);
+  assert.equal(mal.items.find((i) => i.codigo === 'significancia_incompleta')!.detalle!.length, 2);
+  const ok = evaluarCierre({ ...base, significancia: { completa: true, significativasCuantificadas: true, sinValorar: [], excluidasSinJustificar: [], significativasSinCuantificar: [], faltas: [] } });
+  assert.ok(!codigos(ok).some((c) => /significancia|significativas|declaracion/.test(c)));
+  const dir = evaluarCierre({ ...base, exclusionesDirectas: ['Exclusión «X» (categoría 1): falta la evidencia.'] });
+  assert.equal(dir.items.find((i) => i.codigo === 'exclusiones_directas')!.nivel, 'error'); assert.equal(dir.puedeCerrar, false);
+});

@@ -3,6 +3,8 @@
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
 import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
+import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria } from './significancia.ts';
+import type { CriteriosSignificancia, DeclaracionConformidad, Evaluacion, SubcategoriaPlantilla, TextosDeclaracion } from './significancia.ts';
 import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
 import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
 
@@ -23,6 +25,8 @@ export interface ModeloInforme {
   pendientes: string[];
   /** Incidencias que impiden entregar el informe (p. ej. los totales no cuadran). */
   bloqueantes: string[];
+  /** Declaración de conformidad que se imprime (caso a o b) y lo que falta para el caso a. */
+  declaracion: DeclaracionConformidad;
 }
 
 export interface DatosInforme {
@@ -38,7 +42,9 @@ export interface DatosInforme {
   totales: Totales;
   actividad: Array<{ centro: string; categoria: string; fuente: string; cantidad: number; unidad?: string | null; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; documento?: string | null; notas?: string | null; origenElectricidad?: string | null }>;
   anterior?: { anio: number; a1: number; a2: number; total: number } | null;
-  exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO (1 a 6) a la que pertenece lo excluido. */ categoriaIso?: number | null }>;
+  exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO (1 a 6) a la que pertenece lo excluido. */ categoriaIso?: number | null; /** Hay una evidencia (documento o referencia) que respalda la exclusión. */ evidencia?: boolean }>;
+  /** Evaluación de la significancia de las emisiones indirectas (apartado 5.2.3 de la norma); si falta, no se puede declarar la conformidad completa. */
+  significancia?: { plantilla: Array<Pick<SubcategoriaPlantilla, 'codigo' | 'nombre' | 'activa' | 'categoria'>>; evaluaciones: Evaluacion[]; criterios?: Partial<CriteriosSignificancia> | null; textos?: Partial<TextosDeclaracion> | null };
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
   documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
   /** Emisiones mensuales por fuente (t CO₂e, 12 valores) para el gráfico de evolución; opcional. */
@@ -140,14 +146,17 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   ] };
 
   // ── 5
-  const iso = resultadosIso(d.resultados, d.factores, d.exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoriaIso })), tot);
+  const criterios = criteriosDe(d.significancia?.criterios);
+  const sig = d.significancia;
+  const estadoSig = sig ? estadoEvaluacion(sig.plantilla, sig.evaluaciones, criterios) : null;
+  const iso = resultadosIso(d.resultados, d.factores, d.exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoriaIso })), tot, sig ? resumenPorCategoria(sig.plantilla, sig.evaluaciones, criterios) : {});
   const subsConDatos = (n: number) => [...new Set(d.actividad.map((a) => CATEGORIA_ISO_FUENTE[a.categoria as keyof typeof CATEGORIA_ISO_FUENTE]).filter((c) => c && c.n === n).map((c) => c.sub))].sort();
   const s5: Seccion = { id: '5', titulo: 'Límites del informe', bloques: [
     { k: 'tabla', cab: ['Categoría (ISO 14064-1)', 'Estado', 'Fuentes o justificación'], filas: iso.categorias.map((c) => [
       CATEGORIAS_ISO[c.n - 1].resumen, c.estado,
       c.estado === 'Cuantificada' ? (subsConDatos(c.n).join('; ') || '—') : c.justificacion ?? '—',
     ]) },
-    { k: 'p', texto: `Criterio de significancia: se consideran insignificantes las fuentes que individualmente representan menos del ${fmt(UMBRALES_SIGNIFICANCIA.porFuente, 'entero')} % de las emisiones y, en conjunto, no más del ${fmt(UMBRALES_SIGNIFICANCIA.total, 'entero')} %.` },
+    { k: 'p', texto: `Criterio de significancia: se consideran insignificantes las fuentes que individualmente representan menos del ${fmtOpc(criterios.exclusionDirectaPorFuente, 'porcentaje')} % de las emisiones y, en conjunto, no más del ${fmtOpc(criterios.exclusionDirectaTotal, 'porcentaje')} %.` },
   ] };
 
   // ── 6
@@ -258,6 +267,11 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     ...(grupoGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones directas por grupo de gas (t CO₂e)', ...svgBarrasHorizontales(grupoGraf, 'Emisiones directas por grupo de gas'), pie: 'Solo categoría 1; se muestran los grupos con emisiones.' }] : []),
     { k: 'h', texto: '9.2 Emisiones indirectas por categoría (2 a 6)' },
     { k: 'tabla', cab: ['Categoría', 'Estado', 'Emisiones (t CO₂e)', 'Justificación'], filas: iso.indirectas.map((c) => [CATEGORIAS_ISO[c.n - 1].resumen, c.estado, fmt(c.toneladasCO2e, 'tCO2e'), c.justificacion ?? '—']), numericas: [2], pie: 'Cuantificada: con datos de actividad. No significativa: excluida por estar por debajo del umbral de significancia. Excluida: no cuantificada, con su justificación.' },
+    ...(sig ? [{ k: 'tabla' as const, cab: ['Subcategoría', 'Magnitud estimada', 'Influencia', 'Datos', 'Requisitos', 'Resultado', 'Cuantificada', 'Justificación'], filas: sig.plantilla.filter((x) => x.activa).map((x) => {
+      const e = sig.evaluaciones.find((y) => y.codigo === x.codigo); const r = e ? evaluarSignificancia(e, criterios) : null;
+      const si = (v: boolean | null | undefined) => (v == null ? '—' : v ? 'Sí' : 'No');
+      return [`${x.codigo} ${x.nombre}`, pct(e?.magnitudPct), e?.influencia ? { alta: 'Alta', media: 'Media', baja: 'Baja' }[e.influencia] : '—', e?.datos ? { buenos: 'Buenos', parciales: 'Parciales', no_disponibles: 'No disponibles' }[e.datos] : '—', si(e?.requisitos), r?.resultado ? (r.resultado === 'significativa' ? 'Significativa' : 'No significativa') : 'Sin valorar', r?.resultado === 'significativa' ? si(e?.cuantificada) : '—', e?.justificacion?.trim() || '—'];
+    }), pie: 'Evaluación de la significancia de las emisiones indirectas (ISO 14064-1:2018, apartado 5.2.3): magnitud estimada, nivel de influencia, calidad de los datos y requisitos de clientes o normativos.' }] : []),
     ...(catGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(catGraf, 'Emisiones por categoría'), pie: 'Categorías cuantificadas del inventario.' }] : []),
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
@@ -287,8 +301,9 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
 
   // ── 11
   const v = inv.verificacion;
+  const declaracion = declaracionConformidad(estadoSig, anio, sig?.textos ?? {});
   const s11: Seccion = { id: '11', titulo: 'Declaración de conformidad y verificación', bloques: [
-    { k: 'p', texto: `La organización declara que este inventario de GEI del año ${anio} se ha elaborado conforme a la norma ISO 14064-1:2018 y a los requisitos del Decreto 48/2021 del Registro balear de huella de carbono, en lo que respecta a las categorías 1 y 2.` },
+    { k: 'p', texto: declaracion.texto },
     { k: 'tabla', cab: ['Verificación', 'Dato'], filas: [
       ['Estado', inv.estado === 'verificado' ? 'Verificado' : 'Pendiente de verificación por una entidad acreditada (ISO 14064-3)'],
       ['Entidad verificadora', dash(v?.entidad)], ['Nivel de aseguramiento', dash(v?.nivel)], ['Fecha de la verificación', fechaEs(v?.fecha)], ['Referencia del informe de verificación', dash(v?.referencia)],
@@ -340,7 +355,11 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     for (const m of marcas) if (!NOTAS_FUENTES[m]) sinNota.add(m);
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
+  const dir = evaluarExclusionesDirectas(d.exclusiones.filter((x) => (x.categoriaIso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!x.evidencia })), criterios);
+  pendientes.push(...dir.incidencias);
+  if (estadoSig) for (const x of estadoSig.sinValorar) pendientes.push(`Significancia: falta valorar la subcategoría ${x}.`); else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
+  if (estadoSig) { for (const x of estadoSig.excluidasSinJustificar) pendientes.push(`Significancia: la subcategoría ${x} se excluye y falta su justificación.`); for (const x of estadoSig.significativasSinCuantificar) pendientes.push(`Significancia: la subcategoría ${x} es significativa y no está cuantificada.`); }
   for (const c of iso.indirectas) if (c.estado === 'Sin evaluar') pendientes.push(`Categoría ${c.n} (${c.nombre}): indique si es no significativa o está excluida, con su justificación.`);
   const bloqueantes = [...iso.cuadre.incidencias];
-  return { meta, secciones, pendientes, bloqueantes };
+  return { meta, secciones, pendientes, bloqueantes, declaracion };
 }

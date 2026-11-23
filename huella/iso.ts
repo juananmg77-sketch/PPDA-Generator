@@ -42,7 +42,9 @@ export function grupoGasRefrigerante(nombre: string): GrupoGas {
 
 export interface FilaGrupo { grupo: GrupoGas; toneladasGas: number; /** PCA (medio ponderado en los grupos con varios gases); null si no hay emisión de un grupo con varios gases. */ pca: number | null; toneladasCO2e: number; porcentajeCat1: number | null }
 export interface FilaRefrigerante { gas: string; grupo: GrupoGas; toneladasGas: number; pca: number; toneladasCO2e: number }
-export type EstadoCategoria = 'Cuantificada' | 'No significativa' | 'Excluida' | 'Sin evaluar';
+export type EstadoCategoria = 'Cuantificada' | 'No significativa' | 'Excluida' | 'Sin evaluar' | 'Significativa sin cuantificar';
+/** Resumen de la evaluación de significancia de las subcategorías de una categoría (si existe, manda sobre las exclusiones sueltas). */
+export interface ResumenEvaluacion { total: number; sinValorar: number; significativas: number; significativasSinCuantificar: number; noSignificativas: number; justificaciones: string[] }
 export interface FilaIndirecta { n: CategoriaIso['n']; nombre: string; estado: EstadoCategoria; toneladasCO2e: number | null; justificacion: string | null; porcentaje: number | null }
 export interface ExclusionIso { fuente: string; porcentaje: number | null; justificacion: string; categoriaIso?: number | null }
 
@@ -63,14 +65,19 @@ export interface ResultadosIso {
 const TOL = 1e-6; // toneladas (1 g)
 
 /** Estado de una categoría indirecta: con datos → Cuantificada; con una exclusión registrada → No significativa (bajo el umbral) o Excluida; si no, Sin evaluar. */
-export function estadoCategoria(cuantificada: boolean, ex: ExclusionIso | undefined, umbral: number = UMBRALES_SIGNIFICANCIA.porFuente): EstadoCategoria {
+export function estadoCategoria(cuantificada: boolean, ex: ExclusionIso | undefined, umbral: number = UMBRALES_SIGNIFICANCIA.porFuente, ev?: ResumenEvaluacion): EstadoCategoria {
   if (cuantificada) return 'Cuantificada';
+  if (ev && ev.total > 0) {
+    if (ev.sinValorar > 0) return 'Sin evaluar';
+    if (ev.significativasSinCuantificar > 0) return 'Significativa sin cuantificar';
+    if (ev.noSignificativas === ev.total) return 'No significativa';
+  }
   if (ex) return ex.porcentaje != null && ex.porcentaje < umbral ? 'No significativa' : 'Excluida';
   return 'Sin evaluar';
 }
 
 /** Con `totales` (los que calcula el motor) las comprobaciones cruzan dos cálculos independientes: por línea y por total. */
-export function resultadosIso(resultados: ResultadoLinea[], f: ConjuntoFactores, exclusiones: ExclusionIso[] = [], totales?: Totales): ResultadosIso {
+export function resultadosIso(resultados: ResultadoLinea[], f: ConjuntoFactores, exclusiones: ExclusionIso[] = [], totales?: Totales, evaluaciones: Record<number, ResumenEvaluacion> = {}): ResultadosIso {
   // Categoría 1: solo las fuentes cuya categoría ISO es 1 (la electricidad, categoría 2, no entra en la tabla por gas)
   const directas = resultados.filter((r) => CATEGORIA_ISO_FUENTE[r.linea.categoria].n === 1);
   let kgCO2 = 0, gCH4 = 0, gN2O = 0;
@@ -102,8 +109,10 @@ export function resultadosIso(resultados: ResultadoLinea[], f: ConjuntoFactores,
   for (const r of resultados) { const c = CATEGORIA_ISO_FUENTE[r.linea.categoria].n; if (c !== 1) { porCategoria[c] += r.kgCO2e / 1000; cuantificadas.add(c); } }
   const categorias: FilaIndirecta[] = CATEGORIAS_ISO.map((c) => {
     const ex = exclusiones.find((x) => x.categoriaIso === c.n);
-    const estado = estadoCategoria(cuantificadas.has(c.n), ex);
-    return { n: c.n, nombre: c.nombre, estado, toneladasCO2e: estado === 'Cuantificada' ? porCategoria[c.n] : null, justificacion: estado === 'Cuantificada' ? null : ex?.justificacion ?? null, porcentaje: ex?.porcentaje ?? null };
+    const ev = evaluaciones[c.n];
+    const estado = estadoCategoria(cuantificadas.has(c.n), ex, UMBRALES_SIGNIFICANCIA.porFuente, ev);
+    const porEval = ev && ev.total > 0 && ev.sinValorar === 0 && estado !== 'Cuantificada' ? ev.justificaciones.join(' · ') || null : null;
+    return { n: c.n, nombre: c.nombre, estado, toneladasCO2e: estado === 'Cuantificada' ? porCategoria[c.n] : null, justificacion: estado === 'Cuantificada' ? null : porEval ?? ex?.justificacion ?? null, porcentaje: ex?.porcentaje ?? null };
   });
 
   const totalInventario = totales ? totales.kgCO2eTotal / 1000 : resultados.reduce((t, r) => t + r.kgCO2e, 0) / 1000;

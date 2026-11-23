@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { PLANTILLA_HOTELES } from '../significancia.ts';
 import { construirConjunto } from '../factores.ts';
 import { calcularInventario } from '../motor.ts';
 import { CORRESPONDENCIA_ISO, construirInforme } from '../informe.ts';
@@ -24,7 +25,8 @@ const base = (): DatosInforme => ({
   factores: f, resultados, totales,
   actividad: lineas.map((l) => ({ centro: l.centro, categoria: l.categoria, fuente: l.fuente, cantidad: l.cantidad, contador: l.contador ?? null, periodoDesde: '2023-01-01', periodoHasta: '2023-12-31', documento: `f_${l.id}.pdf` })),
   anterior: { anio: 2022, a1: 8000, a2: 30000, total: 38000 },
-  exclusiones: [{ fuente: 'Extintores', porcentaje: 0.03, justificacion: 'Recargas mínimas.', categoriaIso: 1 }, ...[3, 4, 5, 6].map((n) => ({ fuente: `Categoría ${n}`, porcentaje: 0.5, justificacion: `Sin datos fiables de la categoría ${n}.`, categoriaIso: n }))],
+  exclusiones: [{ fuente: 'Extintores', porcentaje: 0.03, justificacion: 'Recargas mínimas.', categoriaIso: 1, evidencia: true }, ...[3, 4, 5, 6].map((n) => ({ fuente: `Categoría ${n}`, porcentaje: 0.5, justificacion: `Sin datos fiables de la categoría ${n}.`, categoriaIso: n }))],
+  significancia: { plantilla: PLANTILLA_HOTELES, evaluaciones: PLANTILLA_HOTELES.map((x) => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: 0.2, influencia: 'baja' as const, datos: 'parciales' as const, requisitos: false, resultado: 'no_significativa' as const, justificacion: `Aporte marginal de ${x.nombre}.`, cuantificada: false })) },
   noConformidades: [], documentos: [{ nombre: 'f_1.pdf', tipo: 'electricidad', centro: 'Hotel A', estado: 'revisado' }],
   emitidoPor: 'Consultor HS', fecha: '2024-03-05',
 });
@@ -146,7 +148,7 @@ test('categorías 2 a 6: Cuantificada / No significativa / Excluida / Sin evalua
   assert.equal(estadoCategoria(false, undefined), 'Sin evaluar');
   const iso = resultadosIso(resultados, f, [{ fuente: 'Viajes', porcentaje: 0.3, justificacion: 'Escasos', categoriaIso: 3 }, { fuente: 'Compras', porcentaje: 6, justificacion: 'Sin datos', categoriaIso: 4 }], totales);
   assert.deepEqual(iso.indirectas.map((c) => [c.n, c.estado]), [[2, 'Cuantificada'], [3, 'No significativa'], [4, 'Excluida'], [5, 'Sin evaluar'], [6, 'Sin evaluar']]);
-  const m = construirInforme({ ...base(), exclusiones: [] });
+  const m = construirInforme({ ...base(), exclusiones: [], significancia: undefined });
   assert.ok(m.pendientes.some((p) => /Categoría 5/.test(p)));
 });
 test('si los totales no cuadran hay una incidencia bloqueante', () => {
@@ -155,4 +157,34 @@ test('si los totales no cuadran hay una incidencia bloqueante', () => {
   assert.equal(iso.cuadre.ok, false); assert.ok(iso.cuadre.incidencias.length >= 1);
   const m = construirInforme({ ...base(), totales: malos });
   assert.ok(m.bloqueantes.length >= 1);
+});
+
+test('declaración de conformidad: caso a) con la evaluación completa; caso b) con lo que falta; nada fijo en el generador', () => {
+  const a = construirInforme(base());
+  assert.equal(a.declaracion.caso, 'a');
+  assert.match(texto(a), /conforme a la norma ISO 14064-1:2018 y a los requisitos del Decreto 48\/2021/);
+  const d = base(); d.significancia!.evaluaciones = d.significancia!.evaluaciones.slice(0, 5); // faltan subcategorías
+  const b = construirInforme(d);
+  assert.equal(b.declaracion.caso, 'b');
+  assert.match(texto(b), /siguiendo la metodología de ISO 14064-1:2018/); assert.match(texto(b), /sin valorar/);
+  assert.doesNotMatch(JSON.stringify(b.secciones.find((x) => x.id === '11')), /conforme a la norma ISO/);
+  // una significativa sin cuantificar también pasa al caso b)
+  const e = base(); e.significancia!.evaluaciones[0] = { ...e.significancia!.evaluaciones[0], requisitos: true, resultado: 'significativa', cuantificada: false };
+  assert.equal(construirInforme(e).declaracion.caso, 'b'); assert.ok(construirInforme(e).pendientes.some((p) => /significativa y no está cuantificada/.test(p)));
+  e.significancia!.evaluaciones[0].cuantificada = true; assert.equal(construirInforme(e).declaracion.caso, 'a');
+  // textos desde la configuración
+  const f2 = base(); f2.significancia!.textos = { programa: 'Programa Y', a: 'Conformidad {anio} con {programa}.' };
+  assert.match(texto(construirInforme(f2)), /Conformidad 2023 con Programa Y\./);
+  // sin evaluación: caso b) y pendiente
+  const g = base(); g.significancia = undefined; const mg = construirInforme(g);
+  assert.equal(mg.declaracion.caso, 'b'); assert.ok(mg.pendientes.some((p) => /No se ha realizado la evaluación/.test(p)));
+});
+test('exclusiones de la categoría 1 sin % o sin evidencia son pendientes; la evaluación se refleja en el estado de las categorías', () => {
+  const d = base(); d.exclusiones[0] = { ...d.exclusiones[0], porcentaje: null, evidencia: false };
+  const p = construirInforme(d).pendientes.join(' | ');
+  assert.match(p, /falta el porcentaje/); assert.match(p, /falta la evidencia/);
+  const e = base(); e.exclusiones = [];
+  const m = construirInforme(e); const iso = JSON.stringify(m.secciones.find((x) => x.id === '9'));
+  assert.match(iso, /No significativa/); // categorías 3 a 6 por la evaluación, sin exclusiones sueltas
+  assert.match(iso, /3\.1 Transporte de mercancías/);
 });

@@ -54,7 +54,7 @@ test('el PDF no contiene «null», «undefined» ni «NaN»', () => {
 test('ningún número del informe sale con punto decimal ni sin separador de miles', () => {
   const t = todo(base()).replace(/<[^>]*>/g, ' ');
   // fechas, versiones de calculadora e identificadores no son cantidades
-  const sinIds = t.replace(/calculadora-\d{4}\.\d@\d{4}|\d{1,2}\/\d{1,2}\/\d{4}|ISO \d+-\d:\d{4}|Decreto \d+\/\d{4}|n\.º \d+|\d{4}-\d{2}-\d{2}|HC-\d{4}-\w+|v\d+|versión \d+|apartados? \d+(?:\.\d+)*|huella \d+\.\d+/g, ' ').replace(/^\d+\.\d+ /gm, ' ').replace(/^\d+(?:\.\d+)+$/gm, ' '); // referencias a apartados (9.3, 7.4…)
+  const sinIds = t.replace(/calculadora-\d{4}\.\d@\d{4}|\d{1,2}\/\d{1,2}\/\d{4}|ISO \d+-\d:\d{4}|Decreto \d+\/\d{4}|n\.º \d+|\d{4}-\d{2}-\d{2}|HC-\d{4}-\w+|v\d+|versión \d+|apartados? \d+(?:\.\d+)*|huella \d+\.\d+|\b\d\.\d(?= [A-ZÁÉÍÓÚ])/g, ' ').replace(/^\d+\.\d+ /gm, ' ').replace(/^\d+(?:\.\d+)+$/gm, ' '); // referencias a apartados (9.3, 7.4…)
   const malo = /\b\d{1,3}(?:\.\d{3})*\.\d{1,2}\b(?!\.\d)/.exec(sinIds);
   assert.equal(malo, null, `decimal con punto: «${malo ? malo[0] : ''}» en ${malo ? JSON.stringify(sinIds.slice(Math.max(0, malo.index - 40), malo.index + 40)) : ''}`);
   assert.doesNotMatch(sinIds, /(?<![\d.,])\d{4,},\d/, 'miles sin separador antes de la coma');

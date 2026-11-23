@@ -146,3 +146,18 @@ test('cada factura afectada lleva su identificador para poder abrirla y decidir 
   assert.equal(r.items.find((i) => i.codigo === 'consumo_cero')!.detalle!.length, 3);
   assert.ok(r.items.find((i) => i.codigo === 'consumo_cero')!.detalle!.every((x) => !!x.docId));
 });
+
+test('si los resultados por gas/categoría no cuadran con el total, el cierre se bloquea', () => {
+  const ok = evaluarCierre({ ...base, cuadreIso: { ok: true, incidencias: [] } });
+  assert.ok(!ok.items.some((i) => i.codigo === 'cuadre_iso'));
+  const mal = evaluarCierre({ ...base, cuadreIso: { ok: false, incidencias: ['La suma por gas no coincide con la categoría 1.'] } });
+  const item = mal.items.find((i) => i.codigo === 'cuadre_iso')!;
+  assert.equal(item.nivel, 'error'); assert.equal(mal.puedeCerrar, false);
+  assert.match(item.detalle![0].texto, /suma por gas/);
+});
+test('las categorías ISO sin evaluar se avisan una a una', () => {
+  const r = evaluarCierre({ ...base, categoriasSinEvaluar: [{ n: 3, nombre: 'Transporte' }, { n: 5, nombre: 'Uso de productos de la organización' }] });
+  const item = r.items.find((i) => i.codigo === 'categorias_sin_evaluar')!;
+  assert.equal(item.nivel, 'aviso'); assert.equal(item.detalle!.length, 2);
+  assert.ok(!evaluarCierre(base).items.some((i) => i.codigo === 'categorias_sin_evaluar'));
+});

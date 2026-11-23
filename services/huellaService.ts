@@ -16,7 +16,7 @@ export interface CierreDatos {
 }
 export interface FilaBiblioteca { inventario: Inventario; organizacion: Organizacion; centros: number }
 export interface Verificacion { entidad?: string; nivel?: string; fecha?: string; referencia?: string }
-export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
+export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO 14064-1 (1 a 6) a la que pertenece lo excluido. */ categoria_iso?: number | null; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
 export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; /** Plantilla media del año (trabajadores), para el ratio por trabajador. */ plantilla_media?: number; notas?: string | null }

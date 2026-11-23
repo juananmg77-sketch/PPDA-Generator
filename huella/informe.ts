@@ -2,7 +2,7 @@
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
-import { desgloseGases } from './gases.ts';
+import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
 import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
 import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
 
@@ -21,6 +21,8 @@ export interface ModeloInforme {
   secciones: Seccion[];
   /** Datos que faltan o conviene revisar antes de entregar el informe al verificador. */
   pendientes: string[];
+  /** Incidencias que impiden entregar el informe (p. ej. los totales no cuadran). */
+  bloqueantes: string[];
 }
 
 export interface DatosInforme {
@@ -36,7 +38,7 @@ export interface DatosInforme {
   totales: Totales;
   actividad: Array<{ centro: string; categoria: string; fuente: string; cantidad: number; unidad?: string | null; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; documento?: string | null; notas?: string | null; origenElectricidad?: string | null }>;
   anterior?: { anio: number; a1: number; a2: number; total: number } | null;
-  exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string }>;
+  exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO (1 a 6) a la que pertenece lo excluido. */ categoriaIso?: number | null }>;
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
   documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
   /** Emisiones mensuales por fuente (t CO₂e, 12 valores) para el gráfico de evolución; opcional. */
@@ -138,18 +140,14 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   ] };
 
   // ── 5
-  const catsConDatos = [...new Set(d.actividad.map((a) => CATEGORIA[a.categoria] ?? a.categoria))];
+  const iso = resultadosIso(d.resultados, d.factores, d.exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoriaIso })), tot);
+  const subsConDatos = (n: number) => [...new Set(d.actividad.map((a) => CATEGORIA_ISO_FUENTE[a.categoria as keyof typeof CATEGORIA_ISO_FUENTE]).filter((c) => c && c.n === n).map((c) => c.sub))].sort();
   const s5: Seccion = { id: '5', titulo: 'Límites del informe', bloques: [
-    { k: 'tabla', cab: ['Categoría (ISO 14064-1)', 'Incluida', 'Fuentes'], filas: [
-      ['1 · Emisiones directas', 'Sí', 'Combustión fija y móvil, emisiones fugitivas de refrigerantes'],
-      ['2 · Energía importada', 'Sí', 'Electricidad adquirida (método de ubicación y de mercado, informados por separado)'],
-      ['3 · Transporte', 'No', 'Opcional en el Registro balear; no cuantificada'],
-      ['4 · Productos usados por la organización', 'No', 'Opcional; no cuantificada'],
-      ['5 · Uso de productos de la organización', 'No', 'Opcional; no cuantificada'],
-      ['6 · Otras fuentes', 'No', 'Opcional; no cuantificada'],
-    ] },
-    { k: 'p', texto: `Fuentes con datos en este inventario: ${catsConDatos.length ? catsConDatos.join(', ') : 'ninguna'}.` },
-    { k: 'p', texto: 'Criterio de significancia: se consideran insignificantes las fuentes que individualmente representan menos del 3 % de las emisiones y, en conjunto, no más del 5 %.' },
+    { k: 'tabla', cab: ['Categoría (ISO 14064-1)', 'Estado', 'Fuentes o justificación'], filas: iso.categorias.map((c) => [
+      CATEGORIAS_ISO[c.n - 1].resumen, c.estado,
+      c.estado === 'Cuantificada' ? (subsConDatos(c.n).join('; ') || '—') : c.justificacion ?? '—',
+    ]) },
+    { k: 'p', texto: `Criterio de significancia: se consideran insignificantes las fuentes que individualmente representan menos del ${fmt(UMBRALES_SIGNIFICANCIA.porFuente, 'entero')} % de las emisiones y, en conjunto, no más del ${fmt(UMBRALES_SIGNIFICANCIA.total, 'entero')} %.` },
   ] };
 
   // ── 6
@@ -213,8 +211,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const merc = lineasElec.reduce((s, r) => s + (r.electricidad?.kgCO2eMercado ?? 0), 0);
   const indiceTotal = d.centros.reduce((s, c) => s + (c.indice > 0 ? c.indice : 0), 0);
   const plantillaTotal = comoSeMuestra(d.centros.reduce((s, c) => s + ((c.plantilla ?? 0) > 0 ? comoSeMuestra(c.plantilla!, 'plantilla') : 0), 0), 'plantilla'); // el divisor de los ratios es el valor que se muestra
-  const gases = desgloseGases(d.resultados, d.factores);
-  const totalGases = gases.reduce((t, x) => t + x.toneladasCO2e, 0);
+  const unCentro = d.centros.length === 1;
   // Gráficos de resultados (SVG)
   const fuenteT: Record<string, number> = {};
   for (const r of d.resultados) { const k = etiquetaFuente(r.linea.fuente); fuenteT[k] = (fuenteT[k] ?? 0) + r.kgCO2e / 1000; }
@@ -234,27 +231,43 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     ], `Comparación con ${d.anterior.anio}`) });
   }
 
+  // Resumen ejecutivo: totales por categoría y ratios globales (con un único centro, los ratios del centro son los globales)
+  const filasResumen: string[][] = [
+    ['Emisiones directas (categoría 1)', `${fmt(iso.porCategoria[1], 'tCO2e')} t CO₂e`],
+    ['Energía importada (categoría 2)', `${fmt(iso.porCategoria[2], 'tCO2e')} t CO₂e`],
+    ...iso.indirectas.filter((c) => c.n >= 3 && c.estado === 'Cuantificada').map((c) => [`${CATEGORIAS_ISO[c.n - 1].resumen}`, `${fmt(c.toneladasCO2e, 'tCO2e')} t CO₂e`]),
+    ['Total del inventario', `${fmt(iso.totalInventario, 'tCO2e')} t CO₂e`],
+    ...(indiceTotal > 0 ? [['Ratio por estancia', `${fmt(iso.totalInventario / indiceTotal, 'ratio')} t CO₂e por estancia (${fmt(indiceTotal, 'entero')} estancias)`]] : []),
+    ...(plantillaTotal > 0 ? [['Ratio por trabajador', `${fmt(iso.totalInventario / plantillaTotal, 'ratio')} t CO₂e por trabajador (plantilla media ${fmt(plantillaTotal, 'plantilla')})`]] : []),
+  ];
+  const grupoGraf = iso.gases.filter((x) => x.toneladasCO2e > 0).map((x) => ({ nombre: x.grupo, t: x.toneladasCO2e }));
+  const catGraf = iso.categorias.filter((c) => c.estado === 'Cuantificada').map((c) => ({ nombre: CATEGORIAS_ISO[c.n - 1].resumen, t: iso.porCategoria[c.n] }));
+
   const bloques9: Bloque[] = [
-    { k: 'h', texto: '9.0 Resumen gráfico' },
+    { k: 'h', texto: '9.0 Resumen ejecutivo' },
+    { k: 'tabla', cab: ['Magnitud', 'Valor'], filas: filasResumen, pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
     ...graficos,
-    { k: 'h', texto: '9.1 Resultados por categoría' },
-    { k: 'tabla', cab: ['Categoría', 'Emisiones (t CO₂e)'], filas: [['1 · Emisiones directas (Alcance 1)', tn(tot.kgCO2eAlcance1)], ['2 · Energía importada (Alcance 2, criterio del registro)', tn(tot.kgCO2eAlcance2)], ['Total', tn(tot.kgCO2eTotal)]], numericas: [1], pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
-    { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales([{ nombre: '1 · Emisiones directas', t: tot.kgCO2eAlcance1 / 1000 }, { nombre: '2 · Energía importada', t: tot.kgCO2eAlcance2 / 1000 }], 'Emisiones por categoría'), pie: 'Alcance 1 (combustibles, refrigerantes) y Alcance 2 (electricidad) del inventario.' },
-    { k: 'h', texto: '9.2 Resultados por tipo de gas' },
-    { k: 'tabla', cab: ['Gas', 'Familia', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)', '% del total'], filas: [
-      ...gases.map((x) => [x.gas, x.familia, fmt(x.toneladasGas, 'gasT'), fmt(x.pca, 'pca'), tn(x.toneladasCO2e * 1000), totalGases > 0 ? pct((x.toneladasCO2e / totalGases) * 100) : '—']),
-      ['Total', '', '', '', tn(totalGases * 1000), totalGases > 0 ? pct(100) : '—'],
-    ], numericas: [2, 3, 4, 5], pie: 'Cada gas en toneladas del propio gas; las emisiones de CO₂e resultan de multiplicarlas por su potencial de calentamiento global (PCA). Los gases fluorados de las recargas se expresan en CO₂e igual que el CH₄ y el N₂O, con el PCA de cada gas del conjunto de factores utilizado.' },
-    { k: 'grafico', titulo: 'Emisiones por gas (t CO₂e)', ...svgBarrasHorizontales(gases.filter((x) => x.toneladasCO2e > 0 || !x.fluorado).map((x) => ({ nombre: x.fluorado ? `${x.gas} (${x.familia})` : x.gas, t: x.toneladasCO2e })), 'Emisiones por gas'), pie: 'Expresadas en t CO₂e con los potenciales de calentamiento del conjunto de factores utilizado.' },
+    { k: 'h', texto: '9.1 Emisiones directas por gas (categoría 1)' },
+    { k: 'tabla', cab: ['Grupo de gas', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)', '% de la categoría 1'], filas: [
+      ...iso.gases.map((x) => [x.grupo, fmt(x.toneladasGas, 'gasT'), fmt(x.pca, 'pca'), fmt(x.toneladasCO2e, 'tCO2e'), pct(x.porcentajeCat1)]),
+      ['Total categoría 1', '', '', fmt(iso.totalCat1, 'tCO2e'), iso.totalCat1 > 0 ? pct(100) : '—'],
+    ], numericas: [1, 2, 3, 4], pie: 'Solo fuentes de la categoría 1. Cada gas en toneladas del propio gas; las emisiones en CO₂e resultan de multiplicarlas por su potencial de calentamiento global (PCA; en los grupos con varios gases, el PCA medio ponderado). Las mezclas HFC/HFO cuentan como HFC.' },
+    iso.refrigerantes.length
+      ? { k: 'tabla', cab: ['Refrigerante', 'Grupo de gas', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)'], filas: iso.refrigerantes.map((x) => [x.gas, x.grupo, fmt(x.toneladasGas, 'gasT'), fmt(x.pca, 'pca'), fmt(x.toneladasCO2e, 'tCO2e')]), numericas: [2, 3, 4], pie: 'Desglose por refrigerante de las emisiones fugitivas (recargas), con el PCA del conjunto de factores utilizado.' }
+      : { k: 'p', texto: 'No hay emisiones fugitivas de refrigerantes en este inventario.' },
+    ...(grupoGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones directas por grupo de gas (t CO₂e)', ...svgBarrasHorizontales(grupoGraf, 'Emisiones directas por grupo de gas'), pie: 'Solo categoría 1; se muestran los grupos con emisiones.' }] : []),
+    { k: 'h', texto: '9.2 Emisiones indirectas por categoría (2 a 6)' },
+    { k: 'tabla', cab: ['Categoría', 'Estado', 'Emisiones (t CO₂e)', 'Justificación'], filas: iso.indirectas.map((c) => [CATEGORIAS_ISO[c.n - 1].resumen, c.estado, fmt(c.toneladasCO2e, 'tCO2e'), c.justificacion ?? '—']), numericas: [2], pie: 'Cuantificada: con datos de actividad. No significativa: excluida por estar por debajo del umbral de significancia. Excluida: no cuantificada, con su justificación.' },
+    ...(catGraf.length ? [{ k: 'grafico' as const, titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(catGraf, 'Emisiones por categoría'), pie: 'Categorías cuantificadas del inventario.' }] : []),
     { k: 'h', texto: '9.3 Electricidad: método de ubicación y método de mercado' },
     { k: 'tabla', cab: ['Método', 'Emisiones (t CO₂e)'], filas: [['Basado en la ubicación (mix de la red)', tn(ubic)], ['Basado en el mercado (garantías de origen / autoconsumo)', tn(merc)]], numericas: [1], pie: 'Se informan por separado conforme al Anexo E de la norma.' },
-    { k: 'h', texto: '9.4 Resultados por centro' },
-    { k: 'tabla', cab: hayPlantilla ? ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia', 'Plantilla media', 't CO₂e por trabajador'] : ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; const pl = (c.plantilla ?? 0) > 0 ? comoSeMuestra(c.plantilla!, 'plantilla') : null; return [c.nombre, tn(kg), fmt(c.indice > 0 ? c.indice : null, 'entero'), fmt(c.indice > 0 ? kg / 1000 / c.indice : null, 'ratio'), ...(hayPlantilla ? [fmt(pl, 'plantilla'), fmt(pl ? kg / 1000 / pl : null, 'ratio')] : [])]; }), numericas: hayPlantilla ? [1, 2, 3, 4, 5] : [1, 2, 3] },
-    { k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' },
-    ...(d.centros.filter((c) => c.indice > 0).length > 1 ? [{ k: 'grafico' as const, titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' }] : []),
-    ...(hayPlantilla && plantillaTotal > 0 ? [{ k: 'p' as const, texto: `Ratio global por trabajador: ${fmt(tot.kgCO2eTotal / 1000 / plantillaTotal, 'ratio')} t CO₂e por trabajador (plantilla media ${fmt(plantillaTotal, 'plantilla')}).` }] : hayPlantilla ? [{ k: 'p' as const, texto: 'No se calcula el ratio por trabajador.' }] : []),
-    { k: 'p', texto: indiceTotal > 0 ? `Ratio global: ${fmt(tot.kgCO2eTotal / 1000 / indiceTotal, 'ratio')} t CO₂e por estancia (${fmt(indiceTotal, 'entero')} estancias).` : 'No se calcula el ratio global: no hay índice de actividad.' },
   ];
+  if (!unCentro) {
+    bloques9.push({ k: 'h', texto: '9.4 Resultados por centro' });
+    bloques9.push({ k: 'tabla', cab: hayPlantilla ? ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia', 'Plantilla media', 't CO₂e por trabajador'] : ['Centro', 'Emisiones (t CO₂e)', 'Estancias', 't CO₂e por estancia'], filas: d.centros.map((c) => { const kg = tot.porCentro[c.nombre] ?? 0; const pl = (c.plantilla ?? 0) > 0 ? comoSeMuestra(c.plantilla!, 'plantilla') : null; return [c.nombre, tn(kg), fmt(c.indice > 0 ? c.indice : null, 'entero'), fmt(c.indice > 0 ? kg / 1000 / c.indice : null, 'ratio'), ...(hayPlantilla ? [fmt(pl, 'plantilla'), fmt(pl ? kg / 1000 / pl : null, 'ratio')] : [])]; }), numericas: hayPlantilla ? [1, 2, 3, 4, 5] : [1, 2, 3] });
+    bloques9.push({ k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' });
+    if (d.centros.filter((c) => c.indice > 0).length > 1) bloques9.push({ k: 'grafico', titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' });
+  }
   if (d.anterior) {
     const v = (a: number, b: number) => (b > 0 ? `${fmt(((a - b) / b) * 100, 'porcentaje', { signo: true })} %` : '—');
     bloques9.push({ k: 'h', texto: `9.5 Comparación con ${d.anterior.anio}` });
@@ -327,5 +340,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     for (const m of marcas) if (!NOTAS_FUENTES[m]) sinNota.add(m);
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);
-  return { meta, secciones, pendientes };
+  for (const c of iso.indirectas) if (c.estado === 'Sin evaluar') pendientes.push(`Categoría ${c.n} (${c.nombre}): indique si es no significativa o está excluida, con su justificación.`);
+  const bloqueantes = [...iso.cuadre.incidencias];
+  return { meta, secciones, pendientes, bloqueantes };
 }

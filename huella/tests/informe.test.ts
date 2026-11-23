@@ -24,7 +24,7 @@ const base = (): DatosInforme => ({
   factores: f, resultados, totales,
   actividad: lineas.map((l) => ({ centro: l.centro, categoria: l.categoria, fuente: l.fuente, cantidad: l.cantidad, contador: l.contador ?? null, periodoDesde: '2023-01-01', periodoHasta: '2023-12-31', documento: `f_${l.id}.pdf` })),
   anterior: { anio: 2022, a1: 8000, a2: 30000, total: 38000 },
-  exclusiones: [{ fuente: 'Extintores', porcentaje: 0.03, justificacion: 'Recargas mínimas.' }],
+  exclusiones: [{ fuente: 'Extintores', porcentaje: 0.03, justificacion: 'Recargas mínimas.', categoriaIso: 1 }, ...[3, 4, 5, 6].map((n) => ({ fuente: `Categoría ${n}`, porcentaje: 0.5, justificacion: `Sin datos fiables de la categoría ${n}.`, categoriaIso: n }))],
   noConformidades: [], documentos: [{ nombre: 'f_1.pdf', tipo: 'electricidad', centro: 'Hotel A', estado: 'revisado' }],
   emitidoPor: 'Consultor HS', fecha: '2024-03-05',
 });
@@ -86,37 +86,73 @@ test('la declaración de verificación usa los datos del verificador cuando exis
   assert.match(texto(m), /Entidad X/); assert.match(texto(m), /Limitado/); assert.match(texto(m), /V-123/);
 });
 
-test('el informe incluye gráficos en Resultados: reparto, evolución mensual (si hay datos) y comparación con el año anterior', () => {
+test('el informe incluye gráficos en Resultados: reparto, evolución mensual (si hay datos), comparación, por grupo de gas y por categoría', () => {
   const d = base();
   d.mensualPorFuente = { Electricidad: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 'Gas natural': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] };
   const m = construirInforme(d);
   const r = m.secciones.find((s) => s.id === '9')!;
   const graf = r.bloques.filter((b) => b.k === 'grafico');
-  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Reparto de las emisiones por fuente', 'Evolución mensual de las emisiones 2023', 'Comparación con 2022', 'Emisiones por categoría', 'Emisiones por gas', 'Emisiones por centro']);
+  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Reparto de las emisiones por fuente', 'Evolución mensual de las emisiones 2023', 'Comparación con 2022', 'Emisiones directas por grupo de gas', 'Emisiones por categoría']);
   for (const g of graf) assert.match((g as { svg: string }).svg, /^<svg/);
-  const sinMensual = construirInforme({ ...base(), anterior: null }).secciones.find((s) => s.id === '9')!.bloques.filter((b) => b.k === 'grafico');
-  assert.equal(sinMensual.length, 4); // reparto por fuente + categoría + gas + centro
 });
 
-test('informe: con plantilla media añade el ratio por trabajador; sin ella no cambia', () => {
+test('informe: con plantilla media añade el ratio por trabajador al resumen; sin ella no cambia', () => {
   const sin = texto(construirInforme(base()));
   assert.ok(!/por trabajador/.test(sin));
   const d = base(); d.centros[0].plantilla = 63.465;
   const con = texto(construirInforme(d));
-  assert.match(con, /t CO₂e por trabajador/);
-  assert.match(con, /Ratio global por trabajador/);
-  assert.match(con, /63,47|63,465/);
+  assert.match(con, /Ratio por trabajador/);
+  assert.match(con, /63,465/);
 });
 
-import { desgloseGases } from '../gases.ts';
-test('desglose por gas: CO₂, CH₄, N₂O y cada fluorado con su PCA; la suma es el total del inventario', () => {
-  const filas = desgloseGases(resultados, f);
-  assert.deepEqual(filas.map((x) => x.gas).slice(0, 3), ['CO₂', 'CH₄', 'N₂O']);
-  const hfc = filas.find((x) => x.gas === 'HFC-134a')!;
-  assert.equal(hfc.fluorado, true); assert.equal(hfc.familia, 'HFC'); assert.equal(hfc.toneladasGas, 0.002); assert.equal(hfc.pca, f.pcaRefrigerantes['HFC-134a']);
+test('con un único centro se ocultan la tabla y los gráficos por centro y sus ratios pasan al resumen ejecutivo', () => {
+  const d = base();
+  const m = construirInforme(d); const r = m.secciones.find((s) => s.id === '9')!;
+  assert.ok(!r.bloques.some((b) => b.k === 'h' && /por centro/.test(b.texto)));
+  assert.ok(!r.bloques.some((b) => b.k === 'grafico' && /por centro|Intensidad por estancia/.test(b.titulo)));
+  const resumen = r.bloques.find((b) => b.k === 'tabla') as { filas: string[][] };
+  assert.ok(resumen.filas.some((fila) => fila[0] === 'Ratio por estancia'));
+  // con dos centros reaparecen
+  const d2 = base(); d2.centros.push({ nombre: 'Hotel B', direccion: null, municipio: null, isla: null, enBaleares: true, unidades: 10, indice: 100 });
+  const m2 = construirInforme(d2); const r2 = m2.secciones.find((s) => s.id === '9')!;
+  assert.ok(r2.bloques.some((b) => b.k === 'h' && /por centro/.test(b.texto)));
+});
+
+import { GRUPOS_GAS, grupoGasRefrigerante, resultadosIso, estadoCategoria } from '../iso.ts';
+test('9.1: la tabla por gas solo cuenta la categoría 1, siempre con las 8 filas, y cuadra con el total', () => {
+  const iso = resultadosIso(resultados, f, [], totales);
+  assert.deepEqual(iso.gases.map((x) => x.grupo), [...GRUPOS_GAS]);
+  assert.equal(iso.gases.length, 8);
+  assert.equal(iso.gases.find((x) => x.grupo === 'SF₆')!.toneladasCO2e, 0); // sin emisiones: fila a cero
+  const hfc = iso.gases.find((x) => x.grupo === 'HFC')!;
   assert.ok(Math.abs(hfc.toneladasCO2e - 0.002 * f.pcaRefrigerantes['HFC-134a']) < 1e-9);
-  const suma = filas.reduce((t, x) => t + x.toneladasCO2e, 0);
-  assert.ok(Math.abs(suma * 1000 - totales.kgCO2eTotal) < 1e-6, `${suma * 1000} vs ${totales.kgCO2eTotal}`);
+  // la electricidad (categoría 2) no entra en la tabla por gas
+  assert.ok(Math.abs(iso.totalCat1 * 1000 - totales.kgCO2eAlcance1) < 1e-6);
+  assert.ok(Math.abs(iso.gases.reduce((t, x) => t + x.toneladasCO2e, 0) - iso.totalCat1) < 1e-9);
+  assert.ok(Math.abs(Object.values(iso.porCategoria).reduce((t, x) => t + x, 0) * 1000 - totales.kgCO2eTotal) < 1e-6);
+  assert.equal(iso.cuadre.ok, true);
   const m = construirInforme(base());
-  assert.match(JSON.stringify(m), /9\.2 Resultados por tipo de gas/); assert.match(JSON.stringify(m), /HFC-134a/);
+  assert.match(JSON.stringify(m), /9\.1 Emisiones directas por gas/); assert.match(JSON.stringify(m), /Desglose por refrigerante|Refrigerante/); assert.match(JSON.stringify(m), /HFC-134a/);
+  assert.deepEqual(m.bloqueantes, []);
+});
+test('cada refrigerante tiene su familia ISO; las mezclas HFC/HFO cuentan como HFC', () => {
+  for (const [n, g] of [['HFC-134a', 'HFC'], ['R-410A', 'HFC'], ['R-448A', 'HFC'], ['R-1234yf', 'HFC'], ['HFO-1234ze', 'HFC'], ['SF6', 'SF₆'], ['NF3', 'NF₃'], ['PFC-14', 'PFC'], ['HCFC-22', 'Otros fluorados'], ['gas desconocido', 'Otros fluorados']] as const) assert.equal(grupoGasRefrigerante(n), g, n);
+});
+test('categorías 2 a 6: Cuantificada / No significativa / Excluida / Sin evaluar según los datos y las exclusiones', () => {
+  assert.equal(estadoCategoria(true, undefined), 'Cuantificada');
+  assert.equal(estadoCategoria(false, { fuente: 'x', porcentaje: 0.5, justificacion: 'j' }), 'No significativa');
+  assert.equal(estadoCategoria(false, { fuente: 'x', porcentaje: 4, justificacion: 'j' }), 'Excluida');
+  assert.equal(estadoCategoria(false, { fuente: 'x', porcentaje: null, justificacion: 'j' }), 'Excluida');
+  assert.equal(estadoCategoria(false, undefined), 'Sin evaluar');
+  const iso = resultadosIso(resultados, f, [{ fuente: 'Viajes', porcentaje: 0.3, justificacion: 'Escasos', categoriaIso: 3 }, { fuente: 'Compras', porcentaje: 6, justificacion: 'Sin datos', categoriaIso: 4 }], totales);
+  assert.deepEqual(iso.indirectas.map((c) => [c.n, c.estado]), [[2, 'Cuantificada'], [3, 'No significativa'], [4, 'Excluida'], [5, 'Sin evaluar'], [6, 'Sin evaluar']]);
+  const m = construirInforme({ ...base(), exclusiones: [] });
+  assert.ok(m.pendientes.some((p) => /Categoría 5/.test(p)));
+});
+test('si los totales no cuadran hay una incidencia bloqueante', () => {
+  const malos = { ...totales, kgCO2eTotal: totales.kgCO2eTotal + 5 };
+  const iso = resultadosIso(resultados, f, [], malos);
+  assert.equal(iso.cuadre.ok, false); assert.ok(iso.cuadre.incidencias.length >= 1);
+  const m = construirInforme({ ...base(), totales: malos });
+  assert.ok(m.bloqueantes.length >= 1);
 });

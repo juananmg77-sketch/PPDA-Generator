@@ -7,10 +7,10 @@ import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
+import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
 import { CNAE_HOTEL, centroDesdeHotel, coordenada, organizacionDesdeHotel } from '../huella/hotelesSuite';
 import type { HotelSuite } from '../huella/hotelesSuite';
 import { construirInforme } from '../huella/informe';
-import { desgloseGases } from '../huella/gases';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { generarInformePdf } from '../huella/informePdf';
@@ -1745,7 +1745,7 @@ const PanelCierre: React.FC<{
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
   const [analisis, setAnalisis] = useState(inv.cierre?.analisisVariacion ?? '');
-  const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '' });
+  const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1' });
   const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
   const [reabrir, setReabrir] = useState(false);
   const [modalEx, setModalEx] = useState(false);
@@ -1808,8 +1808,9 @@ const PanelCierre: React.FC<{
     { nombre: 'Total', actual: calculo.totales.kgCO2eTotal, anterior: previo.total },
   ] : undefined;
 
+  const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales) : null), [factores, calculo, exclusiones]);
   const evaluacion = useMemo(() => {
-    if (!factores || !calculo || previo === undefined) return null;
+    if (!factores || !calculo || previo === undefined || !isoCierre) return null;
     return evaluarCierre({
       anio: inv.anio,
       docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual })),
@@ -1821,9 +1822,10 @@ const PanelCierre: React.FC<{
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
       exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      cuadreIso: isoCierre.cuadre, categoriasSinEvaluar: isoCierre.categorias.filter((c) => c.estado === 'Sin evaluar').map((c) => ({ n: c.n, nombre: c.nombre })),
       ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
     });
-  }, [factores, calculo, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
+  }, [factores, calculo, isoCierre, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
 
   const guardarAnalisis = async () => {
     if (!abierto || analisis === (inv.cierre?.analisisVariacion ?? '')) return;
@@ -1852,11 +1854,11 @@ const PanelCierre: React.FC<{
       let x;
       if (esExt) {
         const c = { ...calcExt, certificadoPath: certPath!, certificadoNombre: certExt!.name, leidoConIA: filasCert.length > 0, detalle: elegidas.map((f) => ({ documento: f.documento, concepto: f.concepto, operacion: f.operacion, cantidad: num(f.cantidad), kgPorExtintor: num(f.kg), fecha: f.fecha, pagina: f.pagina })) };
-        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), calculo: c, certificado_path: certPath, certificado_nombre: certExt!.name });
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), categoria_iso: 1, calculo: c, certificado_path: certPath, certificado_nombre: certExt!.name });
       } else {
-        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim(), categoria_iso: Number(fx.cat) });
       }
-      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '' }); setFilasCert([]); setCertExt(null); setCertPath(null); setObsCert(''); setModalEx(false);
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '', cat: '1' }); setFilasCert([]); setCertExt(null); setCertPath(null); setObsCert(''); setModalEx(false);
     } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
   const anadirNc = async () => {
@@ -1963,7 +1965,7 @@ const PanelCierre: React.FC<{
         <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del 3 % y el conjunto como máximo el 5 % de las emisiones (ISO 14064-1, 9.3.1 i).</p>
         {exclusiones.length > 0 && (
           <ul className="divide-y divide-slate-100 mb-3">{exclusiones.map((x) => (
-            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p>{x.certificado_path && <button className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 underline" onClick={async () => { try { window.open(await huellaService.urlDocumento(x.certificado_path!), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={11} /> Certificado: {x.certificado_nombre ?? 'ver'}</button>}</div>
+            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.categoria_iso ? `Cat. ${x.categoria_iso} · ` : ''}{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p>{x.certificado_path && <button className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 underline" onClick={async () => { try { window.open(await huellaService.urlDocumento(x.certificado_path!), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={11} /> Certificado: {x.certificado_nombre ?? 'ver'}</button>}</div>
               {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar exclusión" onClick={async () => { try { await huellaService.borrarExclusion(x.id); setExclusiones((l) => l.filter((y) => y.id !== x.id)); } catch (e) { falla(e); } }}><Trash2 size={14} /></button>}</li>
           ))}</ul>
         )}
@@ -2025,6 +2027,7 @@ const PanelCierre: React.FC<{
               </div>
             ) : (
               <>
+                <Campo etiqueta="Categoría ISO 14064-1 *"><select className={input} value={fx.cat} onChange={(e) => setFx({ ...fx, cat: e.target.value })} aria-label="Categoría ISO">{CATEGORIAS_ISO.map((c) => <option key={c.n} value={String(c.n)}>{c.resumen}</option>)}</select></Campo>
                 <Campo etiqueta="% estimado de las emisiones"><input type="number" min={0} step="any" className={input} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></Campo>
                 <Campo etiqueta="Justificación *" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
               </>
@@ -2117,7 +2120,7 @@ const PanelInforme: React.FC<{
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
       actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
-      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })),
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
       documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
       mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
@@ -2223,9 +2226,9 @@ const PanelInforme: React.FC<{
             <span className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-1 rounded-full ${inv.estado === 'verificado' ? 'bg-green-100 text-green-800' : cerrado ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>{modelo.meta.estado}</span>
           </div>
           {!soloLectura && inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
-          <button className={btnP} onClick={pdf} disabled={!!trabajando || !modelo} title="PDF del informe con portada, márgenes, cabecera con logos y pie numerado">{trabajando === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Descargar PDF</button>
-          <button className={btnS} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
-          <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador (ZIP)</button>
+          <button className={btnP} onClick={pdf} disabled={!!trabajando || !modelo || modelo.bloqueantes.length > 0} title="PDF del informe con portada, márgenes, cabecera con logos y pie numerado">{trabajando === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Descargar PDF</button>
+          <button className={btnS} onClick={word} disabled={!!trabajando || modelo.bloqueantes.length > 0}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
+          <button className={btnS} onClick={paquete} disabled={!!trabajando || modelo.bloqueantes.length > 0}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador (ZIP)</button>
           <button className={btnS} onClick={calculadora} disabled={!!trabajando} title="Calculadora oficial del Registro balear con los datos de este cálculo">{trabajando === 'calc' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Calculadora oficial (Excel)</button>
         </div>
       </div>
@@ -2236,6 +2239,13 @@ const PanelInforme: React.FC<{
           {notaExp.avisos.length > 0 && <ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
           {notaExp.pendientes.length > 0 && <><p className="text-xs font-semibold mt-2">Datos que el libro pide y la aplicación no tiene:</p><ul className="list-disc pl-5 text-xs space-y-0.5">{notaExp.pendientes.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
           <p className="text-[11px] mt-2 text-amber-800">Al abrir el libro en Excel se recalculan solos los resultados (hoja 4.1); compruebe que el total coincide con el de la aplicación.</p>
+        </div>
+      )}
+
+      {modelo.bloqueantes.length > 0 && (
+        <div className="bg-red-50 border border-red-300 rounded-2xl p-4 text-sm text-red-900" role="alert">
+          <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={15} /> Incidencia bloqueante: el informe no se puede entregar</p>
+          <ul className="list-disc pl-5 text-xs space-y-0.5">{modelo.bloqueantes.map((x, i) => <li key={i}>{x}</li>)}</ul>
         </div>
       )}
 
@@ -2359,8 +2369,9 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className={card}>
-          <h3 className="text-sm font-bold text-slate-800 mb-2">Por gas (t CO₂e)</h3>
-          <Tabla filas={desgloseGases(resultados, factores).filter((x) => !x.fluorado || x.toneladasCO2e > 0).map((x): [string, number] => [x.fluorado ? `${x.gas} (${x.familia})` : x.gas, x.toneladasCO2e * 1000])} />
+          <h3 className="text-sm font-bold text-slate-800 mb-2">Emisiones directas por gas (categoría 1, t CO₂e)</h3>
+          <Tabla filas={resultadosIso(resultados, factores, [], totales).gases.map((x): [string, number] => [x.grupo, x.toneladasCO2e * 1000])} />
+          <p className="text-[11px] text-slate-500 mt-1">La electricidad es categoría 2 y no entra en esta tabla.</p>
         </div>
         <div className={card}>
           <h3 className="text-sm font-bold text-slate-800 mb-2">Electricidad: dos métodos (t CO₂e)</h3>

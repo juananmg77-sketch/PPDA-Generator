@@ -29,6 +29,10 @@ export interface EntradaCierre {
   variaciones?: MagnitudCierre[];
   analisisVariacion?: string;
   exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string }>;
+  /** Resultado de la comprobación de cuadre de la estructura ISO (por gas, por categoría y total). Si no se cuadra, bloquea el cierre. */
+  cuadreIso?: { ok: boolean; incidencias: string[] };
+  /** Categorías ISO 3 a 6 (o 2) sin cuantificar, sin exclusión registrada y sin justificación. */
+  categoriasSinEvaluar?: Array<{ n: number; nombre: string }>;
   ncAbiertas: number;
   umbralVariacion?: number;
   exclusionPorFuente?: number; // % por fuente (3 por defecto)
@@ -144,6 +148,8 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     else add('ok', 'variacion', 'Variaciones grandes analizadas y justificadas.');
   }
 
+  if (e.cuadreIso && !e.cuadreIso.ok) add('error', 'cuadre_iso', 'Los resultados por gas o por categoría no cuadran con el total del inventario: no se puede cerrar ni entregar el informe.', { detalle: e.cuadreIso.incidencias.map((texto) => ({ texto })) });
+  if ((e.categoriasSinEvaluar ?? []).length > 0) add('aviso', 'categorias_sin_evaluar', `${e.categoriasSinEvaluar!.length} categoría(s) ISO sin evaluar: indique para cada una si es no significativa o está excluida, con su justificación (Fuentes excluidas).`, { detalle: e.categoriasSinEvaluar!.map((c) => ({ texto: `${c.n} · ${c.nombre}` })) });
   if (e.exclusiones.length > 0) {
     const r = evaluarExclusionesEstimadas(e.exclusiones, e.exclusionPorFuente ?? 3, e.exclusionTotal ?? 5);
     if (e.exclusiones.some((x) => !x.justificacion.trim())) add('error', 'exclusion_sin_justificar', 'Hay exclusiones sin justificación.');

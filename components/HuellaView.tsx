@@ -13,6 +13,7 @@ import { construirInforme } from '../huella/informe';
 import { desgloseGases } from '../huella/gases';
 import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
+import { generarInformePdf } from '../huella/informePdf';
 import { emisionesMensuales } from '../huella/graficos';
 import { huellaService, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
@@ -2199,6 +2200,11 @@ const PanelInforme: React.FC<{
       setNotaExp({ avisos: lib.avisos, pendientes: lib.pendientes });
     } catch (e) { falla(e); } finally { setTrabajando(''); }
   };
+  const pdf = async () => {
+    if (!modelo) return;
+    setTrabajando('pdf');
+    try { descargar(await generarInformePdf(modelo, window.location.origin), `${modelo.meta.codigo}_${inv.anio}.pdf`); } catch (e) { falla(e); } finally { setTrabajando(''); }
+  };
   const marcarVerificado = async () => {
     if (!confirm('Va a marcar el cálculo como verificado con los datos indicados. ¿Continuar?')) return;
     setTrabajando('ver');
@@ -2217,8 +2223,8 @@ const PanelInforme: React.FC<{
             <span className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-1 rounded-full ${inv.estado === 'verificado' ? 'bg-green-100 text-green-800' : cerrado ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>{modelo.meta.estado}</span>
           </div>
           {!soloLectura && inv.estado === 'cerrado' && <button className={btnS} onClick={() => setModalVer(true)}><CheckCircle2 size={15} /> Registrar verificación</button>}
-          <button className={btnS} onClick={() => marco.current?.contentWindow?.print()}><Printer size={15} /> Imprimir / guardar PDF</button>
-          <button className={btnP} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
+          <button className={btnP} onClick={pdf} disabled={!!trabajando || !modelo} title="PDF del informe con portada, márgenes, cabecera con logos y pie numerado">{trabajando === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Descargar PDF</button>
+          <button className={btnS} onClick={word} disabled={!!trabajando}>{trabajando === 'word' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Word (.docx)</button>
           <button className={btnS} onClick={paquete} disabled={!!trabajando}>{trabajando === 'xlsx' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Paquete del verificador (ZIP)</button>
           <button className={btnS} onClick={calculadora} disabled={!!trabajando} title="Calculadora oficial del Registro balear con los datos de este cálculo">{trabajando === 'calc' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Calculadora oficial (Excel)</button>
         </div>

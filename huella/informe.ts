@@ -4,6 +4,8 @@ import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
 import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
 import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarEvaluacion, evaluarExclusionesDirectas, resumenPorCategoria } from './significancia.ts';
+import { compararAnios, configRecalculo, evaluarRecalculo, ratioEstancia, ratioTrabajador, textoRecalculo } from './anioBase.ts';
+import type { AnioBaseDef, ConfigRecalculo, DecisionRecalculo, ResumenAnio } from './anioBase.ts';
 import type { CriteriosSignificancia, DeclaracionConformidad, Evaluacion, SubcategoriaPlantilla, TextosDeclaracion } from './significancia.ts';
 import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
 import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
@@ -44,6 +46,8 @@ export interface DatosInforme {
   anterior?: { anio: number; a1: number; a2: number; total: number } | null;
   exclusiones: Array<{ fuente: string; porcentaje: number | null; justificacion: string; /** Categoría ISO (1 a 6) a la que pertenece lo excluido. */ categoriaIso?: number | null; /** Hay una evidencia (documento o referencia) que respalda la exclusión. */ evidencia?: boolean }>;
   /** Evaluación de la significancia de las emisiones indirectas (apartado 5.2.3 de la norma); si falta, no se puede declarar la conformidad completa. */
+  /** Año base de la organización, año anterior y año actual (resumen), reglas de recálculo y decisión documentada. */
+  anioBase?: { def: AnioBaseDef | null; base: ResumenAnio | null; anterior: ResumenAnio | null; actual: ResumenAnio; config?: Partial<ConfigRecalculo> | null; decision: DecisionRecalculo | null };
   significancia?: { plantilla: Array<Pick<SubcategoriaPlantilla, 'codigo' | 'nombre' | 'activa' | 'categoria'>>; evaluaciones: Evaluacion[]; criterios?: Partial<CriteriosSignificancia> | null; textos?: Partial<TextosDeclaracion> | null };
   noConformidades: Array<{ fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerradaEn?: string | null }>;
   documentos: Array<{ nombre: string; tipo: string; centro: string; periodoDesde?: string | null; periodoHasta?: string | null; estado: string }>;
@@ -96,13 +100,20 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const pendientes: string[] = [];
   const { organizacion: o, inventario: inv, factores: f, totales: tot } = d;
   const anio = inv.anio;
+  const ab = d.anioBase;
+  // «Año anterior» para el gráfico y la tabla de totales: el dato aportado o el del resumen
+  const ant = d.anterior ?? (ab?.anterior ? { anio: ab.anterior.anio, a1: (ab.anterior.porCategoria[1] ?? 0) * 1000, a2: (ab.anterior.porCategoria[2] ?? 0) * 1000, total: ab.anterior.total * 1000 } : null);
+  const cfgRec = configRecalculo(ab?.config);
+  const evRec = ab ? evaluarRecalculo(ab.base, ab.actual, cfgRec, ab.decision) : null;
   const cerrado = inv.estado === 'cerrado' || inv.estado === 'verificado';
 
   if (!o.cif) pendientes.push('Falta el CIF de la organización.');
   if (!o.direccion) pendientes.push('Falta la dirección de la organización.');
   if (!o.cnae) pendientes.push('Falta el CNAE de la organización.');
   if (!o.iae) pendientes.push('Falta el IAE de la organización.');
-  if (!inv.anioBase) pendientes.push('No se ha fijado el año base del inventario.');
+  if (!ab?.def && !inv.anioBase) pendientes.push('No se ha fijado el año base de la organización.');
+  else if (ab && !ab.base) pendientes.push('El año base no tiene datos (inventario vinculado o introducidos a mano): no se puede comparar ni evaluar el recálculo.');
+  if (evRec) pendientes.push(...evRec.incidencias);
   if (!cerrado) pendientes.push('El inventario no está cerrado: el informe es un borrador y sus cifras pueden cambiar.');
   if (!inv.conjuntoFijado) pendientes.push('Los factores de emisión no están fijados en el inventario.');
   const sinIndice = d.centros.filter((c) => !(c.indice > 0)).map((c) => c.nombre);
@@ -132,8 +143,17 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   // ── 3
   const reap = inv.cierre?.reaperturas ?? [];
   const s3: Seccion = { id: '3', titulo: 'Periodo e inventario', bloques: [
-    { k: 'tabla', cab: ['Concepto', 'Valor'], filas: [['Periodo cubierto', `1 de enero a 31 de diciembre de ${anio}`], ['Año base', inv.anioBase ? String(inv.anioBase) : 'No fijado'], ['Estado del inventario', inv.estado], ['Fecha de cierre', fechaEs(inv.cerradoEn)]] },
-    { k: 'p', texto: 'Recálculo del año base: se efectuará cuando cambien los límites, la metodología o los factores de forma que alteren significativamente la comparabilidad, según el apartado 6.4 de la norma, dejando constancia de la causa.' },
+    { k: 'tabla', cab: ['Concepto', 'Valor'], filas: [['Periodo cubierto', `1 de enero a 31 de diciembre de ${anio}`], ['Año base', ab?.def ? `${ab.def.anio}${ab.base ? (ab.def.inventarioId ? ' (inventario del sistema)' : ' (datos introducidos manualmente)') : ' (sin datos)'}` : inv.anioBase ? `${inv.anioBase} (sin inventario ni datos vinculados)` : 'No fijado'], ['Estado del inventario', inv.estado], ['Fecha de cierre', fechaEs(inv.cerradoEn)]] },
+    ...(ab?.def ? [{ k: 'p' as const, texto: `Elección del año base: ${ab.def.justificacion}${ab.def.inventarioId ? '' : ` Origen de los datos: ${ab.def.origen ?? '—'}${ab.def.evidenciaUrl || ab.def.evidenciaNombre ? `; evidencia: ${ab.def.evidenciaNombre ?? ab.def.evidenciaUrl}` : ''}.`}` }] : []),
+    ab?.base
+      ? { k: 'tabla' as const, cab: ['Inventario del año base', 'Valor'], filas: [
+        [`Emisiones directas (categoría 1)`, `${fmt(ab.base.porCategoria[1] ?? 0, 'tCO2e')} t CO₂e`], [`Energía importada (categoría 2)`, `${fmt(ab.base.porCategoria[2] ?? 0, 'tCO2e')} t CO₂e`], ['Total', `${fmt(ab.base.total, 'tCO2e')} t CO₂e`],
+        ...(ratioEstancia(ab.base) != null ? [['Ratio por estancia', `${fmt(ratioEstancia(ab.base), 'ratio')} t CO₂e por estancia`]] : []),
+        ...(ratioTrabajador(ab.base) != null ? [['Ratio por trabajador', `${fmt(ratioTrabajador(ab.base), 'ratio')} t CO₂e por trabajador`]] : []),
+        ['Conjunto de factores', ab.base.factoresId ?? '—'],
+      ] }
+      : { k: 'p' as const, texto: ab?.def ? `El año base (${ab.def.anio}) no tiene datos en el sistema: no existe inventario del año base con el que comparar.` : 'No existe inventario del año base: la organización no ha definido su año base, por lo que no se puede comparar con él ni aplicar las reglas de recálculo.' },
+    ...(evRec ? textoRecalculo(evRec, ab!.decision, cfgRec).map((t) => ({ k: 'p' as const, texto: t })) : []),
     reap.length
       ? { k: 'tabla', cab: ['Fecha', 'Usuario', 'Causa de la reapertura'], filas: reap.map((r) => [fechaEs(r.fecha), r.usuario, r.motivo]) }
       : { k: 'p', texto: 'No se han producido reaperturas del inventario tras su cierre.' },
@@ -233,11 +253,11 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     graficos.push({ k: 'grafico', titulo: `Evolución mensual de las emisiones ${anio} (t CO₂e)`, ...svgBarrasApiladas(NOMBRES_MES, seriesM, 'Evolución mensual de las emisiones'), pie: 'Cada consumo se reparte por meses en proporción a los días de su periodo de facturación.' });
   }
   const centrosT = Object.entries(tot.porCentro).map(([nombre, kg]) => ({ nombre, t: kg / 1000 }));
-  if (d.anterior) {
-    graficos.push({ k: 'grafico', titulo: `Comparación con ${d.anterior.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Alcance 1', 'Alcance 2', 'Total'], [
-      { nombre: String(d.anterior.anio), valores: [d.anterior.a1 / 1000, d.anterior.a2 / 1000, d.anterior.total / 1000] },
+  if (ant) {
+    graficos.push({ k: 'grafico', titulo: `Comparación con ${ant.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Alcance 1', 'Alcance 2', 'Total'], [
+      { nombre: String(ant.anio), valores: [ant.a1 / 1000, ant.a2 / 1000, ant.total / 1000] },
       { nombre: String(anio), valores: [tot.kgCO2eAlcance1 / 1000, tot.kgCO2eAlcance2 / 1000, tot.kgCO2eTotal / 1000] },
-    ], `Comparación con ${d.anterior.anio}`) });
+    ], `Comparación con ${ant.anio}`) });
   }
 
   // Resumen ejecutivo: totales por categoría y ratios globales (con un único centro, los ratios del centro son los globales)
@@ -283,13 +303,30 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
     bloques9.push({ k: 'grafico', titulo: 'Emisiones por centro (t CO₂e)', ...svgBarrasHorizontales(centrosT, 'Emisiones por centro'), pie: 'Emisiones totales de cada centro de trabajo incluido en el inventario.' });
     if (d.centros.filter((c) => c.indice > 0).length > 1) bloques9.push({ k: 'grafico', titulo: 'Intensidad por estancia (kg CO₂e por estancia)', ...svgBarrasHorizontales(d.centros.filter((c) => c.indice > 0).map((c) => ({ nombre: c.nombre, t: (tot.porCentro[c.nombre] ?? 0) / c.indice })), 'Intensidad por estancia', 2, 'kg'), pie: 'Emisiones del centro divididas entre sus estancias (índice de actividad).' });
   }
-  if (d.anterior) {
+  if (ab) {
+    const cmp = compararAnios(ab.base, ab.anterior, ab.actual, Object.fromEntries(CATEGORIAS_ISO.map((c) => [c.n, c.resumen])));
+    const hayBase = !!ab.base, hayAnt = !!ab.anterior;
+    const cols = (primera: string) => [primera, ...(hayBase ? [`Año base ${ab.base!.anio} (t CO₂e)`] : []), ...(hayAnt ? [`${ab.anterior!.anio} (t CO₂e)`] : []), `${anio} (t CO₂e)`, ...(hayBase ? ['Var. vs base'] : []), ...(hayAnt ? ['Var. vs anterior'] : [])];
+    const fila = (x: { concepto: string; base: number | null; anterior: number | null; actual: number | null; vsBase: number | null; vsAnterior: number | null }, mag: 'tCO2e' | 'ratio') => [x.concepto, ...(hayBase ? [fmt(x.base, mag)] : []), ...(hayAnt ? [fmt(x.anterior, mag)] : []), fmt(x.actual, mag), ...(hayBase ? [x.vsBase == null ? '—' : `${fmt(x.vsBase, 'porcentaje', { signo: true })} %`] : []), ...(hayAnt ? [x.vsAnterior == null ? '—' : `${fmt(x.vsAnterior, 'porcentaje', { signo: true })} %`] : [])];
+    const numericas = (n: number) => Array.from({ length: n - 1 }, (_, i) => i + 1);
+    bloques9.push({ k: 'h', texto: `9.5 Comparación con ${[hayBase && `el año base (${ab.base!.anio})`, hayAnt && `el año anterior (${ab.anterior!.anio})`].filter(Boolean).join(' y ') || 'otros años'}` });
+    if (!hayBase) bloques9.push({ k: 'p', texto: 'No existe inventario del año base: la comparación con el año base no se puede realizar.' });
+    if (!hayAnt) bloques9.push({ k: 'p', texto: `No existe inventario del año anterior (${anio - 1}) en el sistema.` });
+    bloques9.push({ k: 'tabla', cab: cols('Categoría'), filas: cmp.categorias.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
+    bloques9.push({ k: 'tabla', cab: cols('Fuente'), filas: cmp.fuentes.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
+    if (cmp.ratios.length) bloques9.push({ k: 'tabla', cab: cols('Ratio').map((c) => c.replace('(t CO₂e)', '')), filas: cmp.ratios.map((x) => fila(x, 'ratio')), numericas: numericas(cols('').length) });
+    const grandes = [...cmp.categorias, ...cmp.fuentes].filter((x) => [x.vsBase, x.vsAnterior].some((v) => v != null && Math.abs(v) >= 20));
+    const analisis = inv.cierre?.analisisVariacion?.trim();
+    if (analisis) bloques9.push({ k: 'p', texto: `Análisis de variaciones: ${analisis}` });
+    else if (grandes.length) { bloques9.push({ k: 'p', texto: 'Hay variaciones iguales o superiores al 20 % sin explicar.' }); pendientes.push(`Falta explicar las variaciones (${grandes.length} magnitud(es) varían un 20 % o más).`); }
+    else bloques9.push({ k: 'p', texto: 'Ninguna magnitud varía un 20 % o más: no se requiere análisis específico.' });
+  } else if (ant) {
     const v = (a: number, b: number) => (b > 0 ? `${fmt(((a - b) / b) * 100, 'porcentaje', { signo: true })} %` : '—');
-    bloques9.push({ k: 'h', texto: `9.5 Comparación con ${d.anterior.anio}` });
-    bloques9.push({ k: 'tabla', cab: ['Magnitud', `${d.anterior.anio} (t CO₂e)`, `${anio} (t CO₂e)`, 'Variación'], filas: [
-      ['Alcance 1', tn(d.anterior.a1), tn(tot.kgCO2eAlcance1), v(tot.kgCO2eAlcance1, d.anterior.a1)],
-      ['Alcance 2', tn(d.anterior.a2), tn(tot.kgCO2eAlcance2), v(tot.kgCO2eAlcance2, d.anterior.a2)],
-      ['Total', tn(d.anterior.total), tn(tot.kgCO2eTotal), v(tot.kgCO2eTotal, d.anterior.total)],
+    bloques9.push({ k: 'h', texto: `9.5 Comparación con ${ant.anio}` });
+    bloques9.push({ k: 'tabla', cab: ['Magnitud', `${ant.anio} (t CO₂e)`, `${anio} (t CO₂e)`, 'Variación'], filas: [
+      ['Alcance 1', tn(ant.a1), tn(tot.kgCO2eAlcance1), v(tot.kgCO2eAlcance1, ant.a1)],
+      ['Alcance 2', tn(ant.a2), tn(tot.kgCO2eAlcance2), v(tot.kgCO2eAlcance2, ant.a2)],
+      ['Total', tn(ant.total), tn(tot.kgCO2eTotal), v(tot.kgCO2eTotal, ant.total)],
     ], numericas: [1, 2, 3] });
     bloques9.push({ k: 'p', texto: inv.cierre?.analisisVariacion?.trim() ? `Análisis de variaciones: ${inv.cierre.analisisVariacion.trim()}` : 'Ninguna magnitud varía de forma que exija análisis específico (umbral del 20 %).' });
   }

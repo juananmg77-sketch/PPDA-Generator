@@ -37,6 +37,8 @@ export interface EntradaCierre {
   significancia?: { completa: boolean; significativasCuantificadas: boolean; sinValorar: string[]; excluidasSinJustificar: string[]; significativasSinCuantificar: string[]; faltas: string[] } | null;
   /** Incidencias de las exclusiones de la categoría 1 (falta de % o de evidencia, umbral superado). */
   exclusionesDirectas?: string[];
+  /** Año base: sin definir / sin datos, y evaluación de las reglas de recálculo con la decisión documentada. */
+  anioBase?: { definido: boolean; conDatos: boolean; recalculo: { disparadores: Array<{ titulo: string; detalle: string[] }>; noEvaluables: string[]; incidencias: string[] } | null };
   ncAbiertas: number;
   umbralVariacion?: number;
   exclusionPorFuente?: number; // % por fuente (3 por defecto)
@@ -159,6 +161,16 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     if (s.sinValorar.length || s.excluidasSinJustificar.length) add('aviso', 'significancia_incompleta', 'La evaluación de la significancia de las emisiones indirectas está incompleta.', { detalle: [...s.sinValorar.map((texto) => ({ texto, nota: 'sin valorar' })), ...s.excluidasSinJustificar.map((texto) => ({ texto, nota: 'excluida sin justificación' }))] });
     if (s.significativasSinCuantificar.length) add('aviso', 'significativas_sin_cuantificar', `${s.significativasSinCuantificar.length} fuente(s) indirecta(s) significativa(s) sin cuantificar.`, { detalle: s.significativasSinCuantificar.map((texto) => ({ texto })) });
     if (!s.completa || !s.significativasCuantificadas) add('aviso', 'declaracion_parcial', 'La declaración de conformidad del informe será solo con el programa aplicable («siguiendo la metodología de la ISO 14064-1:2018»), no con la norma.');
+  }
+  if (e.anioBase) {
+    const a = e.anioBase;
+    if (!a.definido) add('aviso', 'anio_base_sin_definir', 'La organización no ha definido su año base (Ajustes): el informe lo dirá y no se podrá comparar ni evaluar el recálculo.');
+    else if (!a.conDatos) add('aviso', 'anio_base_sin_datos', 'El año base no tiene datos (inventario vinculado o introducidos a mano).');
+    if (a.recalculo) {
+      if (a.recalculo.incidencias.length) add('error', 'recalculo_sin_decision', 'Se cumple una regla de recálculo del año base y falta documentar la decisión.', { detalle: [...a.recalculo.disparadores.flatMap((d) => d.detalle.map((t) => ({ texto: d.titulo, nota: t }))), ...a.recalculo.incidencias.map((texto) => ({ texto }))] });
+      else if (a.recalculo.disparadores.length) add('info', 'recalculo_documentado', 'Se cumple una regla de recálculo del año base y la decisión está documentada.');
+      if (a.recalculo.noEvaluables.length) add('info', 'recalculo_no_evaluable', 'Reglas de recálculo no evaluables con los datos disponibles.', { detalle: a.recalculo.noEvaluables.map((texto) => ({ texto })) });
+    }
   }
   if (e.cuadreIso && !e.cuadreIso.ok) add('error', 'cuadre_iso', 'Los resultados por gas o por categoría no cuadran con el total del inventario: no se puede cerrar ni entregar el informe.', { detalle: e.cuadreIso.incidencias.map((texto) => ({ texto })) });
   if ((e.categoriasSinEvaluar ?? []).length > 0) add('aviso', 'categorias_sin_evaluar', `${e.categoriasSinEvaluar!.length} categoría(s) ISO sin evaluar: indique para cada una si es no significativa o está excluida, con su justificación (Fuentes excluidas).`, { detalle: e.categoriasSinEvaluar!.map((c) => ({ texto: `${c.n} · ${c.nombre}` })) });

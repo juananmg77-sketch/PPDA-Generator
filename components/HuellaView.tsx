@@ -8,6 +8,8 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
+import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
+import type { AnioBaseDef, DecisionRecalculo, ResumenAnio } from '../huella/anioBase';
 import { MOTIVOS_EXCLUSION_POR_DEFECTO, justificacionValida, redactarJustificacion, PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
 import type { CriteriosSignificancia, Evaluacion, Influencia, SubcategoriaPlantilla, TextosDeclaracion, Valoracion } from '../huella/significancia';
 import { CNAE_HOTEL, centroDesdeHotel, coordenada, organizacionDesdeHotel } from '../huella/hotelesSuite';
@@ -17,7 +19,7 @@ import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { generarInformePdf } from '../huella/informePdf';
 import { emisionesMensuales } from '../huella/graficos';
-import { fmtOpc } from '../huella/formato';
+import { fmt, fmtOpc } from '../huella/formato';
 import { huellaService, EvaluacionDB, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
 import { conPcaManual } from '../huella/factores';
@@ -292,7 +294,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {tab === 'consumos' && inv && (
                 <PanelActividad inv={inv} abierto={!!abierto && esConsultor} centros={centros} actividad={actividad} docs={docs} factores={factores} onCambio={recargarInv} falla={falla} />
               )}
-              {tab === 'resultados' && inv && <PanelResultados inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} docs={docs} abierto={!!abierto && esConsultor} onCambio={recargarInv} falla={falla} factores={factores} />}
+              {tab === 'resultados' && inv && <PanelResultados org={org} invs={invs} inv={inv} centros={centros} invCentros={invCentros} actividad={actividad} docs={docs} abierto={!!abierto && esConsultor} onCambio={recargarInv} falla={falla} factores={factores} />}
               {tab === 'cierre' && inv && (
                 <div className="space-y-4">
                   {esConsultor && <Segmentos etiqueta="Paso" valor={pasoCierre} onCambio={(v) => setPasoCierre(v as 'cierre' | 'informe')} opciones={[['cierre', '1 · Comprobar y cerrar'], ['informe', '2 · Informe']]} />}
@@ -306,17 +308,7 @@ export const HuellaView: React.FC<{ onBack: () => void; currentUser: string; rol
               {tab === 'ajustes' && esConsultor && (
                 <div className="space-y-4">
                   {inv && elegido && <PanelFactores inv={inv} elegido={elegido} abierto={!!abierto && esConsultor} onElegir={elegirVersion} gasesUsados={Array.from(new Set(actividad.filter((a) => a.categoria === 'fugitiva').map((a) => a.fuente)))} onPca={ajustarPca} />}
-                  {inv && (
-                    <div className={card}>
-                      <label className="text-sm font-bold text-slate-800">Año base del cálculo
-                        <div className="flex items-center gap-3 mt-2">
-                          <input type="number" min={2007} max={2100} className={`${input} w-32`} defaultValue={inv.anio_base ?? ''} disabled={!abierto} aria-label="Año base"
-                            onBlur={async (e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v === (inv.anio_base ?? null)) return; try { const u = await huellaService.guardarAnioBase(inv.id, v); setInvs((l) => l.map((x) => (x.id === u.id ? { ...x, ...u } : x))); } catch (x) { falla(x); } }} />
-                          <span className="text-xs font-normal text-slate-600">Año de referencia para comparar y para el plan de reducción (ISO 14064-1, 6.4).</span>
-                        </div>
-                      </label>
-                    </div>
-                  )}
+                  {inv && <AjustesAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} onOrg={(o) => setOrgs((l) => l.map((x) => (x.id === o.id ? { ...x, ...o } : x)))} falla={falla} />}
                   <div className={card}>
                     <div className="flex items-center gap-3">
                       <div className="flex-1"><h2 className="text-sm font-bold text-slate-800">Organización</h2><p className="text-xs text-slate-600">{org.nombre}{org.cif ? ` · ${org.cif}` : ''}</p></div>
@@ -1707,6 +1699,207 @@ function calcularActividad(actividad: Actividad[], centros: Centro[], factores: 
 }
 
 // ───────────────────────────── Cierre del cálculo ─────────────────────────────
+// ───────────────────────────── Año base de la organización, comparación y recálculo ─────────────────────────────
+/** Centros del inventario (con datos o con ficha propia); null si no hay ninguno (los límites no son evaluables). */
+const centrosConDatos = (centros: Centro[], act: Actividad[], ic: InventarioCentro[]): string[] | null => {
+  const ids = new Set([...act.filter((a) => a.estado === 'confirmada').map((a) => a.centro_id), ...ic.map((r) => r.centro_id)]);
+  const n = centros.filter((c) => ids.has(c.id)).map((c) => c.nombre).sort();
+  return n.length ? n : null;
+};
+async function resumenDeInv(inv: Inventario, centros: Centro[]): Promise<ResumenAnio | null> {
+  try {
+    const [act, ic, conj] = await Promise.all([huellaService.actividad(inv.id), huellaService.inventarioCentros(inv.id), inv.conjunto_factores ? Promise.resolve(inv.conjunto_factores) : cargarConjunto(inv.anio).then((c) => c.conjunto)]);
+    const c = calcularActividad(act, centros, conj);
+    return resumenDeInventario({ anio: inv.anio, resultados: c.resultados, totales: c.totales, factores: conj, estancias: ic.reduce((s, x) => s + Number(x.indice_actividad || 0), 0) || null, plantilla: ic.reduce((s, x) => s + Number(x.plantilla_media || 0), 0) || null, centros: centrosConDatos(centros, act, ic) });
+  } catch { return null; }
+}
+
+/** Año base de la organización, año anterior y actual (resumen), reglas de recálculo y evaluación. */
+function useAnioBase(org: Organizacion, inv: Inventario, invs: Inventario[], centros: Centro[], invCentros: InventarioCentro[], actividad: Actividad[], factores: ConjuntoFactores | null) {
+  const def = org.anio_base_def ?? null;
+  const cfg = useMemo(() => configRecalculo(org.config_recalculo), [org.config_recalculo]);
+  const actual = useMemo<ResumenAnio | null>(() => {
+    if (!factores) return null;
+    const c = calcularActividad(actividad, centros, factores);
+    return resumenDeInventario({ anio: inv.anio, resultados: c.resultados, totales: c.totales, factores, estancias: invCentros.reduce((s, x) => s + Number(x.indice_actividad || 0), 0) || null, plantilla: invCentros.reduce((s, x) => s + Number(x.plantilla_media || 0), 0) || null, centros: centrosConDatos(centros, actividad, invCentros) });
+  }, [factores, actividad, centros, invCentros, inv.anio]);
+  const [externos, setExternos] = useState<{ base: ResumenAnio | null; anterior: ResumenAnio | null }>({ base: null, anterior: null });
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const prev = invs.find((i) => i.anio === inv.anio - 1);
+      const baseInv = def?.inventarioId && def.inventarioId !== inv.id ? invs.find((i) => i.id === def.inventarioId) : null;
+      const [b, a] = await Promise.all([baseInv ? resumenDeInv(baseInv, centros) : Promise.resolve(null), prev ? resumenDeInv(prev, centros) : Promise.resolve(null)]);
+      if (vivo) setExternos({ base: b, anterior: a });
+    })();
+    return () => { vivo = false; };
+  }, [inv.id, invs.length, def?.inventarioId, centros.length]); // eslint-disable-line
+  const base = def?.inventarioId ? (def.inventarioId === inv.id ? actual : externos.base) : def?.manual ?? null;
+  const decision = inv.recalculo_base ?? null;
+  const evaluacion = useMemo(() => (actual ? evaluarRecalculo(base, actual, cfg, decision) : null), [base, actual, cfg, decision]);
+  const paraInforme = useMemo(() => (actual ? { def, base, anterior: externos.anterior, actual, config: org.config_recalculo ?? null, decision } : undefined), [def, base, externos.anterior, actual, org.config_recalculo, decision]);
+  return { def, cfg, actual, base, anterior: externos.anterior, decision, evaluacion, paraInforme };
+}
+
+const ModalAnioBase: React.FC<{ org: Organizacion; invs: Inventario[]; onOrg: (o: Organizacion) => void; onCerrar: () => void; falla: (e: unknown) => void }> = ({ org, invs, onOrg, onCerrar, falla }) => {
+  const d = org.anio_base_def;
+  const [modo, setModo] = useState<'inventario' | 'manual'>(d && !d.inventarioId ? 'manual' : 'inventario');
+  const [invId, setInvId] = useState(d?.inventarioId ?? invs[0]?.id ?? '');
+  const m = d?.manual;
+  const [f, setF] = useState({ anio: String(d?.anio ?? ''), c1: m ? String(m.porCategoria[1] ?? 0).replace('.', ',') : '', c2: m ? String(m.porCategoria[2] ?? 0).replace('.', ',') : '', est: m?.estancias ? String(m.estancias) : '', plan: m?.plantilla ? String(m.plantilla).replace('.', ',') : '', fid: m?.factoresId ?? '', centros: (m?.centros ?? []).join(', '), origen: d?.origen ?? '', evid: d?.evidenciaUrl ?? '', just: d?.justificacion ?? '' });
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const num = (x: string) => Number(x.replace(',', '.'));
+  const inv = invs.find((i) => i.id === invId);
+  const def = (): AnioBaseDef => modo === 'inventario'
+    ? { anio: inv?.anio ?? 0, inventarioId: invId, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: d?.evidenciaNombre ?? null, evidenciaPath: d?.evidenciaPath ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) }
+    : { anio: Number(f.anio), inventarioId: null, manual: { anio: Number(f.anio), porCategoria: { 1: num(f.c1) || 0, 2: num(f.c2) || 0 }, total: (num(f.c1) || 0) + (num(f.c2) || 0), porFuente: {}, estancias: f.est ? num(f.est) : null, plantilla: f.plan ? num(f.plan) : null, factoresId: f.fid.trim() || null, centros: f.centros.trim() ? f.centros.split(',').map((x) => x.trim()).filter(Boolean) : null, factores: null }, origen: f.origen.trim() || null, evidenciaUrl: f.evid.trim() || null, evidenciaNombre: d?.evidenciaNombre ?? null, evidenciaPath: d?.evidenciaPath ?? null, justificacion: f.just.trim(), definidoEn: new Date().toISOString().slice(0, 10) };
+  const previa = def();
+  const incid = validarAnioBase({ ...previa, ...(archivo ? { evidenciaNombre: archivo.name, evidenciaPath: 'pendiente' } : {}) });
+  const guardar = async () => {
+    setGuardando(true);
+    try {
+      const x = def();
+      if (archivo) { x.evidenciaPath = await huellaService.subirCertificadoExclusion(archivo, org.id, 'anio-base'); x.evidenciaNombre = archivo.name; }
+      onOrg(await huellaService.guardarAnioBaseOrganizacion(org.id, x)); onCerrar();
+    } catch (e) { falla(e); } finally { setGuardando(false); }
+  };
+  return (
+    <Modal titulo="Año base de la organización" onCerrar={onCerrar}>
+      <div className="space-y-3 text-xs max-h-[70vh] overflow-y-auto pr-1">
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 font-semibold"><input type="radio" checked={modo === 'inventario'} onChange={() => setModo('inventario')} /> Vincular a un inventario existente</label>
+          <label className="flex items-center gap-2 font-semibold"><input type="radio" checked={modo === 'manual'} onChange={() => setModo('manual')} /> Introducir los datos a mano</label>
+        </div>
+        {modo === 'inventario' ? (
+          <label className="block font-semibold text-slate-600">Inventario del año base
+            <select className={`${input} mt-1`} value={invId} onChange={(e) => setInvId(e.target.value)} aria-label="Inventario del año base">{invs.map((i) => <option key={i.id} value={i.id}>{i.anio} · {i.estado}</option>)}</select>
+          </label>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="font-semibold text-slate-600">Año<input className={`${input} mt-1`} value={f.anio} onChange={(e) => setF({ ...f, anio: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Conjunto de factores usado<input className={`${input} mt-1`} value={f.fid} placeholder="Ej.: calculadora-2019" onChange={(e) => setF({ ...f, fid: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Categoría 1 (t CO₂e)<input inputMode="decimal" className={`${input} mt-1`} value={f.c1} onChange={(e) => setF({ ...f, c1: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Categoría 2 (t CO₂e)<input inputMode="decimal" className={`${input} mt-1`} value={f.c2} onChange={(e) => setF({ ...f, c2: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Estancias<input inputMode="numeric" className={`${input} mt-1`} value={f.est} onChange={(e) => setF({ ...f, est: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600">Plantilla media<input inputMode="decimal" className={`${input} mt-1`} value={f.plan} onChange={(e) => setF({ ...f, plan: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">Centros incluidos (separados por comas; permite evaluar el cambio de límites)<input className={`${input} mt-1`} value={f.centros} onChange={(e) => setF({ ...f, centros: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">Origen de los datos *<input className={`${input} mt-1`} value={f.origen} placeholder="Ej.: informe de huella 2019 verificado por…" onChange={(e) => setF({ ...f, origen: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">Evidencia: enlace *<input className={`${input} mt-1`} value={f.evid} onChange={(e) => setF({ ...f, evid: e.target.value })} /></label>
+            <label className="font-semibold text-slate-600 col-span-2">…o suba el documento<input type="file" accept="application/pdf,image/*" className="block w-full text-xs mt-1" onChange={(e) => setArchivo(e.target.files?.[0] ?? null)} /></label>
+          </div>
+        )}
+        <label className="block font-semibold text-slate-600">Justificación de la elección del año base *
+          <textarea className={`${input} mt-1`} rows={3} value={f.just} placeholder="Ej.: primer año con datos completos y verificados, representativo de la actividad habitual." onChange={(e) => setF({ ...f, just: e.target.value })} />
+        </label>
+        {incid.length > 0 && <ul className="text-[11px] text-amber-800 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{incid.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+      </div>
+      <div className="flex justify-end gap-2 mt-4"><button className={btnS} onClick={onCerrar}>Cancelar</button><button className={btnP} onClick={guardar} disabled={guardando || incid.length > 0}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar año base</button></div>
+    </Modal>
+  );
+};
+
+const PanelAnioBase: React.FC<{ org: Organizacion; invs: Inventario[]; ab: ReturnType<typeof useAnioBase>; onOrg: (o: Organizacion) => void; falla: (e: unknown) => void }> = ({ org, invs, ab, onOrg, falla }) => {
+  const [modal, setModal] = useState(false);
+  const [c, setC] = useState({ umbral: String(ab.cfg.umbralFactor).replace('.', ','), lim: ab.cfg.reglas.limites, met: ab.cfg.reglas.metodologia, fac: ab.cfg.reglas.factores });
+  const guardarCfg = async () => { try { onOrg(await huellaService.guardarConfigRecalculo(org.id, { umbralFactor: Number(c.umbral.replace(',', '.')) || 5, reglas: { limites: c.lim, metodologia: c.met, factores: c.fac } })); } catch (e) { falla(e); } };
+  const d = ab.def;
+  return (
+    <div className={card}>
+      <div className="flex items-center gap-3 mb-1"><h2 className="flex-1 text-sm font-bold text-slate-800">Año base de la organización</h2><button className={btnS} onClick={() => setModal(true)}><Pencil size={14} /> {d ? 'Cambiar año base' : 'Definir año base'}</button></div>
+      <p className="text-xs text-slate-600 mb-2">Año de referencia para comparar y para el plan de reducción (ISO 14064-1, 5.3 y 6.4). Vale para todos los inventarios de la organización.</p>
+      {d ? (
+        <div className="text-xs text-slate-700 space-y-1">
+          <p><strong>{d.anio}</strong> · {d.inventarioId ? 'vinculado a un inventario del sistema' : 'datos introducidos a mano'}{ab.base ? ` · ${fmtOpc(ab.base.total, 'tCO2e')} t CO₂e` : ' · sin datos'}</p>
+          <p><span className="font-semibold">Justificación:</span> {d.justificacion}</p>
+          {!d.inventarioId && <p><span className="font-semibold">Origen:</span> {d.origen} {d.evidenciaUrl ? <a className="underline text-brand-700" href={d.evidenciaUrl} target="_blank" rel="noreferrer">evidencia</a> : d.evidenciaNombre ? `· evidencia: ${d.evidenciaNombre}` : ''}</p>}
+        </div>
+      ) : <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2">No se ha definido el año base: el informe dirá que no existe inventario del año base.</p>}
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <p className="text-xs font-semibold text-slate-700 mb-2">Reglas de recálculo del año base</p>
+        <div className="flex flex-wrap items-end gap-4 text-xs">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={c.lim} onChange={(e) => setC({ ...c, lim: e.target.checked })} /> Cambio de límites (alta o baja de centros)</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={c.met} onChange={(e) => setC({ ...c, met: e.target.checked })} /> Cambio de metodología</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={c.fac} onChange={(e) => setC({ ...c, fac: e.target.checked })} /> Cambio de factor o PCA superior a</label>
+          <label className="flex items-center gap-1 font-semibold text-slate-600"><input className={`${input} w-16`} value={c.umbral} onChange={(e) => setC({ ...c, umbral: e.target.value })} aria-label="Umbral de cambio de factor" /> %</label>
+          <button className={btnS} onClick={guardarCfg}>Guardar reglas</button>
+        </div>
+      </div>
+      {modal && <ModalAnioBase org={org} invs={invs} onOrg={onOrg} onCerrar={() => setModal(false)} falla={falla} />}
+    </div>
+  );
+};
+
+const TarjetaRecalculo: React.FC<{ inv: Inventario; ab: ReturnType<typeof useAnioBase>; usuario: string; onInventario: (i: Inventario) => void; falla: (e: unknown) => void }> = ({ inv, ab, usuario, onInventario, falla }) => {
+  const dec = ab.decision;
+  const [motivo, setMotivo] = useState(dec?.motivo ?? '');
+  useEffect(() => { setMotivo(dec?.motivo ?? ''); }, [inv.id, dec?.motivo]);
+  const ev = ab.evaluacion;
+  if (!ab.def || !ev) return null;
+  const guardar = async (c: Partial<DecisionRecalculo>) => {
+    try { onInventario(await huellaService.guardarRecalculoBase(inv.id, { metodologiaCambiada: dec?.metodologiaCambiada ?? null, decision: dec?.decision ?? null, motivo: dec?.motivo ?? null, ...c, fecha: new Date().toISOString().slice(0, 10), usuario })); } catch (e) { falla(e); }
+  };
+  return (
+    <div className={card}>
+      <h2 className="text-sm font-bold text-slate-800 mb-1">Recálculo del año base ({ab.def.anio})</h2>
+      {ab.cfg.reglas.metodologia && (
+        <label className="block text-xs font-semibold text-slate-600 mb-2">¿Ha cambiado la metodología de cálculo respecto al año base?
+          <select className={`${input} mt-1 w-40`} value={dec?.metodologiaCambiada == null ? '' : dec.metodologiaCambiada ? 'si' : 'no'} onChange={(e) => void guardar({ metodologiaCambiada: e.target.value === '' ? null : e.target.value === 'si' })} aria-label="Metodología cambiada"><option value="">Sin declarar</option><option value="no">No</option><option value="si">Sí</option></select>
+        </label>
+      )}
+      {ev.disparadores.length === 0 ? <p className="text-xs text-green-800 bg-green-50 rounded-lg px-3 py-2">No se cumple ninguna regla de recálculo: no hace falta recalcular el año base.</p> : (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={14} /> Se cumple una regla de recálculo: documente si se recalcula el año base</p>
+          <ul className="list-disc pl-5 mb-2 space-y-0.5">{ev.disparadores.map((d, i) => <li key={i}><strong>{d.titulo}:</strong> {d.detalle.join('; ')}</li>)}</ul>
+          <div className="grid grid-cols-[180px_1fr] gap-3 items-start">
+            <label className="font-semibold">Decisión *
+              <select className={`${input} mt-1`} value={dec?.decision ?? ''} onChange={(e) => void guardar({ decision: (e.target.value || null) as DecisionRecalculo['decision'] })} aria-label="Decisión de recálculo"><option value="">Elegir…</option><option value="recalcula">Recalcular el año base</option><option value="no_recalcula">No recalcular</option></select>
+            </label>
+            <label className="font-semibold">Motivo *
+              <textarea className={`${input} mt-1`} rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} onBlur={() => { if (motivo !== (dec?.motivo ?? '')) void guardar({ motivo: motivo.trim() || null }); }} placeholder="Ej.: se mantiene el año base porque el cambio de factor no altera la comparabilidad." />
+            </label>
+          </div>
+        </div>
+      )}
+      {ev.noEvaluables.length > 0 && <ul className="mt-2 text-[11px] text-slate-500 list-disc pl-5">{ev.noEvaluables.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+    </div>
+  );
+};
+
+/** Inventario del año base y comparación con él y con el año anterior (pestaña Resultados). */
+const TarjetaAnioBase: React.FC<{ ab: ReturnType<typeof useAnioBase>; anio: number }> = ({ ab, anio }) => {
+  const { def, base, actual, anterior } = ab;
+  if (!actual) return null;
+  const cmp = compararAnios(base, anterior, actual, Object.fromEntries(CATEGORIAS_ISO.map((c) => [c.n, c.resumen])));
+  const pc = (v: number | null) => (v == null ? '—' : `${fmtOpc(v, 'porcentaje', { signo: true })} %`);
+  return (
+    <details className={`${card} group`} open>
+      <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Año base y comparación</summary>
+      {!base ? <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mt-2">{def ? `El año base (${def.anio}) no tiene datos en el sistema.` : 'No existe inventario del año base: la organización no ha definido su año base (Ajustes).'}</p> : (
+        <div className="mt-2 text-xs text-slate-700 grid md:grid-cols-4 gap-2">
+          <p><span className="font-semibold">Año base:</span> {base.anio}</p><p><span className="font-semibold">Total:</span> {fmtOpc(base.total, 'tCO2e')} t CO₂e</p>
+          <p><span className="font-semibold">Cat. 1 / Cat. 2:</span> {fmtOpc(base.porCategoria[1] ?? 0, 'tCO2e')} / {fmtOpc(base.porCategoria[2] ?? 0, 'tCO2e')} t</p><p><span className="font-semibold">Factores:</span> {base.factoresId ?? '—'}</p>
+        </div>
+      )}
+      <div className="overflow-x-auto mt-3"><table className="w-full text-xs">
+        <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-3">Categoría / ratio</th>{base && <th className="pr-3 text-right">Base {base.anio}</th>}{anterior && <th className="pr-3 text-right">{anterior.anio}</th>}<th className="pr-3 text-right">{anio}</th>{base && <th className="pr-3 text-right">Var. vs base</th>}{anterior && <th className="text-right">Var. vs anterior</th>}</tr></thead>
+        <tbody>{[...cmp.categorias.map((x) => ({ x, mag: 'tCO2e' as const })), ...cmp.ratios.map((x) => ({ x, mag: 'ratio' as const }))].map(({ x, mag }) => (
+          <tr key={x.concepto} className="border-b border-slate-100"><td className="py-1.5 pr-3">{x.concepto}</td>{base && <td className="pr-3 text-right tabular-nums">{fmt(x.base, mag)}</td>}{anterior && <td className="pr-3 text-right tabular-nums">{fmt(x.anterior, mag)}</td>}<td className="pr-3 text-right tabular-nums font-semibold">{fmt(x.actual, mag)}</td>{base && <td className="pr-3 text-right tabular-nums">{pc(x.vsBase)}</td>}{anterior && <td className="text-right tabular-nums">{pc(x.vsAnterior)}</td>}</tr>
+        ))}</tbody>
+      </table></div>
+    </details>
+  );
+};
+
+const AjustesAnioBase: React.FC<{ org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; factores: ConjuntoFactores | null; onOrg: (o: Organizacion) => void; falla: (e: unknown) => void }> = ({ org, inv, invs, centros, invCentros, actividad, factores, onOrg, falla }) => {
+  const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
+  return <PanelAnioBase org={org} invs={invs} ab={ab} onOrg={onOrg} falla={falla} />;
+};
+const ResultadosAnioBase: React.FC<{ org: Organizacion; inv: Inventario; invs: Inventario[]; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; factores: ConjuntoFactores | null }> = ({ org, inv, invs, centros, invCentros, actividad, factores }) => {
+  const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
+  return <TarjetaAnioBase ab={ab} anio={inv.anio} />;
+};
+
 // ───────────────────────────── Significancia de las emisiones indirectas (ISO 14064-1, 5.2.3 y anexo H) ─────────────────────────────
 const aEvaluacion = (x: EvaluacionDB): Evaluacion => ({ metodo: x.metodo ?? 'criterios', codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: x.magnitud_pct == null ? null : Number(x.magnitud_pct), influencia: x.influencia, datos: x.datos, requisitos: x.requisitos, resultado: x.resultado, justificacion: x.justificacion, cuantificada: x.cuantificada });
 
@@ -1933,6 +2126,7 @@ const PanelCierre: React.FC<{
 }> = ({ org, onOrg, onCambio, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario, onIr }) => {
   const abierto = inv.estado === 'borrador';
   const sig = useSignificancia(org, inv, falla);
+  const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
   const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null); // factura del cierre cuyo dato se está corrigiendo a mano
   const [correo, setCorreo] = useState<{ asunto: string; cuerpo: string } | null>(null);
@@ -2047,11 +2241,12 @@ const PanelCierre: React.FC<{
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
       exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      anioBase: { definido: !!ab.def, conDatos: !!ab.base, recalculo: ab.evaluacion ? { disparadores: ab.evaluacion.disparadores, noEvaluables: ab.evaluacion.noEvaluables, incidencias: ab.evaluacion.incidencias } : null },
       significancia: sig.estado, exclusionesDirectas: evaluarExclusionesDirectas(exclusiones.filter((x) => (x.categoria_iso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!(x.certificado_path || x.evidencia_url) })), sig.criterios).incidencias,
       cuadreIso: isoCierre.cuadre, categoriasSinEvaluar: isoCierre.categorias.filter((c) => c.estado === 'Sin evaluar').map((c) => ({ n: c.n, nombre: c.nombre })),
       ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
     });
-  }, [factores, calculo, isoCierre, sig.estado, sig.criterios, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
+  }, [factores, calculo, isoCierre, ab.def, ab.base, ab.evaluacion, sig.estado, sig.criterios, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
 
   const guardarAnalisis = async () => {
     if (!abierto || analisis === (inv.cierre?.analisisVariacion ?? '')) return;
@@ -2186,6 +2381,8 @@ const PanelCierre: React.FC<{
           </label>
         </div>
       )}
+
+      <TarjetaRecalculo inv={inv} ab={ab} usuario={usuario} onInventario={onInventario} falla={falla} />
 
       <PanelSignificancia org={org} inv={inv} abierto={abierto} sig={sig} onOrg={onOrg} falla={falla} />
 
@@ -2332,6 +2529,7 @@ const PanelInforme: React.FC<{
   usuario: string; falla: (e: unknown) => void; onInventario: (i: Inventario) => void;
 }> = ({ soloLectura, org, inv, invs, centros, invCentros, docs, actividad, factores, usuario, falla, onInventario }) => {
   const sig = useSignificancia(org, inv, falla);
+  const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
   const [exclusiones, setExclusiones] = useState<Exclusion[]>([]);
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [anterior, setAnterior] = useState<DatosInforme['anterior'] | undefined>(undefined);
@@ -2354,11 +2552,12 @@ const PanelInforme: React.FC<{
     return {
       organizacion: { nombre: org.nombre, cif: org.cif, direccion: org.direccion, cnae: org.cnae, iae: org.iae, criterio: org.criterio_consolidacion ?? 'control', consultorEmail: org.consultor_email },
       centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0), plantilla: Number(ic?.plantilla_media ?? 0) }; }),
-      inventario: { anio: inv.anio, estado: inv.estado, anioBase: inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
+      inventario: { anio: inv.anio, estado: inv.estado, anioBase: ab.def?.anio ?? inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
       actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
       anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
       significancia: sig.paraInforme,
+      anioBase: ab.paraInforme,
       noConformidades: ncs.map((n) => ({ fecha: n.fecha, descripcion: n.descripcion, medida: n.medida, responsable: n.responsable, cerradaEn: n.cerrada_en })),
       documentos: docs.filter((d) => d.estado === 'revisado').map((d) => ({ nombre: d.nombre_archivo ?? d.archivo_path, tipo: (d.extraccion?.tipo ?? d.tipo) as string, centro: nombreCentro(d.centro_id ?? ''), periodoDesde: d.periodo_desde, periodoHasta: d.periodo_hasta, estado: d.estado })),
       mensualPorFuente: emisionesMensuales(actividad.filter((a) => a.estado === 'confirmada').flatMap((a) => {
@@ -2366,7 +2565,7 @@ const PanelInforme: React.FC<{
       }), inv.anio),
       emitidoPor: usuario, fecha: new Date().toISOString().slice(0, 10),
     };
-  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme]);
+  }, [factores, anterior, actividad, centros, invCentros, docs, exclusiones, ncs, org, inv, usuario, sig.paraInforme, ab.paraInforme]);
 
   const modelo = useMemo(() => (datos ? construirInforme(datos) : null), [datos]);
   const html = useMemo(() => (modelo ? informeAHtml(modelo, { baseUrl: window.location.origin }) : ''), [modelo]);
@@ -2532,7 +2731,7 @@ const PanelInforme: React.FC<{
 };
 
 // ───────────────────────────── Resultados ─────────────────────────────
-const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; docs: Documento[]; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void; factores: ConjuntoFactores | null }> = ({ inv, centros, invCentros, actividad, docs, abierto, onCambio, falla, factores }) => {
+const PanelResultados: React.FC<{ org: Organizacion; invs: Inventario[]; inv: Inventario; centros: Centro[]; invCentros: InventarioCentro[]; actividad: Actividad[]; docs: Documento[]; abierto: boolean; onCambio: () => void; falla: (e: unknown) => void; factores: ConjuntoFactores | null }> = ({ org, invs, inv, centros, invCentros, actividad, docs, abierto, onCambio, falla, factores }) => {
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
 
   if (!factores || !calculo) return <div className={`${card} text-sm text-slate-600`}><Loader2 className="inline animate-spin mr-2" size={14} />Cargando factores de emisión…</div>;
@@ -2636,6 +2835,8 @@ const PanelResultados: React.FC<{ inv: Inventario; centros: Centro[]; invCentros
           <div className="mt-3"><Tabla filas={porContador} unidad="t CO₂e" /></div>
         </details>
       )}
+
+      <ResultadosAnioBase org={org} inv={inv} invs={invs} centros={centros} invCentros={invCentros} actividad={actividad} factores={factores} />
 
       <details className={`${card} group`}>
         <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Trazabilidad por línea <span className="text-xs font-normal text-slate-500">({resultados.length})</span></summary>

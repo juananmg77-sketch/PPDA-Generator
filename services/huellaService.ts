@@ -2,12 +2,13 @@
 import type { CalculoExtintores } from '../huella/exclusiones';
 import type { LecturaExtintores } from '../huella/extintores';
 import type { CriteriosSignificancia, SubcategoriaPlantilla } from '../huella/significancia';
+import type { AnioBaseDef, ConfigRecalculo, DecisionRecalculo } from '../huella/anioBase';
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
 import type { HotelSuite } from '../huella/hotelesSuite';
 
-export interface Organizacion { id: string; nombre: string; /** Criterios de significancia propios de la organización (si no, los de por defecto). */ config_significancia?: Partial<CriteriosSignificancia> | null; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null; suite_cadena?: string | null }
+export interface Organizacion { id: string; nombre: string; /** Año base de la organización (inventario vinculado o datos manuales). */ anio_base_def?: AnioBaseDef | null; /** Reglas de recálculo del año base (si no, las de por defecto). */ config_recalculo?: Partial<ConfigRecalculo> | null; /** Criterios de significancia propios de la organización (si no, los de por defecto). */ config_significancia?: Partial<CriteriosSignificancia> | null; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio_consolidacion?: 'control' | 'participacion'; consultor_email?: string | null; suite_cadena?: string | null }
 export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null; latitud?: number | string | null; longitud?: number | string | null; suite_hotel_id?: string | null; suite_codigo?: string | null; suite_actualizado?: string | null }
 export interface CierreDatos {
   analisisVariacion?: string;
@@ -20,7 +21,7 @@ export interface Verificacion { entidad?: string; nivel?: string; fecha?: string
 export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Enlace o referencia de la evidencia de la exclusión. */ evidencia_url?: string | null; /** Categoría ISO 14064-1 (1 a 6) a la que pertenece lo excluido. */ categoria_iso?: number | null; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
 export interface EvaluacionDB { id: string; inventario_id: string; metodo?: 'criterios' | 'no_aplica'; categoria: number; codigo: string; nombre: string; magnitud_pct: number | null; influencia: 'alta' | 'media' | 'baja' | null; datos: 'buenos' | 'parciales' | 'no_disponibles' | null; requisitos: boolean | null; resultado: 'significativa' | 'no_significativa' | null; justificacion: string | null; cuantificada: boolean }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
-export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
+export interface Inventario { id: string; organizacion_id: string; /** Decisión documentada sobre el recálculo del año base. */ recalculo_base?: DecisionRecalculo | null; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; /** Plantilla media del año (trabajadores), para el ratio por trabajador. */ plantilla_media?: number; notas?: string | null }
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
@@ -141,6 +142,9 @@ export const huellaService = {
   async crearNoConformidad(x: Omit<NoConformidad, 'id' | 'fecha'>) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').insert(x).select().single()); },
   async cerrarNoConformidad(id: string) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').update({ cerrada_en: new Date().toISOString().slice(0, 10) }).eq('id', id).select().single()); },
   async borrarNoConformidad(id: string) { ok(await supabase.from('hc_no_conformidades').delete().eq('id', id)); },
+  async guardarAnioBaseOrganizacion(org: string, def: AnioBaseDef | null) { return ok<Organizacion>(await supabase.from('hc_organizaciones').update({ anio_base_def: def }).eq('id', org).select().single()); },
+  async guardarConfigRecalculo(org: string, c: Partial<ConfigRecalculo>) { return ok<Organizacion>(await supabase.from('hc_organizaciones').update({ config_recalculo: c }).eq('id', org).select().single()); },
+  async guardarRecalculoBase(inv: string, d: DecisionRecalculo) { return ok<Inventario>(await supabase.from('hc_inventarios').update({ recalculo_base: d }).eq('id', inv).select().single()); },
   async guardarAnioBase(inv: string, anio: number | null) {
     return ok<Inventario>(await supabase.from('hc_inventarios').update({ anio_base: anio }).eq('id', inv).select().single());
   },

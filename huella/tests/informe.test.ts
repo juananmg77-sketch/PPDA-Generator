@@ -188,3 +188,45 @@ test('exclusiones de la categoría 1 sin % o sin evidencia son pendientes; la ev
   assert.match(iso, /No significativa/); // categorías 3 a 6 por la evaluación, sin exclusiones sueltas
   assert.match(iso, /3\.1 Transporte de mercancías/);
 });
+
+import { resumenDeInventario } from '../anioBase.ts';
+import type { ResumenAnio } from '../anioBase.ts';
+const resumenActual = () => resumenDeInventario({ anio: 2023, resultados, totales, factores: f, estancias: 40000, plantilla: 60, centros: ['Hotel A'] });
+const resBase = (o: Partial<ResumenAnio> = {}): ResumenAnio => ({ ...resumenActual(), anio: 2019, total: resumenActual().total * 0.8, porCategoria: { 1: 5, 2: 25 }, factoresId: 'calculadora-2023.2@2019', factores: resumenActual().factores, ...o });
+
+test('año base: el informe muestra su inventario, la comparación base · anterior · actual y lo dice si no existe', () => {
+  const act = resumenActual();
+  const d = base(); d.anterior = null;
+  d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'Primer año completo y verificado.' }, base: resBase(), anterior: { ...act, anio: 2022, total: act.total * 0.9 }, actual: act, config: null, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
+  const m = construirInforme(d); const t = texto(m);
+  assert.match(t, /Inventario del año base/); assert.match(t, /Primer año completo y verificado/); assert.match(t, /calculadora-2023\.2@2019/);
+  assert.match(t, /9\.5 Comparación con el año base \(2019\) y el año anterior \(2022\)/);
+  assert.match(t, /Var\. vs base/); assert.match(t, /Var\. vs anterior/); assert.match(t, /t CO₂e por estancia/);
+  assert.match(t, /No se cumple ninguna regla: no es necesario recalcular/);
+  // sin año base
+  const s = base(); s.anioBase = { def: null, base: null, anterior: null, actual: act, decision: null };
+  const ms = construirInforme(s);
+  assert.match(texto(ms), /No existe inventario del año base: la organización no ha definido su año base/);
+  assert.match(texto(ms), /la comparación con el año base no se puede realizar/);
+  assert.ok(ms.pendientes.some((p) => /año base/i.test(p)));
+});
+test('recálculo del año base: la regla disparada y su decisión documentada aparecen en el informe', () => {
+  const act = { ...resumenActual(), centros: ['Hotel A', 'Hotel B'] };
+  const d = base();
+  d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase(), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
+  const sin = construirInforme(d);
+  assert.match(texto(sin), /Alta de «Hotel B»/); assert.match(texto(sin), /Falta documentar la decisión/);
+  assert.ok(sin.pendientes.some((p) => /regla de recálculo/.test(p)));
+  d.anioBase.decision = { metodologiaCambiada: false, decision: 'recalcula', motivo: 'Se incorpora el Hotel B.', fecha: '2025-03-05', usuario: 'Consultor' };
+  const con = construirInforme(d);
+  assert.match(texto(con), /se recalcula el año base/); assert.match(texto(con), /Se incorpora el Hotel B/);
+  assert.ok(!con.pendientes.some((p) => /regla de recálculo/.test(p)));
+});
+test('variaciones del 20 % o más sin explicar son pendiente; con la explicación desaparece', () => {
+  const act = resumenActual();
+  const d = base(); d.anterior = null; d.inventario.cierre = null;
+  d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase({ total: act.total / 2 }), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
+  assert.ok(construirInforme(d).pendientes.some((p) => /explicar las variaciones/.test(p)));
+  d.inventario.cierre = { analisisVariacion: 'Apertura de una nueva ala.' };
+  assert.ok(!construirInforme(d).pendientes.some((p) => /explicar las variaciones/.test(p)));
+});

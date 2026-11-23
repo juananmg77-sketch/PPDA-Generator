@@ -174,3 +174,14 @@ test('significancia en el cierre: no realizada, incompleta, significativas sin c
   const dir = evaluarCierre({ ...base, exclusionesDirectas: ['Exclusión «X» (categoría 1): falta la evidencia.'] });
   assert.equal(dir.items.find((i) => i.codigo === 'exclusiones_directas')!.nivel, 'error'); assert.equal(dir.puedeCerrar, false);
 });
+
+test('año base en el cierre: sin definir, sin datos y regla de recálculo sin decisión (bloquea) o documentada', () => {
+  const cod = (r: ReturnType<typeof evaluarCierre>) => r.items.map((i) => i.codigo);
+  assert.ok(cod(evaluarCierre({ ...base, anioBase: { definido: false, conDatos: false, recalculo: null } })).includes('anio_base_sin_definir'));
+  assert.ok(cod(evaluarCierre({ ...base, anioBase: { definido: true, conDatos: false, recalculo: null } })).includes('anio_base_sin_datos'));
+  const disp = [{ titulo: 'Cambio de límites (alta o baja de centros)', detalle: ['Alta de «Hotel B»'] }];
+  const sin = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: disp, noEvaluables: [], incidencias: ['Se cumple una regla de recálculo del año base: hay que documentar si se recalcula o no.'] } } });
+  assert.equal(sin.items.find((i) => i.codigo === 'recalculo_sin_decision')!.nivel, 'error'); assert.equal(sin.puedeCerrar, false);
+  const con = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: disp, noEvaluables: ['Cambio de metodología: falta declarar.'], incidencias: [] } } });
+  assert.ok(cod(con).includes('recalculo_documentado')); assert.ok(cod(con).includes('recalculo_no_evaluable')); assert.ok(!cod(con).includes('recalculo_sin_decision'));
+});

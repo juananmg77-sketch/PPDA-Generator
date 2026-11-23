@@ -2,6 +2,7 @@
 // que se renderiza después a HTML/PDF, Word y al paquete del verificador. No contiene texto de la norma (licencia): solo la cita de sus apartados.
 import type { ConjuntoFactores, ResultadoLinea, Totales } from './tipos.ts';
 import { NOMBRES_MES, etiquetaFuente, svgAnillo, svgBarrasAgrupadas, svgBarrasApiladas, svgBarrasHorizontales } from './graficos.ts';
+import { textoResponsable, tituloCriterio, validarOrganizacion, CRITERIOS_CONSOLIDACION } from './organizacion.ts';
 import { CATEGORIAS_ISO, CATEGORIA_ISO_FUENTE, UMBRALES_SIGNIFICANCIA, resultadosIso } from './iso.ts';
 import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarEvaluacion, evaluarExclusionesDirectas, resumenPorCategoria } from './significancia.ts';
 import { compararAnios, configRecalculo, evaluarRecalculo, ratioEstancia, ratioTrabajador, textoRecalculo } from './anioBase.ts';
@@ -32,7 +33,8 @@ export interface ModeloInforme {
 }
 
 export interface DatosInforme {
-  organizacion: { nombre: string; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio: 'control' | 'participacion'; consultorEmail?: string | null };
+  /** `nombre` es el nombre comercial; la razón social (denominación legal) va aparte. */
+  organizacion: { nombre: string; razonSocial?: string | null; cif?: string | null; direccion?: string | null; cnae?: string | null; iae?: string | null; criterio?: string | null; justificacionConsolidacion?: string | null; responsable?: { nombre?: string | null; cargo?: string | null; entidad?: string | null; email?: string | null } | null };
   centros: Array<{ nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; enBaleares: boolean; unidades?: number | null; operativoDesde?: string | null; operativoHasta?: string | null; indice: number; /** Plantilla media del año (trabajadores). */ plantilla?: number }>;
   inventario: {
     anio: number; estado: string; anioBase?: number | null; cerradoEn?: string | null; conjuntoFijado: boolean;
@@ -107,10 +109,10 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   const evRec = ab ? evaluarRecalculo(ab.base, ab.actual, cfgRec, ab.decision) : null;
   const cerrado = inv.estado === 'cerrado' || inv.estado === 'verificado';
 
-  if (!o.cif) pendientes.push('Falta el CIF de la organización.');
   if (!o.direccion) pendientes.push('Falta la dirección de la organización.');
-  if (!o.cnae) pendientes.push('Falta el CNAE de la organización.');
-  if (!o.iae) pendientes.push('Falta el IAE de la organización.');
+  // Datos obligatorios de la organización (razón social, CIF, CNAE, IAE, criterio de consolidación, responsable): sin ellos no hay versión final
+  const incOrg = validarOrganizacion({ razonSocial: o.razonSocial, nombreComercial: o.nombre, cif: o.cif, cnae: o.cnae, iae: o.iae, criterioConsolidacion: o.criterio, justificacionConsolidacion: o.justificacionConsolidacion, responsableNombre: o.responsable?.nombre, responsableCargo: o.responsable?.cargo, responsableEntidad: o.responsable?.entidad, responsableEmail: o.responsable?.email });
+  pendientes.push(...incOrg.map((x) => x.mensaje));
   if (!ab?.def && !inv.anioBase) pendientes.push('No se ha fijado el año base de la organización.');
   else if (ab && !ab.base) pendientes.push('El año base no tiene datos (inventario vinculado o introducidos a mano): no se puede comparar ni evaluar el recálculo.');
   if (evRec) pendientes.push(...evRec.incidencias);
@@ -122,20 +124,19 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   if (!RESOLUCIONES[anio]) pendientes.push(`Cite la resolución oficial de factores de emisión de ${anio}: no está incorporada al catálogo.`);
   if (d.actividad.some((a) => !a.documento)) pendientes.push(`${d.actividad.filter((a) => !a.documento).length} dato(s) de actividad sin factura asociada (el verificador pedirá su evidencia).`);
   if (!d.exclusiones.length) pendientes.push('No hay fuentes excluidas registradas: confirme que el inventario es completo para las categorías 1 y 2.');
-  if (o.consultorEmail == null) pendientes.push('No consta el consultor responsable del inventario.');
 
   const centrosTabla = d.centros.map((c) => [c.nombre, dash(c.direccion), [c.municipio, c.enBaleares ? c.isla : 'Fuera de Baleares'].filter(Boolean).join(' · ') || '—', fmt(c.unidades, 'entero')]);
 
   // ── 1
   const s1: Seccion = { id: '1', titulo: 'Datos básicos y descripción de la organización', bloques: [
-    { k: 'tabla', cab: ['Dato', 'Valor'], filas: [['Razón social', o.nombre], ['CIF', dash(o.cif)], ['Dirección', dash(o.direccion)], ['CNAE', dash(o.cnae)], ['IAE', dash(o.iae)]] },
+    { k: 'tabla', cab: ['Dato', 'Valor'], filas: [['Razón social', dash(o.razonSocial)], ['Nombre comercial', o.nombre], ['CIF', dash(o.cif)], ['Dirección', dash(o.direccion)], ['CNAE', dash(o.cnae)], ['IAE', dash(o.iae)]] },
     { k: 'p', texto: `La organización dispone de ${d.centros.length} centro${d.centros.length === 1 ? '' : 's'} de trabajo incluido${d.centros.length === 1 ? '' : 's'} en el inventario.` },
     { k: 'tabla', cab: ['Centro', 'Dirección', 'Municipio e isla', 'Unidades de alojamiento'], filas: centrosTabla, numericas: [3] },
   ] };
 
   // ── 2
   const s2: Seccion = { id: '2', titulo: 'Responsable, objetivo y usuarios del informe', bloques: [
-    { k: 'p', texto: `Responsable de la elaboración del inventario: HS Consulting Group${o.consultorEmail ? ` (consultor responsable: ${o.consultorEmail})` : ''}.` },
+    { k: 'p', texto: textoResponsable({ responsableNombre: o.responsable?.nombre, responsableCargo: o.responsable?.cargo, responsableEntidad: o.responsable?.entidad, responsableEmail: o.responsable?.email }) ? `Responsable de la elaboración del inventario: ${textoResponsable({ responsableNombre: o.responsable?.nombre, responsableCargo: o.responsable?.cargo, responsableEntidad: o.responsable?.entidad, responsableEmail: o.responsable?.email })}.` : 'Responsable de la elaboración del inventario: sin indicar.' },
     { k: 'p', texto: `Objetivo: cuantificar las emisiones de gases de efecto invernadero de las categorías 1 (emisiones directas) y 2 (energía importada) correspondientes al año ${anio}, para su inscripción en el Registro balear de huella de carbono (Decreto 48/2021) y como base del plan de reducción.` },
     { k: 'p', texto: 'Usuarios previstos: la propia organización, la Administración competente del Registro balear y la entidad verificadora. La difusión del informe es decisión de la organización. Frecuencia: anual.' },
   ] };
@@ -161,7 +162,7 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
 
   // ── 4
   const s4: Seccion = { id: '4', titulo: 'Límites de la organización', bloques: [
-    { k: 'p', texto: `Criterio de consolidación: ${o.criterio === 'control' ? 'control (operativo o financiero)' : 'participación en el capital'}.` },
+    { k: 'p', texto: tituloCriterio(o.criterio) ? `Criterio de consolidación: ${tituloCriterio(o.criterio)!.toLowerCase()}. ${CRITERIOS_CONSOLIDACION.find((x) => x.id === o.criterio)!.descripcion}${o.justificacionConsolidacion?.trim() ? ` Justificación: ${o.justificacionConsolidacion.trim()}` : ''}` : 'Criterio de consolidación: sin definir.' },
     { k: 'tabla', cab: hayPlantilla ? ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias', 'Plantilla media'] : ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, fmt(c.indice > 0 ? c.indice : null, 'entero'), ...(hayPlantilla ? [fmt((c.plantilla ?? 0) > 0 ? c.plantilla : null, 'plantilla')] : [])]), numericas: hayPlantilla ? [3, 4] : [3] },
   ] };
 
@@ -398,6 +399,6 @@ export function construirInforme(d: DatosInforme): ModeloInforme {
   if (estadoSig) for (const x of estadoSig.sinValorar) pendientes.push(`Significancia: falta valorar la subcategoría ${x}.`); else pendientes.push('No se ha realizado la evaluación de la significancia de las emisiones indirectas (5.2.3).');
   if (estadoSig) { for (const x of estadoSig.excluidasSinJustificar) pendientes.push(`Significancia: la subcategoría ${x} se excluye y falta su justificación.`); for (const x of estadoSig.significativasSinCuantificar) pendientes.push(`Significancia: la subcategoría ${x} es significativa y no está cuantificada.`); }
   for (const c of iso.indirectas) if (c.estado === 'Sin evaluar') pendientes.push(`Categoría ${c.n} (${c.nombre}): indique si es no significativa o está excluida, con su justificación.`);
-  const bloqueantes = [...iso.cuadre.incidencias];
+  const bloqueantes = [...iso.cuadre.incidencias, ...(cerrado ? incOrg.filter((x) => x.obligatorio).map((x) => x.mensaje) : [])];
   return { meta, secciones, pendientes, bloqueantes, declaracion };
 }

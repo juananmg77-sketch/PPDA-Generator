@@ -19,7 +19,7 @@ const lineas: LineaActividad[] = [
 const { resultados, totales } = calcularInventario(lineas, f);
 
 const base = (): DatosInforme => ({
-  organizacion: { nombre: 'Grupo Demo', cif: 'B12345678', direccion: 'C/ Mar 1', cnae: '5510', iae: '685', criterio: 'control', consultorEmail: 'consultor@hs.es' },
+  organizacion: { nombre: 'Grupo Demo', razonSocial: 'Grupo Demo Hoteles, S.L.', cif: 'B12345678', direccion: 'C/ Mar 1', cnae: '5510', iae: '685', criterio: 'control_operativo', justificacionConsolidacion: 'La organización explota y gestiona directamente el hotel.', responsable: { nombre: 'Ana Ruiz', cargo: 'Consultora de sostenibilidad', entidad: 'HS Consulting Group' } },
   centros: [{ nombre: 'Hotel A', direccion: 'C/ Mar 1', municipio: 'Calvià', isla: 'Mallorca', enBaleares: true, unidades: 180, indice: 40000 }],
   inventario: { anio: 2023, estado: 'cerrado', anioBase: 2022, cerradoEn: '2024-03-01', conjuntoFijado: true, cierre: { analisisVariacion: 'Apertura de una nueva ala.' } },
   factores: f, resultados, totales,
@@ -229,4 +229,27 @@ test('variaciones del 20 % o más sin explicar son pendiente; con la explicació
   assert.ok(construirInforme(d).pendientes.some((p) => /explicar las variaciones/.test(p)));
   d.inventario.cierre = { analisisVariacion: 'Apertura de una nueva ala.' };
   assert.ok(!construirInforme(d).pendientes.some((p) => /explicar las variaciones/.test(p)));
+});
+
+test('organización: razón social frente a nombre comercial, criterio de consolidación único y responsable con cargo y entidad', () => {
+  const t = texto(construirInforme(base()));
+  assert.match(t, /Razón social/); assert.match(t, /Grupo Demo Hoteles, S\.L\./); assert.match(t, /Nombre comercial/);
+  assert.match(t, /Criterio de consolidación: control operativo\./); assert.doesNotMatch(t, /operativo o financiero|control \(operativo/);
+  assert.match(t, /Justificación: La organización explota y gestiona directamente el hotel/);
+  assert.match(t, /Responsable de la elaboración del inventario: Ana Ruiz, Consultora de sostenibilidad, HS Consulting Group\./);
+  const c = base(); c.organizacion.responsable = { ...c.organizacion.responsable, email: 'ana@hs.es' };
+  assert.match(texto(construirInforme(c)), /HS Consulting Group \(ana@hs\.es\)/);
+});
+test('organización: lo obligatorio que falta es pendiente y, con el inventario cerrado, bloquea la versión final; el correo es opcional', () => {
+  const d = base(); d.organizacion = { ...d.organizacion, razonSocial: null, iae: null, cnae: null, criterio: null, responsable: { nombre: 'Ana' } };
+  const m = construirInforme(d); const p = m.pendientes.join(' | ');
+  for (const f of ['razón social', 'IAE', 'CNAE', 'criterio de consolidación', 'cargo del responsable', 'entidad del responsable']) assert.match(p, new RegExp(f, 'i'));
+  assert.match(texto(m), /Criterio de consolidación: sin definir/);
+  assert.ok(m.bloqueantes.some((b) => /IAE/.test(b))); // el inventario del ejemplo está cerrado
+  const borrador = { ...d, inventario: { ...d.inventario, estado: 'borrador' } }; assert.ok(!construirInforme(borrador).bloqueantes.some((b) => /IAE/.test(b)));
+  assert.ok(!construirInforme(base()).pendientes.some((x) => /correo|email/i.test(x)));
+});
+test('organización: avisos si la razón social coincide con el nombre comercial o la forma no encaja con el CIF', () => {
+  const d = base(); d.organizacion.razonSocial = 'Grupo Demo'; assert.ok(construirInforme(d).pendientes.some((x) => /coincide con el nombre comercial/.test(x)));
+  d.organizacion.razonSocial = 'Grupo Demo Hoteles, S.A.'; assert.ok(construirInforme(d).pendientes.some((x) => /no encaja con el CIF/.test(x)));
 });

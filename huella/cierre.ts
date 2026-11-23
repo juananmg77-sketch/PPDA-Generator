@@ -39,6 +39,8 @@ export interface EntradaCierre {
   exclusionesDirectas?: string[];
   /** Año base: sin definir / sin datos, y evaluación de las reglas de recálculo con la decisión documentada. */
   anioBase?: { definido: boolean; conDatos: boolean; recalculo: { disparadores: Array<{ titulo: string; detalle: string[] }>; noEvaluables: string[]; incidencias: string[] } | null };
+  /** Datos de la organización: obligatorios que faltan (bloquean el cierre) y avisos (razón social, forma jurídica). */
+  organizacion?: { faltan: string[]; avisos: string[] };
   ncAbiertas: number;
   umbralVariacion?: number;
   exclusionPorFuente?: number; // % por fuente (3 por defecto)
@@ -154,6 +156,10 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     else add('ok', 'variacion', 'Variaciones grandes analizadas y justificadas.');
   }
 
+  if (e.organizacion) {
+    if (e.organizacion.faltan.length) add('error', 'organizacion_datos', 'Faltan datos obligatorios de la organización para la versión final (razón social, CIF, CNAE, IAE, criterio de consolidación, responsable del informe).', { detalle: e.organizacion.faltan.map((texto) => ({ texto })) });
+    if (e.organizacion.avisos.length) add('aviso', 'organizacion_avisos', 'Revise la razón social de la organización.', { detalle: e.organizacion.avisos.map((texto) => ({ texto })) });
+  }
   if (e.exclusionesDirectas && e.exclusionesDirectas.length) add('error', 'exclusiones_directas', 'Las exclusiones de la categoría 1 no cumplen la regla (porcentaje estimado, evidencia y umbral).', { detalle: e.exclusionesDirectas.map((texto) => ({ texto })) });
   if (e.significancia === null) add('aviso', 'significancia_no_realizada', 'No se ha evaluado la significancia de las emisiones indirectas (ISO 14064-1, 5.2.3): la declaración de conformidad será solo con el programa aplicable.');
   else if (e.significancia) {

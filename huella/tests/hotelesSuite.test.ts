@@ -29,7 +29,7 @@ test('centro desde hotel: rellena dirección, isla, habitaciones y el enlace con
 });
 
 test('organización desde hotel: una cadena da nombre al grupo; sin cadena, el titular', () => {
-  assert.deepEqual(organizacionDesdeHotel(h()), { nombre: 'Cadena Sol', cif: 'B123', direccion: null, suite_cadena: 'Cadena Sol', cnae: '5510' });
+  assert.deepEqual(organizacionDesdeHotel(h()), { nombre: 'Cadena Sol', razon_social: 'Sol SL', cif: 'B123', direccion: null, suite_cadena: 'Cadena Sol', cnae: '5510' });
   const suelto = organizacionDesdeHotel(h({ cadena_hotelera: null }));
   assert.deepEqual([suelto.nombre, suelto.direccion, suelto.suite_cadena], ['Sol SL', 'C/ Mar 1', null]);
   assert.equal(organizacionDesdeHotel(h({ cadena_hotelera: null, titular: null })).nombre, 'Hotel Playa');

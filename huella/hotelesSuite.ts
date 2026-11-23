@@ -49,12 +49,14 @@ export function centroDesdeHotel(h: HotelSuite): CentroDesdeSuite {
 /** CNAE de un hotel de HS Suite: 5510, hoteles y alojamientos similares (la base de HS Suite solo contiene hoteles). */
 export const CNAE_HOTEL = '5510';
 
-export function organizacionDesdeHotel(h: HotelSuite): { nombre: string; cif: string | null; direccion: string | null; suite_cadena: string | null; cnae: string } {
+export function organizacionDesdeHotel(h: HotelSuite): { nombre: string; razon_social: string | null; cif: string | null; direccion: string | null; suite_cadena: string | null; cnae: string } {
   const cadena = h.cadena_hotelera?.trim() || null;
   return {
     nombre: cadena ?? (h.titular?.trim() || (h.nombre_hotel ?? '').trim()),
     cif: h.cif?.trim() || null,
     direccion: cadena ? null : h.direccion_completa?.trim() || null,
+    // El titular del hotel en HS Suite es la sociedad que lo explota: se propone como razón social (la persona la revisa)
+    razon_social: h.titular?.trim() || null,
     suite_cadena: cadena, cnae: CNAE_HOTEL,
   };
 }

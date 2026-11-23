@@ -19,7 +19,7 @@ const lineas: LineaActividad[] = [
 ];
 const { resultados, totales } = calcularInventario(lineas, f);
 const base = (): DatosInforme => ({
-  organizacion: { nombre: 'Grupo Demo', cif: 'B12345678', direccion: 'C/ Mar 1', cnae: '5510', iae: null, criterio: 'control', consultorEmail: 'consultor@hs.es' },
+  organizacion: { nombre: 'Grupo Demo', razonSocial: 'Grupo Demo Hoteles, S.L.', cif: 'B12345678', direccion: 'C/ Mar 1', cnae: '5510', iae: null, criterio: 'control_operativo', justificacionConsolidacion: 'La organización explota y gestiona directamente el hotel.', responsable: { nombre: 'Ana Ruiz', cargo: 'Consultora de sostenibilidad', entidad: 'HS Consulting Group' } },
   centros: [{ nombre: 'Hotel A', direccion: 'C/ Mar 1', municipio: 'Calvià', isla: 'Mallorca', enBaleares: true, unidades: 180, indice: 40000, plantilla: 63.465 }],
   inventario: { anio: 2024, estado: 'borrador', anioBase: null, cerradoEn: null, conjuntoFijado: true, cierre: null },
   factores: f, resultados, totales,

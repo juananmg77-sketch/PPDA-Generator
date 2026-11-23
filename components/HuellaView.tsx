@@ -8,6 +8,8 @@ import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores,
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
+import { CRITERIOS_CONSOLIDACION, avisosRazonSocial, validarOrganizacion } from '../huella/organizacion';
+import type { CriterioConsolidacion } from '../huella/organizacion';
 import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
 import type { AnioBaseDef, DecisionRecalculo, ResumenAnio } from '../huella/anioBase';
 import { MOTIVOS_EXCLUSION_POR_DEFECTO, justificacionValida, redactarJustificacion, PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
@@ -649,7 +651,7 @@ const Campo: React.FC<{ etiqueta: string; children: React.ReactNode; ancho?: boo
 const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; usuario: string; onGuardar: (v: Partial<Organizacion> & { nombre: string }, hoteles: HotelSuite[]) => Promise<void>; onCerrar: () => void; onError?: (e: unknown) => void }> = ({ org, centrosOrg = [], usuario, onGuardar, onCerrar, onError }) => {
   const [cadenaSuite, setCadenaSuite] = useState<string | null>(org?.suite_cadena ?? null);
   const [hoteles, setHoteles] = useState<HotelSuite[]>([]);
-  const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: org?.criterio_consolidacion ?? 'control', consultor: org?.consultor_email ?? usuario });
+  const [v, setV] = useState({ nombre: org?.nombre ?? '', cif: org?.cif ?? '', direccion: org?.direccion ?? '', cnae: org?.cnae ?? '', iae: org?.iae ?? '', criterio: (org?.criterio_consolidacion ?? '') as '' | CriterioConsolidacion, justificacion: org?.consolidacion_justificacion ?? '', razon: org?.razon_social ?? '', rNombre: org?.responsable_nombre ?? '', rCargo: org?.responsable_cargo ?? '', rEntidad: org?.responsable_entidad ?? '', rEmail: org?.responsable_email ?? '', consultor: org?.consultor_email ?? usuario });
   const [guardando, setGuardando] = useState(false);
   // Al editar: datos de los hoteles de HS Suite vinculados a los centros (o elegidos a mano), solo lectura salvo lo que se vuelca al formulario
   const [deSuite, setDeSuite] = useState<HotelSuite[]>([]);
@@ -661,7 +663,7 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
     // Con un solo hotel la dirección de la organización es la del hotel (aunque pertenezca a una cadena); con varios no hay una única dirección
     const direccion = hs.length === 1 ? (hs[0].direccion_completa?.trim() || o.direccion) : o.direccion;
     const cif = hs.map((h) => h.cif?.trim()).find((x) => !!x) ?? o.cif;
-    setV((p) => ({ ...p, nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (direccion ?? p.direccion) : p.direccion, cnae: sobrescribir || !p.cnae ? o.cnae : p.cnae }));
+    setV((p) => ({ ...p, razon: p.razon || o.razon_social || '', nombre: p.nombre || o.nombre, cif: sobrescribir || !p.cif ? (cif ?? p.cif) : p.cif, direccion: sobrescribir || !p.direccion ? (direccion ?? p.direccion) : p.direccion, cnae: sobrescribir || !p.cnae ? o.cnae : p.cnae }));
   };
   const cargarVinculados = async (sobrescribir: boolean) => {
     const ids = centrosOrg.map((c) => c.suite_hotel_id).filter((x): x is string => !!x).slice(0, 25);
@@ -681,7 +683,7 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
   };
   useEffect(() => { if (org) void cargarVinculados(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
-  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, criterio_consolidacion: v.criterio as 'control' | 'participacion', consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }, hoteles); onCerrar(); } finally { setGuardando(false); } };
+  const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, razon_social: v.razon.trim() || null, criterio_consolidacion: v.criterio || null, consolidacion_justificacion: v.justificacion.trim() || null, responsable_nombre: v.rNombre.trim() || null, responsable_cargo: v.rCargo.trim() || null, responsable_entidad: v.rEntidad.trim() || null, responsable_email: v.rEmail.trim() || null, consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }, hoteles); onCerrar(); } finally { setGuardando(false); } };
   return (
     <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar}>
       {!org && (
@@ -691,13 +693,13 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
           <BuscadorHoteles textoBoton="Añadir" placeholder="Busque el hotel, la cadena o el titular" vinculados={new Set(hoteles.map((h) => h.id))}
             onElegir={(h) => {
               setHoteles((l) => (l.some((x) => x.id === h.id) ? l : [...l, h]));
-              if (hoteles.length === 0) { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '', cnae: p.cnae || o.cnae })); setCadenaSuite(o.suite_cadena); }
+              if (hoteles.length === 0) { const o = organizacionDesdeHotel(h); setV((p) => ({ ...p, razon: o.razon_social ?? p.razon, nombre: o.nombre, cif: o.cif ?? '', direccion: o.direccion ?? '', cnae: p.cnae || o.cnae })); setCadenaSuite(o.suite_cadena); }
             }}
             onCadena={async (cadena) => {
               try {
                 const todos = (await huellaService.buscarHoteles({ cadena, limite: 200 })).filter((h) => h.activo !== false);
                 setHoteles((l) => [...l, ...todos.filter((h) => !l.some((x) => x.id === h.id))]);
-                if (hoteles.length === 0 && todos[0]) { const o = organizacionDesdeHotel(todos[0]); setV((p) => ({ ...p, nombre: o.nombre, cif: o.cif ?? '', direccion: '', cnae: p.cnae || o.cnae })); setCadenaSuite(cadena); }
+                if (hoteles.length === 0 && todos[0]) { const o = organizacionDesdeHotel(todos[0]); setV((p) => ({ ...p, razon: o.razon_social ?? p.razon, nombre: o.nombre, cif: o.cif ?? '', direccion: '', cnae: p.cnae || o.cnae })); setCadenaSuite(cadena); }
               } catch (e) { onError?.(e); }
             }} />
           {hoteles.length > 0 && (
@@ -749,15 +751,30 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <Campo etiqueta="Nombre (empresa o grupo) *" ancho><input className={input} value={v.nombre} onChange={f('nombre')} autoFocus /></Campo>
-        <Campo etiqueta="CIF"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
-        <Campo etiqueta="Consultor responsable (email)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo>
+        <Campo etiqueta="Razón social (denominación legal) *" ancho><input className={input} value={v.razon} placeholder="Tal como figura en el CIF, con su forma jurídica (S.L., S.A.…)" onChange={f('razon')} autoFocus /></Campo>
+        {avisosRazonSocial(v.razon, v.nombre, v.cif).length > 0 && <ul className="col-span-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisosRazonSocial(v.razon, v.nombre, v.cif).map((x, i) => <li key={i}>{x}</li>)}</ul>}
+        <Campo etiqueta="Nombre comercial (empresa o grupo) *" ancho><input className={input} value={v.nombre} placeholder="Nombre con que se conoce la organización" onChange={f('nombre')} /></Campo>
+        <Campo etiqueta="CIF *"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
+        <Campo etiqueta="Consultor asignado (email, controla el acceso)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo>
         <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
-        <Campo etiqueta="CNAE"><input className={input} value={v.cnae} onChange={f('cnae')} /></Campo>
-        <Campo etiqueta="IAE"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
-        <Campo etiqueta="Criterio de consolidación (ISO 14064-1)" ancho>
-          <select className={input} value={v.criterio} onChange={f('criterio')}><option value="control">Control (operativo o financiero)</option><option value="participacion">Participación en el capital</option></select>
-        </Campo>
+        <Campo etiqueta="CNAE * (obligatorio para la versión final)"><input className={input} value={v.cnae} onChange={f('cnae')} /></Campo>
+        <Campo etiqueta="IAE * (obligatorio para la versión final)"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
+        <div className="col-span-2 rounded-xl border border-slate-200 p-3">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Criterio de consolidación (ISO 14064-1) *</p>
+          <div className="space-y-1.5">{CRITERIOS_CONSOLIDACION.map((c) => (
+            <label key={c.id} className="flex items-start gap-2 text-xs cursor-pointer"><input type="radio" name="criterio" className="mt-0.5" checked={v.criterio === c.id} onChange={() => setV({ ...v, criterio: c.id })} /><span><strong>{c.titulo}.</strong> <span className="text-slate-600">{c.descripcion}</span></span></label>
+          ))}</div>
+          <label className="block text-xs font-semibold text-slate-600 mt-2">Justificación del criterio *<textarea className={`${input} mt-1`} rows={2} value={v.justificacion} placeholder="Por qué se elige este criterio para esta organización." onChange={(e) => setV({ ...v, justificacion: e.target.value })} /></label>
+        </div>
+        <div className="col-span-2 rounded-xl border border-slate-200 p-3">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Responsable de la elaboración del informe</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Nombre *"><input className={input} value={v.rNombre} onChange={f('rNombre')} /></Campo>
+            <Campo etiqueta="Cargo *"><input className={input} value={v.rCargo} onChange={f('rCargo')} /></Campo>
+            <Campo etiqueta="Entidad *"><input className={input} value={v.rEntidad} onChange={f('rEntidad')} /></Campo>
+            <Campo etiqueta="Correo (opcional)"><input className={input} value={v.rEmail} onChange={f('rEmail')} /></Campo>
+          </div>
+        </div>
       </div>
       <div className="flex justify-end gap-2 mt-5">
         <button className={btnS} onClick={onCerrar}>Cancelar</button>
@@ -2155,6 +2172,7 @@ const PanelCierre: React.FC<{
   const abierto = inv.estado === 'borrador';
   const sig = useSignificancia(org, inv, falla);
   const ab = useAnioBase(org, inv, invs, centros, invCentros, actividad, factores);
+  const datosOrg = useMemo(() => validarOrganizacion({ razonSocial: org.razon_social, nombreComercial: org.nombre, cif: org.cif, cnae: org.cnae, iae: org.iae, criterioConsolidacion: org.criterio_consolidacion, justificacionConsolidacion: org.consolidacion_justificacion, responsableNombre: org.responsable_nombre, responsableCargo: org.responsable_cargo, responsableEntidad: org.responsable_entidad }), [org]);
   const [origenSel, setOrigenSel] = useState<'' | 'no' | 'renovable_balear' | 'renovable_otra'>('');
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null); // factura del cierre cuyo dato se está corrigiendo a mano
   const [correo, setCorreo] = useState<{ asunto: string; cuerpo: string } | null>(null);
@@ -2269,12 +2287,13 @@ const PanelCierre: React.FC<{
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
       exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      organizacion: { faltan: datosOrg.filter((x) => x.obligatorio).map((x) => x.mensaje), avisos: datosOrg.filter((x) => !x.obligatorio).map((x) => x.mensaje) },
       anioBase: { definido: !!ab.def, conDatos: !!ab.base, recalculo: ab.evaluacion ? { disparadores: ab.evaluacion.disparadores, noEvaluables: ab.evaluacion.noEvaluables, incidencias: ab.evaluacion.incidencias } : null },
       significancia: sig.estado, exclusionesDirectas: evaluarExclusionesDirectas(exclusiones.filter((x) => (x.categoria_iso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!(x.certificado_path || x.evidencia_url) })), sig.criterios).incidencias,
       cuadreIso: isoCierre.cuadre, categoriasSinEvaluar: isoCierre.categorias.filter((c) => c.estado === 'Sin evaluar').map((c) => ({ n: c.n, nombre: c.nombre })),
       ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
     });
-  }, [factores, calculo, isoCierre, ab.def, ab.base, ab.evaluacion, sig.estado, sig.criterios, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
+  }, [factores, calculo, isoCierre, datosOrg, ab.def, ab.base, ab.evaluacion, sig.estado, sig.criterios, previo, docs, actividad, centros, invCentros, exclusiones, ncs, analisis, inv.anio, inv.conjunto_factores]); // eslint-disable-line
 
   const guardarAnalisis = async () => {
     if (!abierto || analisis === (inv.cierre?.analisisVariacion ?? '')) return;
@@ -2578,7 +2597,7 @@ const PanelInforme: React.FC<{
     const nombreDoc = (id?: string | null) => docs.find((d) => d.id === id)?.nombre_archivo ?? null;
     const nombreCentro = (id: string) => centros.find((x) => x.id === id)?.nombre ?? id;
     return {
-      organizacion: { nombre: org.nombre, cif: org.cif, direccion: org.direccion, cnae: org.cnae, iae: org.iae, criterio: org.criterio_consolidacion ?? 'control', consultorEmail: org.consultor_email },
+      organizacion: { nombre: org.nombre, razonSocial: org.razon_social, cif: org.cif, direccion: org.direccion, cnae: org.cnae, iae: org.iae, criterio: org.criterio_consolidacion, justificacionConsolidacion: org.consolidacion_justificacion, responsable: { nombre: org.responsable_nombre, cargo: org.responsable_cargo, entidad: org.responsable_entidad, email: org.responsable_email } },
       centros: centros.map((x) => { const ic = invCentros.find((y) => y.centro_id === x.id); return { nombre: x.nombre, direccion: x.direccion, municipio: x.municipio, isla: x.isla, enBaleares: x.en_baleares, unidades: x.unidades_alojamiento, operativoDesde: ic?.operativo_desde, operativoHasta: ic?.operativo_hasta, indice: Number(ic?.indice_actividad ?? 0), plantilla: Number(ic?.plantilla_media ?? 0) }; }),
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: ab.def?.anio ?? inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,

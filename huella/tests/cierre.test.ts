@@ -185,3 +185,13 @@ test('año base en el cierre: sin definir, sin datos y regla de recálculo sin d
   const con = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: disp, noEvaluables: ['Cambio de metodología: falta declarar.'], incidencias: [] } } });
   assert.ok(cod(con).includes('recalculo_documentado')); assert.ok(cod(con).includes('recalculo_no_evaluable')); assert.ok(!cod(con).includes('recalculo_sin_decision'));
 });
+
+test('datos de la organización en el cierre: lo obligatorio que falta bloquea; los avisos de razón social no', () => {
+  assert.ok(!evaluarCierre(base).items.some((i) => i.codigo === 'organizacion_datos'));
+  const mal = evaluarCierre({ ...base, organizacion: { faltan: ['Falta el IAE de la organización.', 'Falta el cargo del responsable del informe.'], avisos: [] } });
+  const item = mal.items.find((i) => i.codigo === 'organizacion_datos')!;
+  assert.equal(item.nivel, 'error'); assert.equal(mal.puedeCerrar, false); assert.equal(item.detalle!.length, 2);
+  const av = evaluarCierre({ ...base, organizacion: { faltan: [], avisos: ['La razón social coincide con el nombre comercial.'] } });
+  assert.equal(av.items.find((i) => i.codigo === 'organizacion_avisos')!.nivel, 'aviso');
+  assert.ok(!av.items.some((i) => i.codigo === 'organizacion_datos'));
+});

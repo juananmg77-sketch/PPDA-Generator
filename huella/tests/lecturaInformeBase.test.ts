@@ -25,3 +25,13 @@ test('datos que faltan: no se inventan (resumen null o avisos), y se limpian val
   assert.equal(l.anio, null); assert.equal(l.total, null); assert.equal(l.estancias, null); assert.deepEqual(l.centros, ['A']);
   assert.ok(resumenDeLectura(limpiarLecturaBase({ ...base, anio: null })).avisos.some((a) => /año/.test(a)));
 });
+
+import { ESQUEMA_INFORME_BASE } from '../lecturaInformeBase.ts';
+test('el esquema de salida usa tipos simples (sin uniones con null) y la lectura tolera los datos que faltan', () => {
+  const props = ESQUEMA_INFORME_BASE.properties as Record<string, { type: unknown }>;
+  for (const [k, v] of Object.entries(props)) assert.ok(typeof v.type === 'string', `${k}: type debe ser una cadena`);
+  assert.deepEqual(ESQUEMA_INFORME_BASE.required, ['centros', 'porFuente']);
+  const sinNada = limpiarLecturaBase({ centros: [], porFuente: [] } as never);
+  assert.equal(sinNada.anio, null); assert.equal(sinNada.total, null); assert.equal(sinNada.organizacion, null);
+  assert.equal(resumenDeLectura(sinNada).resumen, null);
+});

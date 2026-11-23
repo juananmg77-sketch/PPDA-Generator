@@ -123,7 +123,7 @@ export const huellaService = {
     if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
     const resp = await fetch('/api/leer-informe-base', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
     const cuerpo = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(cuerpo.error ?? `Error ${resp.status}`);
+    if (!resp.ok) throw new Error(`${cuerpo.error ?? `Error ${resp.status}`}${cuerpo.detalle ? ` [${String(cuerpo.detalle).slice(0, 300)}]` : ''}`);
     return cuerpo;
   },
   /** Lee con IA el certificado ya subido (devuelve solo una propuesta que la persona revisa). */

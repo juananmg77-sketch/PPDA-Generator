@@ -22,16 +22,16 @@ export interface LecturaInformeBase {
   observaciones: string | null;
 }
 
-const nulo = { type: ['number', 'null'] } as const; const texto = { type: ['string', 'null'] } as const;
+// Esquema de salida: tipos simples y propiedades opcionales (lo que no consta, se omite), que es lo que admite la salida estructurada.
 export const ESQUEMA_INFORME_BASE = {
   type: 'object', additionalProperties: false,
-  required: ['anio', 'organizacion', 'unidad', 'categoria1', 'categoria2', 'total', 'estancias', 'plantilla', 'factores', 'centros', 'porFuente', 'verificador', 'referenciaVerificacion', 'paginaTotal', 'observaciones'],
+  required: ['centros', 'porFuente'],
   properties: {
-    anio: { type: ['integer', 'null'] }, organizacion: texto, unidad: { type: ['string', 'null'], enum: ['t', 'kg', null] },
-    categoria1: nulo, categoria2: nulo, total: nulo, estancias: nulo, plantilla: nulo, factores: texto,
+    anio: { type: 'integer', description: 'Año del inventario' }, organizacion: { type: 'string' }, unidad: { type: 'string', enum: ['t', 'kg'] },
+    categoria1: { type: 'number' }, categoria2: { type: 'number' }, total: { type: 'number' }, estancias: { type: 'number' }, plantilla: { type: 'number' }, factores: { type: 'string' },
     centros: { type: 'array', items: { type: 'string' } },
     porFuente: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['fuente', 'emisiones'], properties: { fuente: { type: 'string' }, emisiones: { type: 'number' } } } },
-    verificador: texto, referenciaVerificacion: texto, paginaTotal: { type: ['integer', 'null'] }, observaciones: texto,
+    verificador: { type: 'string' }, referenciaVerificacion: { type: 'string' }, paginaTotal: { type: 'integer' }, observaciones: { type: 'string' },
   },
 } as const;
 

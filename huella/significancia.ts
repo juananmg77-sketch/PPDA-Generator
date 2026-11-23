@@ -163,6 +163,7 @@ export function declaracionConformidad(e: EstadoEvaluacion | null, anio: number,
 /** Resumen por categoría (3 a 6) de la evaluación, para el estado de cada categoría en los resultados. */
 export function resumenPorCategoria(plantilla: Array<Pick<SubcategoriaPlantilla, 'codigo' | 'nombre' | 'activa' | 'categoria'>>, evaluaciones: Evaluacion[], c: CriteriosSignificancia): Record<number, import('./iso.ts').ResumenEvaluacion> {
   const out: Record<number, import('./iso.ts').ResumenEvaluacion> = {};
+  const porTexto: Record<number, Map<string, string[]>> = {};
   for (const s of plantilla.filter((x) => x.activa)) {
     const r = (out[s.categoria] ??= { total: 0, sinValorar: 0, significativas: 0, significativasSinCuantificar: 0, noSignificativas: 0, justificaciones: [] });
     r.total++;
@@ -170,8 +171,10 @@ export function resumenPorCategoria(plantilla: Array<Pick<SubcategoriaPlantilla,
     const res = e ? evaluarEvaluacion(e, c) : null;
     if (!e || !res || !res.completa) { r.sinValorar++; continue; }
     if (res.resultado === 'significativa') { r.significativas++; if (!e.cuantificada) r.significativasSinCuantificar++; }
-    else { r.noSignificativas++; if ((e.justificacion ?? '').trim()) r.justificaciones.push(`${s.codigo}: ${e.justificacion!.trim()}`); }
+    else { r.noSignificativas++; if ((e.justificacion ?? '').trim()) (porTexto[s.categoria] ??= new Map()).set(e.justificacion!.trim(), [...((porTexto[s.categoria] ??= new Map()).get(e.justificacion!.trim()) ?? []), s.codigo]); }
   }
+  // Justificaciones sin repetir: si todas coinciden, una sola; si no, cada texto con los códigos a los que se aplica
+  for (const [cat, m] of Object.entries(porTexto)) out[Number(cat)].justificaciones = m.size === 1 ? [...m.keys()] : [...m].map(([t, cs]) => `${cs.join(', ')}: ${t}`);
   return out;
 }
 

@@ -318,3 +318,21 @@ test('plantilla: cláusula de confidencialidad configurable y citas de la resolu
   const incompleta = base(); incompleta.factores = { ...f, resolucion: { ...f.resolucion!, enlace: null } };
   assert.ok(construirInforme(incompleta).pendientes.some((p) => /enlace/.test(p)));
 });
+
+test('categorías 3 a 6 excluidas con el mismo motivo: una sola fila y una sola justificación, sin repetirla por subcategoría', () => {
+  const motivo = 'El programa aplicable exige cuantificar únicamente las categorías 1 y 2. Se excluye conforme a la ISO 14064-1.';
+  const d = base(); d.exclusiones = [];
+  d.significancia = { ...d.significancia!, evaluaciones: PLANTILLA_HOTELES.map((x) => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: null, influencia: null, datos: null, requisitos: null, resultado: 'no_significativa' as const, justificacion: motivo, cuantificada: false, metodo: 'no_aplica' as const })) };
+  const m = construirInforme(d);
+  const tablas = (id: string) => m.secciones.find((x) => x.id === id)!.bloques.filter((b) => b.k === 'tabla') as Array<{ cab: string[]; filas: string[][] }>;
+  const s5 = tablas('5')[0]; assert.equal(s5.filas.length, 3); // categorías 1, 2 y «3 a 6»
+  assert.match(s5.filas[2][0], /^Categorías 3 a 6 \(transporte; productos usados/); assert.equal(s5.filas[2][1], 'No significativa'); assert.equal(s5.filas[2][2], motivo);
+  const s92 = tablas('9').find((t) => t.cab[0] === 'Categoría' && t.cab.includes('Justificación'))!; assert.equal(s92.filas.length, 2); // categoría 2 + «3 a 6»
+  const completo = JSON.stringify(m); assert.equal(completo.split(motivo).length - 1, 3, 'el motivo aparece una vez por tabla/párrafo, no una por subcategoría'); // s5, 9.2 y el párrafo de subcategorías
+  assert.ok(!tablas('9').some((t) => t.cab[0] === 'Subcategoría')); // sin tabla de trece filas iguales
+  assert.match(texto(m), /excluidas como «no aplica» \(3\.1, 3\.2/);
+  // con motivos distintos por categoría no se fusionan
+  const e = base(); e.exclusiones = [];
+  e.significancia = { ...e.significancia!, evaluaciones: PLANTILLA_HOTELES.map((x) => ({ codigo: x.codigo, categoria: x.categoria, nombre: x.nombre, magnitudPct: null, influencia: null, datos: null, requisitos: null, resultado: 'no_significativa' as const, justificacion: `Motivo de la categoría ${x.categoria}.`, cuantificada: false, metodo: 'no_aplica' as const })) };
+  const s5b = (construirInforme(e).secciones.find((x) => x.id === '5')!.bloques[0] as { filas: string[][] }).filas; assert.equal(s5b.length, 6);
+});

@@ -1,4 +1,5 @@
 // Acceso a los datos de Huella de carbono (tablas hc_*, con RLS) y a la función de lectura de facturas.
+import type { CalculoExtintores } from '../huella/exclusiones';
 import { supabase } from './supabase';
 import type { ExtraccionFactura, Incidencia } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, OrigenElectricidad } from '../huella/tipos';
@@ -14,7 +15,7 @@ export interface CierreDatos {
 }
 export interface FilaBiblioteca { inventario: Inventario; organizacion: Organizacion; centros: number }
 export interface Verificacion { entidad?: string; nivel?: string; fecha?: string; referencia?: string }
-export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string }
+export interface Exclusion { id: string; inventario_id: string; fuente: string; porcentaje: number | null; justificacion: string; /** Cálculo de la emisión excluida (extintores). */ calculo?: CalculoExtintores | null; certificado_path?: string | null; certificado_nombre?: string | null }
 export interface NoConformidad { id: string; inventario_id: string; fecha: string; descripcion: string; medida?: string | null; responsable?: string | null; cerrada_en?: string | null }
 export interface Inventario { id: string; organizacion_id: string; anio: number; estado: 'borrador' | 'revision' | 'cerrado' | 'verificado'; indice_actividad: string; conjunto_factores?: ConjuntoFactores | null; cierre?: CierreDatos | null; cerrado_en?: string | null; anio_base?: number | null; verificacion?: Verificacion | null; updated_at?: string }
 export interface InventarioCentro { inventario_id: string; centro_id: string; operativo_desde?: string | null; operativo_hasta?: string | null; indice_actividad: number; /** Plantilla media del año (trabajadores), para el ratio por trabajador. */ plantilla_media?: number; notas?: string | null }
@@ -102,6 +103,13 @@ export const huellaService = {
   },
   async exclusiones(inv: string) { return ok<Exclusion[]>(await supabase.from('hc_exclusiones').select('*').eq('inventario_id', inv).order('created_at')); },
   async crearExclusion(x: Omit<Exclusion, 'id'>) { return ok<Exclusion>(await supabase.from('hc_exclusiones').insert(x).select().single()); },
+  /** Sube el certificado de mantenimiento (PDF o imagen) de una exclusión a la carpeta privada. */
+  async subirCertificadoExclusion(file: File, org: string, inv: string) {
+    const path = `${org}/${inv}/exclusion_${Date.now()}_${file.name.replace(/[^\w.\-]+/g, '_')}`;
+    const up = await supabase.storage.from('hc-facturas').upload(path, file, { contentType: file.type, upsert: false });
+    if (up.error) throw new Error(up.error.message);
+    return path;
+  },
   async borrarExclusion(id: string) { ok(await supabase.from('hc_exclusiones').delete().eq('id', id)); },
   async noConformidades(inv: string) { return ok<NoConformidad[]>(await supabase.from('hc_no_conformidades').select('*').eq('inventario_id', inv).order('created_at')); },
   async crearNoConformidad(x: Omit<NoConformidad, 'id' | 'fecha'>) { return ok<NoConformidad>(await supabase.from('hc_no_conformidades').insert(x).select().single()); },

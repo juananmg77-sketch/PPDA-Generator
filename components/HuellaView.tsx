@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
+import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
 import { evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { centroDesdeHotel, organizacionDesdeHotel } from '../huella/hotelesSuite';
@@ -1634,7 +1635,9 @@ const PanelCierre: React.FC<{
   const [ncs, setNcs] = useState<NoConformidad[]>([]);
   const [previo, setPrevio] = useState<{ a1: number; a2: number; total: number; anio: number } | null | undefined>(undefined);
   const [analisis, setAnalisis] = useState(inv.cierre?.analisisVariacion ?? '');
-  const [fx, setFx] = useState({ fuente: '', porcentaje: '', justificacion: '' });
+  const [fx, setFx] = useState({ fuente: '', otra: '', porcentaje: '', justificacion: '' });
+  const [lineasExt, setLineasExt] = useState<Array<{ cantidad: string; kg: string }>>([{ cantidad: '', kg: '' }]);
+  const [certExt, setCertExt] = useState<File | null>(null);
   const [nc, setNc] = useState({ descripcion: '', medida: '', responsable: '' });
   const [reabrir, setReabrir] = useState(false);
   const [modalEx, setModalEx] = useState(false);
@@ -1662,6 +1665,9 @@ const PanelCierre: React.FC<{
   }, [inv.id, invs.length]); // eslint-disable-line
 
   const calculo = useMemo(() => (factores ? calcularActividad(actividad, centros, factores) : null), [factores, actividad, centros]);
+  const esExt = fx.fuente === FUENTE_EXTINTORES;
+  const totalInvT = (calculo?.totales.kgCO2eTotal ?? 0) / 1000;
+  const calcExt = useMemo(() => calcularExtintores(lineasExt.map((l) => ({ cantidad: Number(l.cantidad.replace(',', '.')) || 0, kgPorExtintor: Number(l.kg.replace(',', '.')) || 0 })), totalInvT), [lineasExt, totalInvT]);
   const indice = invCentros.reduce((s, c) => s + Number(c.indice_actividad || 0), 0);
   const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const variaciones = previo && calculo ? [
@@ -1709,10 +1715,18 @@ const PanelCierre: React.FC<{
     } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
   const anadirExclusion = async () => {
+    setTrabajando(true);
     try {
-      const x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente.trim(), porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
-      setExclusiones((l) => [...l, x]); setFx({ fuente: '', porcentaje: '', justificacion: '' }); setModalEx(false);
-    } catch (e) { falla(e); }
+      let x;
+      if (esExt) {
+        const path = await huellaService.subirCertificadoExclusion(certExt!, org.id, inv.id);
+        const c = { ...calcExt, certificadoPath: path, certificadoNombre: certExt!.name };
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: FUENTE_EXTINTORES, porcentaje: Math.round(c.porcentaje * 1000) / 1000, justificacion: fx.justificacion.trim() || justificacionExtintores(c), calculo: c, certificado_path: path, certificado_nombre: certExt!.name });
+      } else {
+        x = await huellaService.crearExclusion({ inventario_id: inv.id, fuente: fx.fuente === FUENTE_OTRA ? fx.otra.trim() : fx.fuente, porcentaje: fx.porcentaje === '' ? null : Number(fx.porcentaje), justificacion: fx.justificacion.trim() });
+      }
+      setExclusiones((l) => [...l, x]); setFx({ fuente: '', otra: '', porcentaje: '', justificacion: '' }); setLineasExt([{ cantidad: '', kg: '' }]); setCertExt(null); setModalEx(false);
+    } catch (e) { falla(e); } finally { setTrabajando(false); }
   };
   const anadirNc = async () => {
     try {
@@ -1818,7 +1832,7 @@ const PanelCierre: React.FC<{
         <p className="text-xs text-slate-600 mb-3">Fuentes que no se cuantifican, con su justificación. Criterio de insignificancia: cada una por debajo del 3 % y el conjunto como máximo el 5 % de las emisiones (ISO 14064-1, 9.3.1 i).</p>
         {exclusiones.length > 0 && (
           <ul className="divide-y divide-slate-100 mb-3">{exclusiones.map((x) => (
-            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p></div>
+            <li key={x.id} className="py-2 flex items-start gap-3 text-xs"><div className="flex-1"><p className="font-semibold text-slate-800">{x.fuente} · {x.porcentaje != null ? `${x.porcentaje} %` : 'sin porcentaje'}</p><p className="text-slate-600">{x.justificacion}</p>{x.certificado_path && <button className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700 underline" onClick={async () => { try { window.open(await huellaService.urlDocumento(x.certificado_path!), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={11} /> Certificado: {x.certificado_nombre ?? 'ver'}</button>}</div>
               {abierto && <button className="p-1.5 text-slate-500 hover:text-red-600" aria-label="Eliminar exclusión" onClick={async () => { try { await huellaService.borrarExclusion(x.id); setExclusiones((l) => l.filter((y) => y.id !== x.id)); } catch (e) { falla(e); } }}><Trash2 size={14} /></button>}</li>
           ))}</ul>
         )}
@@ -1838,11 +1852,44 @@ const PanelCierre: React.FC<{
       {modalEx && abierto && (
         <Modal titulo="Añadir una fuente excluida" onCerrar={() => setModalEx(false)}>
           <div className="grid grid-cols-2 gap-3">
-            <Campo etiqueta="Fuente *" ancho><input className={input} value={fx.fuente} onChange={(e) => setFx({ ...fx, fuente: e.target.value })} placeholder="Ej.: extintores de CO₂" autoFocus /></Campo>
-            <Campo etiqueta="% estimado de las emisiones"><input type="number" min={0} step="any" className={input} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></Campo>
-            <Campo etiqueta="Justificación *" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
+            <Campo etiqueta="Fuente *" ancho>
+              <select className={input} value={fx.fuente} onChange={(e) => setFx({ ...fx, fuente: e.target.value })} autoFocus aria-label="Fuente excluida">
+                <option value="">Elegir…</option>{FUENTES_EXCLUIBLES.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </Campo>
+            {fx.fuente === FUENTE_OTRA && <Campo etiqueta="¿Cuál? *" ancho><input className={input} value={fx.otra} onChange={(e) => setFx({ ...fx, otra: e.target.value })} /></Campo>}
+            {esExt ? (
+              <div className="col-span-2 space-y-3">
+                <Campo etiqueta="Certificado anual de mantenimiento (PDF o imagen) *" ancho>
+                  <input type="file" accept="application/pdf,image/*" className="block w-full text-xs" onChange={(e) => setCertExt(e.target.files?.[0] ?? null)} aria-label="Certificado de mantenimiento de extintores" />
+                </Campo>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">Extintores de CO₂ recargados según el certificado</p>
+                  {lineasExt.map((l, i) => (
+                    <div key={i} className="flex items-end gap-2 mb-2">
+                      <label className="text-xs font-semibold text-slate-600 flex-1">Nº recargados<input inputMode="decimal" className={`${input} mt-1`} value={l.cantidad} onChange={(e) => setLineasExt((x) => x.map((y, k) => (k === i ? { ...y, cantidad: e.target.value } : y)))} /></label>
+                      <label className="text-xs font-semibold text-slate-600 flex-1">Kg de CO₂ por extintor<input inputMode="decimal" className={`${input} mt-1`} placeholder="Ej.: 2 o 5" value={l.kg} onChange={(e) => setLineasExt((x) => x.map((y, k) => (k === i ? { ...y, kg: e.target.value } : y)))} /></label>
+                      {lineasExt.length > 1 && <button className="p-2 text-slate-500 hover:text-red-600" aria-label="Quitar fila" onClick={() => setLineasExt((x) => x.filter((_, k) => k !== i))}><Trash2 size={14} /></button>}
+                    </div>
+                  ))}
+                  <button className={btnS} onClick={() => setLineasExt((x) => [...x, { cantidad: '', kg: '' }])}><Plus size={14} /> Otro tamaño</button>
+                </div>
+                <div className="rounded-lg bg-blue-50 text-blue-900 text-xs px-3 py-2.5 space-y-0.5">
+                  <p><strong>Total de extintores recargados:</strong> {calcExt.totalExtintores.toLocaleString('es-ES')}</p>
+                  <p><strong>Emisión:</strong> {calcExt.kgCO2.toLocaleString('es-ES', { maximumFractionDigits: 2 })} kg CO₂ = {calcExt.tCO2e.toLocaleString('es-ES', { maximumFractionDigits: 3 })} t CO₂e (PCA 1; cada recarga repone el CO₂ liberado)</p>
+                  <p><strong>Porcentaje excluido:</strong> {calcExt.porcentaje.toLocaleString('es-ES', { maximumFractionDigits: 3 })} % del total del inventario ({totalInvT.toLocaleString('es-ES', { maximumFractionDigits: 2 })} t CO₂e + esta exclusión). {calcExt.porcentaje < 3 ? 'Cumple el umbral de insignificancia (< 3 %).' : 'Supera el 3 %: no sería insignificante, conviene incluirla en el cálculo.'}</p>
+                </div>
+                <Campo etiqueta="Justificación (opcional: si la deja vacía se redacta sola con el cálculo)" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
+              </div>
+            ) : (
+              <>
+                <Campo etiqueta="% estimado de las emisiones"><input type="number" min={0} step="any" className={input} value={fx.porcentaje} onChange={(e) => setFx({ ...fx, porcentaje: e.target.value })} /></Campo>
+                <Campo etiqueta="Justificación *" ancho><input className={input} value={fx.justificacion} onChange={(e) => setFx({ ...fx, justificacion: e.target.value })} /></Campo>
+              </>
+            )}
           </div>
-          <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalEx(false)}>Cancelar</button><button className={btnP} onClick={anadirExclusion} disabled={!fx.fuente.trim() || !fx.justificacion.trim()}><Plus size={14} /> Añadir</button></div>
+          <div className="flex justify-end gap-2 mt-5"><button className={btnS} onClick={() => setModalEx(false)}>Cancelar</button>
+            <button className={btnP} onClick={anadirExclusion} disabled={trabajando || !fx.fuente || (fx.fuente === FUENTE_OTRA && !fx.otra.trim()) || (esExt ? !certExt || calcExt.totalExtintores === 0 : !fx.justificacion.trim())}>{trabajando ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Añadir</button></div>
         </Modal>
       )}
       {modalNc && abierto && (

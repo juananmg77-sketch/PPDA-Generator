@@ -26,7 +26,7 @@ export type Bloque =
   | { k: 'h'; texto: string }
   | { k: 'lista'; items: string[] }
   | { k: 'nota'; texto: string }
-  | { k: 'grafico'; titulo: string; svg: string; ancho: number; alto: number; pie?: string }
+  | { k: 'grafico'; titulo: string; svg: string; ancho: number; alto: number; pie?: string; /** Reduce el gráfico en el PDF (1 = ancho completo). */ escala?: number }
   | { k: 'kpis'; items: Array<{ titulo: string; valor: string; unidad?: string; sub?: string; destacado?: boolean }> }
   | { k: 'tabla'; cab: string[]; filas: string[][]; numericas?: number[]; pie?: string; /** Notas al pie de las marcas (*, †) que aparecen en la tabla, con su texto del catálogo. */ notas?: string[] };
 export interface Seccion { id: string; titulo: string; bloques: Bloque[] }
@@ -144,7 +144,7 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const reap = inv.cierre?.reaperturas ?? [];
   const s3: Seccion = { id: '3', titulo: 'Periodo e inventario', bloques: [
     { k: 'tabla', cab: ['Concepto', 'Valor'], filas: [['Periodo cubierto', `1 de enero a 31 de diciembre de ${anio}`], ['Año base', ab?.def ? `${ab.def.anio}${ab.base ? (ab.def.inventarioId ? ' (inventario del sistema)' : ' (datos introducidos manualmente)') : ' (sin datos)'}` : inv.anioBase ? `${inv.anioBase} (sin inventario ni datos vinculados)` : 'No fijado'], ['Estado del inventario', inv.estado], ['Fecha de cierre', fechaEs(inv.cerradoEn)]] },
-    ...(ab?.def ? [{ k: 'p' as const, texto: `Elección del año base: ${ab.def.justificacion}${ab.def.inventarioId ? '' : ` Origen de los datos: ${ab.def.origen ?? '—'}${ab.def.evidenciaUrl || ab.def.evidenciaNombre ? `; evidencia: ${ab.def.evidenciaNombre ?? ab.def.evidenciaUrl}` : ''}.`}` }] : []),
+    ...(ab?.def ? [{ k: 'p' as const, texto: `Elección del año base: ${/[.!?]$/.test(ab.def.justificacion.trim()) ? ab.def.justificacion.trim() : `${ab.def.justificacion.trim()}.`}${ab.def.inventarioId ? '' : ` Origen de los datos: ${(ab.def.origen ?? '—').replace(/\s*\(ref\.\s*null\)/gi, '')}${ab.def.evidenciaUrl || ab.def.evidenciaNombre ? `; evidencia: ${ab.def.evidenciaNombre ?? ab.def.evidenciaUrl}` : ''}.`}` }] : []),
     ab?.base
       ? { k: 'tabla' as const, cab: ['Inventario del año base', 'Valor'], filas: [
         [`Emisiones directas (categoría 1)`, `${fmt(ab.base.porCategoria[1] ?? 0, 'tCO2e')} t CO₂e`], [`Energía importada (categoría 2)`, `${fmt(ab.base.porCategoria[2] ?? 0, 'tCO2e')} t CO₂e`], ['Total', `${fmt(ab.base.total, 'tCO2e')} t CO₂e`],
@@ -161,7 +161,7 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
 
   // ── 4
   const s4: Seccion = { id: '4', titulo: 'Límites de la organización', bloques: [
-    { k: 'p', texto: tituloCriterio(o.criterio) ? `Criterio de consolidación: ${tituloCriterio(o.criterio)!.toLowerCase()}. ${CRITERIOS_CONSOLIDACION.find((x) => x.id === o.criterio)!.descripcion}${o.justificacionConsolidacion?.trim() ? ` Justificación: ${o.justificacionConsolidacion.trim()}` : ''}` : 'Criterio de consolidación: sin definir.' },
+    { k: 'p', texto: tituloCriterio(o.criterio) ? `Criterio de consolidación: ${tituloCriterio(o.criterio)!.toLowerCase()}. ${CRITERIOS_CONSOLIDACION.find((x) => x.id === o.criterio)!.descripcion}${o.justificacionConsolidacion?.trim() && o.justificacionConsolidacion.trim().replace(/\W+/g, ' ').toLowerCase() !== CRITERIOS_CONSOLIDACION.find((x) => x.id === o.criterio)!.descripcion.replace(/\W+/g, ' ').toLowerCase() ? ` Justificación: ${o.justificacionConsolidacion.trim()}` : ''}` : 'Criterio de consolidación: sin definir.' },
     { k: 'tabla', cab: hayPlantilla ? ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias', 'Plantilla media'] : ['Centro incluido', 'Operativo desde', 'Operativo hasta', 'Estancias'], filas: d.centros.map((c) => [c.nombre, c.operativoDesde ? fechaEs(c.operativoDesde) : `1/1/${anio}`, c.operativoHasta ? fechaEs(c.operativoHasta) : `31/12/${anio}`, fmt(c.indice > 0 ? c.indice : null, 'entero'), ...(hayPlantilla ? [fmt((c.plantilla ?? 0) > 0 ? c.plantilla : null, 'plantilla')] : [])]), numericas: hayPlantilla ? [3, 4] : [3] },
   ] };
 
@@ -288,7 +288,8 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const bloques9: Bloque[] = [
     { k: 'h', texto: '9.0 Resumen ejecutivo' },
     { k: 'tabla', cab: ['Magnitud', 'Valor'], filas: filasResumen, pie: 'Las compensaciones no se restan del inventario (ISO 14064-1); se informarían aparte.' },
-    ...graficos,
+    // el reparto por fuente ya está en el resumen ejecutivo: no se repite aquí
+    ...graficos.filter((g) => !(g.k === 'grafico' && /^Reparto de las emisiones por fuente/.test(g.titulo))),
     { k: 'h', texto: '9.1 Emisiones directas por gas (categoría 1)' },
     { k: 'tabla', cab: ['Grupo de gas', 'Emisión (t del gas)', 'PCA', 'Emisiones (t CO₂e)', '% de la categoría 1'], filas: [
       ...iso.gases.map((x) => [x.grupo, fmt(x.toneladasGas, 'gasT'), fmt(x.pca, 'pca'), fmt(x.toneladasCO2e, 'tCO2e'), pct(x.porcentajeCat1)]),
@@ -316,9 +317,9 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     const cols = (primera: string) => [primera, ...(hayBase ? [`Año base ${ab.base!.anio} (t CO₂e)`] : []), ...(hayAnt ? [`${ab.anterior!.anio} (t CO₂e)`] : []), `${anio} (t CO₂e)`, ...(hayBase ? ['Var. vs base'] : []), ...(hayAnt ? ['Var. vs anterior'] : [])];
     const fila = (x: { concepto: string; base: number | null; anterior: number | null; actual: number | null; vsBase: number | null; vsAnterior: number | null }, mag: 'tCO2e' | 'ratio') => [x.concepto, ...(hayBase ? [fmt(x.base, mag)] : []), ...(hayAnt ? [fmt(x.anterior, mag)] : []), fmt(x.actual, mag), ...(hayBase ? [x.vsBase == null ? '—' : `${fmt(x.vsBase, 'porcentaje', { signo: true })} %`] : []), ...(hayAnt ? [x.vsAnterior == null ? '—' : `${fmt(x.vsAnterior, 'porcentaje', { signo: true })} %`] : [])];
     const numericas = (n: number) => Array.from({ length: n - 1 }, (_, i) => i + 1);
-    bloques9.push({ k: 'h', texto: `9.5 Comparación con ${[hayBase && `el año base (${ab.base!.anio})`, hayAnt && `el año anterior (${ab.anterior!.anio})`].filter(Boolean).join(' y ') || 'otros años'}` });
+    bloques9.push({ k: 'h', texto: `${unCentro ? '9.4' : '9.5'} Comparación con ${[hayBase && `el año base (${ab.base!.anio})`, hayAnt && `el año anterior (${ab.anterior!.anio})`].filter(Boolean).join(' y ') || 'otros años'}` });
     if (!hayBase) bloques9.push({ k: 'p', texto: 'No existe inventario del año base: la comparación con el año base no se puede realizar.' });
-    if (!hayAnt) bloques9.push({ k: 'p', texto: `No existe inventario del año anterior (${anio - 1}) en el sistema.` });
+    if (!hayAnt && !(hayBase && ab.base!.anio === anio - 1)) bloques9.push({ k: 'p', texto: `No existe inventario del año anterior (${anio - 1}) en el sistema.` });
     bloques9.push({ k: 'tabla', cab: cols('Categoría'), filas: cmp.categorias.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
     bloques9.push({ k: 'tabla', cab: cols('Tipo de fuente'), filas: cmp.fuentes.map((x) => fila(x, 'tCO2e')), numericas: numericas(cols('').length) });
     if (cmp.noComparables.length) bloques9.push({ k: 'p', texto: `No se calcula la variación de: ${cmp.noComparables.join('; ')}, porque ese tipo de fuente solo tiene emisiones en uno de los años comparados (distinto alcance o desglose).` });
@@ -330,7 +331,7 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     else bloques9.push({ k: 'p', texto: 'Ninguna magnitud varía un 20 % o más: no se requiere análisis específico.' });
   } else if (ant) {
     const v = (a: number, b: number) => (b > 0 ? `${fmt(((a - b) / b) * 100, 'porcentaje', { signo: true })} %` : '—');
-    bloques9.push({ k: 'h', texto: `9.5 Comparación con ${ant.anio}` });
+    bloques9.push({ k: 'h', texto: `${unCentro ? '9.4' : '9.5'} Comparación con ${ant.anio}` });
     bloques9.push({ k: 'tabla', cab: ['Magnitud', `${ant.anio} (t CO₂e)`, `${anio} (t CO₂e)`, 'Variación'], filas: [
       ['Alcance 1', tn(ant.a1), tn(tot.kgCO2eAlcance1), v(tot.kgCO2eAlcance1, ant.a1)],
       ['Alcance 2', tn(ant.a2), tn(tot.kgCO2eAlcance2), v(tot.kgCO2eAlcance2, ant.a2)],
@@ -448,8 +449,8 @@ const cmpRes = ab ? compararAnios(ab.base, ab.anterior, ab.actual) : null;
     ? { k: 'grafico', titulo: `Comparación con ${ab?.base ? 'el año base' : 'el año anterior'} ${refAnio.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Emisiones directas', 'Energía importada', 'Total'], [
       { nombre: String(refAnio.anio), valores: [refAnio.porCategoria[1] ?? 0, refAnio.porCategoria[2] ?? 0, refAnio.total] },
       { nombre: String(anio), valores: [t1, t2, totalT] },
-    ], 'Comparación de emisiones') }
-    : { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(CATEGORIAS_ISO.filter((c) => (iso.porCategoria[c.n] ?? 0) > 0).map((c) => ({ nombre: c.resumen, t: iso.porCategoria[c.n] })), 'Emisiones por categoría') };
+    ], 'Comparación de emisiones'), escala: 0.72 }
+    : { k: 'grafico', titulo: 'Emisiones por categoría (t CO₂e)', ...svgBarrasHorizontales(CATEGORIAS_ISO.filter((c) => (iso.porCategoria[c.n] ?? 0) > 0).map((c) => ({ nombre: c.resumen, t: iso.porCategoria[c.n] })), 'Emisiones por categoría'), escala: 0.72 };
   const resumen: Seccion = { id: 'R', titulo: 'Resumen ejecutivo', bloques: [
     { k: 'kpis', items: [
       { titulo: 'Emisiones totales', valor: fmt(totalT, 'tCO2e'), unidad: 't CO₂e', sub: `Inventario ${anio}`, destacado: true },
@@ -461,7 +462,7 @@ const cmpRes = ab ? compararAnios(ab.base, ab.anterior, ab.actual) : null;
       { titulo: 'Incertidumbre combinada', valor: inc.total.pct != null ? `±${fmt(inc.total.pct, 'porcentaje')} %` : '—', sub: inc.total.valoracion ? `Valoración ${inc.total.valoracion.toLowerCase()}` : undefined },
       { titulo: 'Verificación', valor: inv.estado === 'verificado' ? 'Verificado' : 'Pendiente', sub: inv.estado === 'verificado' ? [verif?.entidad, verif?.nivel && `aseguramiento ${verif.nivel.toLowerCase()}`].filter(Boolean).join(' · ') || undefined : 'ISO 14064-3' },
     ] },
-    { k: 'grafico', titulo: 'Reparto de las emisiones por fuente (t CO₂e)', ...svgAnillo(principales.map((x) => ({ nombre: etiquetaFuente(x.fuente), t: x.t })), 'Reparto de las emisiones por fuente') },
+    { k: 'grafico', titulo: 'Reparto de las emisiones por fuente (t CO₂e)', ...svgAnillo(principales.map((x) => ({ nombre: etiquetaFuente(x.fuente), t: x.t })), 'Reparto de las emisiones por fuente') , escala: 0.72 },
     segundoGrafico,
     { k: 'h', texto: 'Conclusiones' },
     { k: 'lista', items: concl },

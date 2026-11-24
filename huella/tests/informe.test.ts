@@ -89,14 +89,15 @@ test('la declaración de verificación usa los datos del verificador cuando exis
   assert.match(texto(m), /Entidad X/); assert.match(texto(m), /Limitado/); assert.match(texto(m), /V-123/);
 });
 
-test('el informe incluye gráficos en Resultados: reparto, evolución mensual (si hay datos), comparación, por grupo de gas y por categoría', () => {
+test('el informe incluye gráficos en Resultados: evolución mensual (si hay datos), comparación, por grupo de gas y por categoría; el reparto por fuente solo en el resumen ejecutivo', () => {
   const d = base();
   d.mensualPorFuente = { Electricidad: [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 'Gas natural': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] };
   const m = construirInforme(d);
   const r = m.secciones.find((s) => s.id === '9')!;
   const graf = r.bloques.filter((b) => b.k === 'grafico');
-  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Reparto de las emisiones por fuente', 'Evolución mensual de las emisiones 2023', 'Comparación con 2022', 'Emisiones directas por grupo de gas', 'Emisiones por categoría']);
+  assert.deepEqual(graf.map((g) => (g as { titulo: string }).titulo.split(' (')[0]), ['Evolución mensual de las emisiones 2023', 'Comparación con 2022', 'Emisiones directas por grupo de gas', 'Emisiones por categoría']);
   for (const g of graf) assert.match((g as { svg: string }).svg, /^<svg/);
+  assert.ok(m.resumen!.bloques.some((b) => b.k === 'grafico' && /Reparto de las emisiones por fuente/.test((b as { titulo: string }).titulo))); // el reparto está en el resumen
 });
 
 test('informe: con plantilla media añade el ratio por trabajador al resumen; sin ella no cambia', () => {
@@ -201,7 +202,7 @@ test('año base: el informe muestra su inventario, la comparación base · anter
   d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'Primer año completo y verificado.' }, base: resBase(), anterior: { ...act, anio: 2022, total: act.total * 0.9 }, actual: act, config: null, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
   const m = construirInforme(d); const t = texto(m);
   assert.match(t, /Inventario del año base/); assert.match(t, /Primer año completo y verificado/); assert.match(t, /calculadora-2023\.2@2019/);
-  assert.match(t, /9\.5 Comparación con el año base \(2019\) y el año anterior \(2022\)/);
+  assert.match(t, /9\.4 Comparación con el año base \(2019\) y el año anterior \(2022\)/);
   assert.match(t, /Var\. vs base/); assert.match(t, /Var\. vs anterior/); assert.match(t, /t CO₂e por estancia/);
   assert.match(t, /No se cumple ninguna regla: no es necesario recalcular/);
   // sin año base

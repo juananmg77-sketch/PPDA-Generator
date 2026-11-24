@@ -59,7 +59,7 @@ function bloque(b: Bloque, minFilas: number): Unidad {
     // Cada viñeta es indivisible: no se corta entre dos páginas
     case 'lista': return u([{ ul: b.items.map((t) => ({ text: t, margin: [0, 0, 0, 2], unbreakable: true })), markerColor: C.cian, margin: [0, 0, 0, 6] }], b.items.length <= 6);
     case 'grafico': {
-      const w = Math.min(b.ancho, ANCHO);
+      const w = Math.min(b.ancho, ANCHO) * (b.escala ?? 1);
       return u([{ unbreakable: true, margin: [0, 4, 0, 8], stack: [
         { text: b.titulo, bold: true, fontSize: 9, color: C.marino, margin: [0, 0, 0, 3], alignment: 'left' },
         { svg: quitarFuente(b.svg), width: w, height: (w * b.alto) / b.ancho },

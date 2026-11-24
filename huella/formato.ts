@@ -46,7 +46,7 @@ export function fmtOpc(v: number | null | undefined, mag: Magnitud, o: { signo?:
   const redondeado = comoSeMuestra(v, mag);
   if (v !== 0 && redondeado === 0 && MARCA_MINIMO.has(mag)) return `${v < 0 ? '> −' : '< '}${formateador(dec.min, dec.max).format(10 ** -dec.max)}`;
   const t = formateador(dec.min, dec.max).format(v);
-  return o.signo && v > 0 ? `+${t}` : t;
+  return o.signo ? (v > 0 ? `+${t}` : v < 0 ? t.replace('-', '−') : t) : t;
 }
 
 /** Texto numérico para tablas: «—» si no hay valor. */

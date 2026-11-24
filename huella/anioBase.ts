@@ -209,7 +209,7 @@ export function evaluarRecalculo(base: ResumenAnio | null, actual: ResumenAnio, 
 export function textoRecalculo(ev: EvaluacionRecalculo, decision: DecisionRecalculo | null, cfg: ConfigRecalculo): string[] {
   const reglas = [cfg.reglas.limites && 'cambio de límites (alta o baja de centros)', cfg.reglas.metodologia && 'cambio de metodología', cfg.reglas.factores && `cambio de factor o PCA de una fuente superior al ${fmtOpc(cfg.umbralFactor, 'porcentaje')} %`].filter(Boolean) as string[];
   const out = [`Reglas de recálculo del año base: ${reglas.length ? reglas.join('; ') : 'ninguna activa'}.`];
-  if (!ev.disparadores.length) out.push('No se cumple ninguna regla: no es necesario recalcular el año base.');
+  if (!ev.disparadores.length) out.push(ev.noEvaluables.length ? 'Ninguna de las reglas que han podido evaluarse obliga a recalcular el año base; las que no son evaluables con los datos del año base se indican a continuación.' : 'No se cumple ninguna regla: no es necesario recalcular el año base.');
   else {
     for (const d of ev.disparadores) out.push(`Se cumple la regla «${d.titulo}»: ${d.detalle.join('; ')}.`);
     if (decision?.decision) out.push(`Decisión: ${decision.decision === 'recalcula' ? 'se recalcula el año base' : 'no se recalcula el año base'}. Motivo: ${decision.motivo?.trim() ?? '—'}${decision.fecha ? ` (${decision.fecha}${decision.usuario ? `, ${decision.usuario}` : ''})` : ''}.`);

@@ -52,6 +52,8 @@ export interface IncertidumbreLinea {
   pct: number;
   /** Incertidumbre absoluta (kg CO₂e). */
   absoluta: number;
+  /** Parte de la incertidumbre absoluta debida al dato de actividad (independiente entre líneas) y al factor (el mismo en todas las líneas de una fuente). */
+  absDato: number; absFactor: number;
   ajustada: boolean; justificacion: string | null;
 }
 
@@ -74,20 +76,26 @@ export function incertidumbreLinea(r: ResultadoLinea, f: ConjuntoFactores, cfg: 
   const absoluta = Math.sqrt((E * datoPct / 100) ** 2 + varFactor);
   const factorPct = E > 0 ? (Math.sqrt(varFactor) / E) * 100 : Math.max(...comps.map((c) => c.pct));
   const pct = E > 0 ? (absoluta / E) * 100 : Math.sqrt(datoPct ** 2 + factorPct ** 2);
-  return { id: l.id, fuente: l.fuente || 'Electricidad', categoria: CATEGORIA_ISO_FUENTE[l.categoria].n, origen, emision: E, datoPct, factorPct, pct, absoluta, ajustada: aj.datoPct != null || aj.factorPct != null || aj.origen != null, justificacion: aj.justificacion?.trim() || null };
+  return { id: l.id, fuente: l.fuente || 'Electricidad', categoria: CATEGORIA_ISO_FUENTE[l.categoria].n, origen, emision: E, datoPct, factorPct, pct, absoluta, absDato: E * datoPct / 100, absFactor: Math.sqrt(varFactor), ajustada: aj.datoPct != null || aj.factorPct != null || aj.origen != null, justificacion: aj.justificacion?.trim() || null };
 }
 
 export interface GrupoIncertidumbre { nombre: string; emision: number; absoluta: number; pct: number | null; valoracion: Valoracion | null; /** Fuente que más contribuye a la varianza de este grupo y su peso (%). */ principal: { fuente: string; peso: number } | null }
 export interface ResultadoIncertidumbre { lineas: IncertidumbreLinea[]; porFuente: GrupoIncertidumbre[]; porCategoria: Array<GrupoIncertidumbre & { n: number }>; total: GrupoIncertidumbre; incidencias: string[] }
 
+/**
+ * Incertidumbre de un grupo de líneas. El error del dato de actividad es independiente entre líneas (cada factura se mide por separado), pero el del factor de emisión es el MISMO
+ * en todas las líneas de una misma fuente (un único mix eléctrico, un único factor del gas): se suma linealmente dentro de la fuente y solo se combina en cuadratura entre fuentes.
+ * Tratar el factor como independiente entre facturas lo diluiría artificialmente (15 facturas de luz darían un 1,8 % en vez de un 5 %).
+ */
 const agrupar = (nombre: string, ls: IncertidumbreLinea[], c: ConfigIncertidumbre): GrupoIncertidumbre => {
   const emision = ls.reduce((t, x) => t + x.emision, 0);
-  const varianza = ls.reduce((t, x) => t + x.absoluta ** 2, 0);
+  const varDato = new Map<string, number>(), sumFactor = new Map<string, number>();
+  for (const x of ls) { varDato.set(x.fuente, (varDato.get(x.fuente) ?? 0) + x.absDato ** 2); sumFactor.set(x.fuente, (sumFactor.get(x.fuente) ?? 0) + x.absFactor); }
+  const porFuente = new Map<string, number>();
+  for (const k of new Set([...varDato.keys(), ...sumFactor.keys()])) porFuente.set(k, (varDato.get(k) ?? 0) + (sumFactor.get(k) ?? 0) ** 2);
+  const varianza = [...porFuente.values()].reduce((t, v) => t + v, 0);
   const absoluta = Math.sqrt(varianza);
   const pct = emision > 0 ? (absoluta / emision) * 100 : null;
-  // Principal fuente de incertidumbre: la de mayor aporte a la varianza del grupo
-  const porFuente = new Map<string, number>();
-  for (const x of ls) porFuente.set(x.fuente, (porFuente.get(x.fuente) ?? 0) + x.absoluta ** 2);
   const top = [...porFuente.entries()].sort((a, b) => b[1] - a[1])[0];
   return { nombre, emision, absoluta, pct, valoracion: valoracion(pct, c), principal: top && varianza > 0 ? { fuente: top[0], peso: (top[1] / varianza) * 100 } : null };
 };
@@ -112,9 +120,10 @@ export interface FilaIncertidumbreFuente { fuente: string; emision: number; cons
 export function descripcionPorFuente(resultados: ResultadoLinea[], inc: ResultadoIncertidumbre): FilaIncertidumbreFuente[] {
   const catPorId = new Map(resultados.map((r) => [r.linea.id, r.linea]));
   const pct = (v: number) => `±${fmt(v, 'porcentaje')} %`;
-  const rango = (v: number[]) => { const mn = Math.min(...v), mx = Math.max(...v); return mn === mx ? pct(mn) : `${pct(mn)} a ${pct(mx)}`; };
+  const rango = (v: number[]) => { const r = v.map((x) => Math.round(x * 10) / 10); const mn = Math.min(...r), mx = Math.max(...r); return mn === mx ? pct(mn) : `${pct(mn)} a ${pct(mx)}`; };
   return inc.porFuente.map((g) => {
-    const ls = inc.lineas.filter((l) => l.fuente === g.nombre);
+    const todas = inc.lineas.filter((l) => l.fuente === g.nombre);
+    const ls = todas.some((l) => l.emision > 0) ? todas.filter((l) => l.emision > 0) : todas; // las líneas sin consumo no aportan margen
     const origenes = [...new Set(ls.map((l) => ORIGENES_DATO[l.origen].toLowerCase()))].join(' y ');
     const l0 = catPorId.get(ls[0]?.id ?? '');
     const factor = !l0 ? 'factor de emisión' : l0.categoria === 'electricidad' ? 'mix eléctrico' : l0.categoria === 'fugitiva' ? (esMezclaRefrigerante(l0.fuente) ? 'PCA de la mezcla' : 'PCA del gas') : 'CO₂ del combustible';

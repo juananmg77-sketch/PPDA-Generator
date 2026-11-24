@@ -40,7 +40,7 @@ test('recálculo: cambio de factor o PCA por encima del umbral configurable (5 %
   const act = r(2024, { factores: { Electricidad: 0.348, 'Gas natural (kWhPCS)*': 0.185 } });
   const ev = evaluarRecalculo(r(2023), act, c, { metodologiaCambiada: false, decision: null, motivo: null });
   const d = ev.disparadores.find((x) => x.regla === 'factores')!;
-  assert.equal(d.detalle.length, 1); assert.match(d.detalle[0], /Electricidad: -7,0 %/); // gas: +1,6 %, no llega
+  assert.equal(d.detalle.length, 1); assert.match(d.detalle[0], /Electricidad: −7,0 %/); // gas: +1,6 %, no llega
   assert.equal(evaluarRecalculo(r(2023), act, configRecalculo({ umbralFactor: 10 }), { metodologiaCambiada: false, decision: null, motivo: null }).disparadores.length, 0);
   assert.equal(evaluarRecalculo(r(2023), act, configRecalculo({ reglas: { factores: false } as never }), { metodologiaCambiada: false, decision: null, motivo: null }).disparadores.length, 0);
 });

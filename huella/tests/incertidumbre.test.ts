@@ -49,18 +49,18 @@ test('la línea hereda el catálogo y se ajusta con justificación; sin justific
   const sin = calcularIncertidumbre(calc([{ ...elec, incertidumbre: { datoPct: 9 } }]), f);
   assert.equal(sin.incidencias.length, 1);
 });
-test('combinación por fuente, categoría y total: raíz de la suma de cuadrados de las absolutas', () => {
+test('combinación por fuente, categoría y total: dato independiente entre líneas, factor común dentro de la fuente, cuadratura entre fuentes', () => {
   const rs = calc([elec, { ...elec, id: 'e2', cantidad: 50000 }, gas, fuga]);
   const r = calcularIncertidumbre(rs, f);
   const abs = r.lineas.map((x) => x.absoluta); const E = r.lineas.map((x) => x.emision);
   const eleFuente = r.porFuente.find((x) => x.nombre === 'Electricidad')!;
-  assert.ok(Math.abs(eleFuente.absoluta - Math.sqrt(abs[0] ** 2 + abs[1] ** 2)) < 1e-9);
+  const L = r.lineas; assert.ok(Math.abs(eleFuente.absoluta - Math.sqrt(L[0].absDato ** 2 + L[1].absDato ** 2 + (L[0].absFactor + L[1].absFactor) ** 2)) < 1e-9); // el factor del mix es el mismo en las dos facturas
   const cat1 = r.porCategoria.find((x) => x.n === 1)!;
   assert.ok(Math.abs(cat1.absoluta - Math.sqrt(abs[2] ** 2 + abs[3] ** 2)) < 1e-9);
-  assert.ok(Math.abs(r.total.absoluta - Math.sqrt(abs.reduce((t, x) => t + x * x, 0))) < 1e-9);
+  assert.ok(Math.abs(r.total.absoluta - Math.sqrt(eleFuente.absoluta ** 2 + abs[2] ** 2 + abs[3] ** 2)) < 1e-9);
   assert.ok(Math.abs(r.total.emision - E.reduce((t, x) => t + x, 0)) < 1e-9);
-  // el total es menor que la suma simple de las absolutas (se compensan) y mayor que cada parte
-  assert.ok(r.total.absoluta < abs.reduce((t, x) => t + x, 0)); assert.ok(r.total.absoluta > Math.max(...abs));
+  // el total es menor que la suma simple de las absolutas (se compensan) y mayor que cada fuente
+  assert.ok(r.total.absoluta < abs.reduce((t, x) => t + x, 0)); assert.ok(r.total.absoluta > Math.max(eleFuente.absoluta, abs[2], abs[3]));
   // principal fuente de incertidumbre de la categoría 1: la que más aporta a la varianza
   assert.ok(['Gas natural (kWhPCS)*', 'HFC-134a'].includes(cat1.principal!.fuente)); assert.ok(cat1.principal!.peso > 50 && cat1.principal!.peso <= 100);
 });
@@ -93,4 +93,13 @@ test('descripción por fuente: solo orígenes y factores aplicados en el inventa
   assert.match(por['R-448A'].consumo, /±10,0 % · parte de mantenimiento/); assert.match(por['R-448A'].factor, /±15,0 % · PCA de la mezcla/);
   const texto = filas.map((x) => `${x.consumo} ${x.factor}`).join(' ');
   assert.ok(!/albar|estimaci|lectura interna|N₂O|CH₄/i.test(texto)); // nada que no se use
+});
+
+test('varias facturas de una misma fuente no diluyen la incertidumbre del factor: 15 facturas de luz siguen en ±5 %, no en ±1,8 %', () => {
+  const quince = calc(Array.from({ length: 15 }, (_, i) => ({ ...elec, id: `e${i}`, cantidad: 50000 })));
+  const r = calcularIncertidumbre(quince, f);
+  const e = r.porFuente.find((x) => x.nombre === 'Electricidad')!;
+  assert.ok(e.pct! > 5 && e.pct! < 5.5, `±${e.pct}`); // 5 % del mix (sistemático) y 2 % del dato dividido por √15
+  const una = calcularIncertidumbre(calc([{ ...elec, cantidad: 750000 }]), f).porFuente[0].pct!;
+  assert.ok(Math.abs(e.pct! - una) < 0.5 && e.pct! < una); // algo menor que una sola factura del mismo total (solo se promedia el error del dato)
 });

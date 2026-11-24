@@ -49,14 +49,16 @@ export const INSTRUCCIONES_INFORME_BASE = `Lees el informe de un inventario de g
 
 const num = (x: unknown): number | null => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null);
 
+/** Un texto que la lectura devuelve como «null», «no consta», «N/A»… no es un dato. */
+const txt = (x: string | null | undefined, max: number): string | null => { const t = x?.trim(); return !t || /^(null|n\/a|na|no consta|ninguno|ninguna|—|-)$/i.test(t) ? null : t.slice(0, max); };
 export function limpiarLecturaBase(l: LecturaInformeBase): LecturaInformeBase {
   return {
     anio: typeof l.anio === 'number' && l.anio >= 2007 && l.anio <= 2100 ? l.anio : null,
-    organizacion: l.organizacion?.slice(0, 200) ?? null, unidad: l.unidad === 'kg' || l.unidad === 't' ? l.unidad : null,
+    organizacion: txt(l.organizacion, 200), unidad: l.unidad === 'kg' || l.unidad === 't' ? l.unidad : null,
     categoria1: num(l.categoria1), categoria2: num(l.categoria2), total: num(l.total), estancias: num(l.estancias), plantilla: num(l.plantilla),
-    factores: l.factores?.slice(0, 200) ?? null, centros: (l.centros ?? []).map((c) => c.trim()).filter(Boolean).slice(0, 100),
+    factores: txt(l.factores, 400), centros: (l.centros ?? []).map((c) => c.trim()).filter(Boolean).slice(0, 100),
     porFuente: (l.porFuente ?? []).filter((x) => x.fuente?.trim() && num(x.emisiones) != null),
-    verificador: l.verificador?.slice(0, 200) ?? null, referenciaVerificacion: l.referenciaVerificacion?.slice(0, 200) ?? null,
+    verificador: txt(l.verificador, 200), referenciaVerificacion: txt(l.referenciaVerificacion, 200),
     paginaTotal: typeof l.paginaTotal === 'number' && l.paginaTotal > 0 ? l.paginaTotal : null, observaciones: l.observaciones?.slice(0, 500) ?? null,
   };
 }

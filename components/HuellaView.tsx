@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveCo
 import { NOMBRES_MES, agruparPorTipoYContador, mesFacturacion, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
 import type { DocumentoExt, OperacionExt } from '../huella/extintores';
-import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
+import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido, exclusionesActuales } from '../huella/exclusiones';
 import { buscarDuplicada, evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
@@ -17,7 +17,7 @@ import { resolutorSuministro } from '../huella/suministros';
 import { cupsValido, repararCups } from '../huella/cups';
 import { CRITERIOS_CONSOLIDACION, avisosRazonSocial, validarOrganizacion } from '../huella/organizacion';
 import type { CriterioConsolidacion } from '../huella/organizacion';
-import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
+import { coherenciaAnioBase, compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
 import type { AnioBaseDef, DecisionRecalculo, ResumenAnio } from '../huella/anioBase';
 import { MOTIVOS_EXCLUSION_POR_DEFECTO, justificacionValida, redactarJustificacion, PLANTILLAS_POR_DEFECTO, TEXTOS_DECLARACION_POR_DEFECTO, criteriosDe, estadoEvaluacion, evaluarExclusionesDirectas, evaluarSignificancia, resumenPorCategoria, sectorDeCnae } from '../huella/significancia';
 import type { CriteriosSignificancia, Evaluacion, Influencia, SubcategoriaPlantilla, TextosDeclaracion, Valoracion } from '../huella/significancia';
@@ -2633,12 +2633,12 @@ const PanelCierre: React.FC<{
     { nombre: 'Total', actual: calculo.totales.kgCO2eTotal, anterior: previo.total },
   ] : undefined;
 
-  const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales, resumenPorCategoria(sig.plantilla, sig.evals.map(aEvaluacion), sig.criterios)) : null), [factores, calculo, exclusiones, sig.plantilla, sig.evals, sig.criterios]);
+  const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusionesActuales<Exclusion>(exclusiones, calculo.totales.kgCO2eTotal / 1000).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales, resumenPorCategoria(sig.plantilla, sig.evals.map(aEvaluacion), sig.criterios)) : null), [factores, calculo, exclusiones, sig.plantilla, sig.evals, sig.criterios]);
   const evaluacion = useMemo(() => {
     if (!factores || !calculo || previo === undefined || !isoCierre) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: etqSum(docs)(idSum(d)), periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual, noDuplicada: d.extraccion?.noDuplicada })),
+      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: etqSum(docs)(idSum(d)), periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual, noDuplicada: d.extraccion?.noDuplicada, idContador: idSum(d) })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,
@@ -2646,9 +2646,9 @@ const PanelCierre: React.FC<{
       centrosSinPlantilla: plantilla > 0 ? centros.filter((c) => !(Number(invCentros.find((x) => x.centro_id === c.id)?.plantilla_media) > 0)).map((c) => c.nombre) : [],
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
       variaciones, analisisVariacion: analisis,
-      exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
+      exclusiones: exclusionesActuales<Exclusion>(exclusiones, totalInvT).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
       organizacion: { faltan: datosOrg.filter((x) => x.obligatorio).map((x) => x.mensaje), avisos: datosOrg.filter((x) => !x.obligatorio).map((x) => x.mensaje) },
-      anioBase: { definido: !!ab.def, conDatos: !!ab.base, recalculo: ab.evaluacion ? { disparadores: ab.evaluacion.disparadores, noEvaluables: ab.evaluacion.noEvaluables, incidencias: ab.evaluacion.incidencias } : null },
+      anioBase: { definido: !!ab.def, conDatos: !!ab.base, incoherencias: ab.base ? coherenciaAnioBase(ab.base) : [], recalculo: ab.evaluacion ? { disparadores: ab.evaluacion.disparadores, noEvaluables: ab.evaluacion.noEvaluables, incidencias: ab.evaluacion.incidencias } : null },
       significancia: sig.estado, exclusionesDirectas: evaluarExclusionesDirectas(exclusiones.filter((x) => (x.categoria_iso ?? 1) === 1).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, evidencia: !!(x.certificado_path || x.evidencia_url) })), sig.criterios).incidencias,
       cuadreIso: isoCierre.cuadre, categoriasSinEvaluar: isoCierre.categorias.filter((c) => c.estado === 'Sin evaluar').map((c) => ({ n: c.n, nombre: c.nombre })),
       ncAbiertas: ncs.filter((n) => !n.cerrada_en).length,
@@ -2966,7 +2966,7 @@ const PanelInforme: React.FC<{
       inventario: { anio: inv.anio, estado: inv.estado, anioBase: ab.def?.anio ?? inv.anio_base, cerradoEn: inv.cerrado_en, conjuntoFijado: !!inv.conjunto_factores, cierre: inv.cierre, verificacion: inv.verificacion },
       factores, resultados: c.resultados, totales: c.totales,
       actividad: actividad.filter((a) => a.estado === 'confirmada').map((a) => ({ id: a.id, documentoId: a.documento_id, centro: nombreCentro(a.centro_id), categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), unidad: a.unidad, contador: a.contador, periodoDesde: a.periodo_desde, periodoHasta: a.periodo_hasta, documento: nombreDoc(a.documento_id), notas: a.notas, origenElectricidad: a.origen_electricidad })),
-      anterior, exclusiones: exclusiones.map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
+      anterior, exclusiones: exclusionesActuales<Exclusion>(exclusiones, (c.totales.kgCO2eTotal ?? 0) / 1000).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso, evidencia: !!(x.certificado_path || x.evidencia_url) })),
       significancia: sig.paraInforme,
       anioBase: ab.paraInforme,
       incertidumbre: cfgIncInforme,

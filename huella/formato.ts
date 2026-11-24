@@ -12,7 +12,7 @@ export const DECIMALES: Record<Magnitud, { min: number; max: number }> = {
   factor: { min: 3, max: 4 },      // factores de emisión (kg/ud, g/ud, kg CO₂e/kWh)
   pca: { min: 0, max: 2 },         // potencial de calentamiento: entero si lo es; si no, 2 decimales
   porcentaje: { min: 1, max: 1 },
-  ratio: { min: 2, max: 4 },       // t CO₂e por estancia / por trabajador
+  ratio: { min: 4, max: 4 },       // t CO₂e por estancia / por trabajador (siempre 4 decimales: «0,0530» y «0,0512» se comparan a simple vista)
   entero: { min: 0, max: 0 },      // recuentos (estancias, registros, habitaciones)
   gasT: { min: 2, max: 4 },        // toneladas del propio gas
   plantilla: { min: 0, max: 3 },   // plantilla media (puede ser fraccionaria)

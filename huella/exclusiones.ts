@@ -50,3 +50,17 @@ export function justificacionExtintores(c: CalculoExtintores): string {
   const filas = c.lineas.map((l) => `${n(l.cantidad, 0)} de ${n(l.kgPorExtintor)} kg`).join(', ');
   return `Emisión estimada con el certificado anual de mantenimiento${c.certificadoNombre ? ` («${c.certificadoNombre}»)` : ''}${c.leidoConIA ? ' (lectura asistida por IA y revisada por la persona responsable)' : ''}: ${n(c.totalExtintores, 0)} extintor(es) de CO₂ recargado(s) o retimbrado(s) (${filas}), es decir ${n(c.kgCO2)} kg de CO₂ = ${n(c.tCO2e, 3)} t CO₂e (PCA 1). Supone el ${n(c.porcentaje, 3)} % del total del inventario (${n(c.totalInventarioT, 2)} t CO₂e sin la exclusión), por debajo del umbral de insignificancia.`;
 }
+
+/**
+ * La exclusión de extintores guarda el porcentaje y el texto calculados con el total del inventario de ESE momento; si después cambian los datos (facturas nuevas, correcciones),
+ * quedan desfasados (p. ej. «0,026 % de 435,42 t» con un inventario ya de 527,94 t). Se recalculan con el total actual; el texto solo si es el generado automáticamente (si la
+ * persona lo ha editado, se respeta).
+ */
+export function refrescarExclusion<T extends { porcentaje: number | null; justificacion: string; calculo?: CalculoExtintores | null }>(x: T, totalInventarioT: number): T {
+  const c = x.calculo;
+  if (!c || c.tipo !== 'extintores' || !(totalInventarioT > 0)) return x;
+  const nuevo: CalculoExtintores = { ...c, totalInventarioT, porcentaje: porcentajeExcluido(c.tCO2e, totalInventarioT) };
+  const automatica = x.justificacion.trim() === justificacionExtintores(c).trim();
+  return { ...x, porcentaje: Math.round(nuevo.porcentaje * 1000) / 1000, justificacion: automatica ? justificacionExtintores(nuevo) : x.justificacion, calculo: nuevo } as T;
+}
+export const exclusionesActuales = <T extends { porcentaje: number | null; justificacion: string; calculo?: CalculoExtintores | null }>(xs: T[], totalInventarioT: number): T[] => xs.map((x) => refrescarExclusion(x, totalInventarioT));

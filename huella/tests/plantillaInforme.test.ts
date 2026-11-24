@@ -59,7 +59,7 @@ test('conclusiones: siempre valoran (evolución frente al año base, fuentes de 
   assert.match(c[0], /Evolución: en 2024 se emiten 100,00 t CO₂e/); assert.match(c[0], /Frente al año base \(2023: 120,00 t\) bajan 20,00 t \(−16,7 %\): evolución claramente favorable/);
   assert.match(c[1], /de mayor a menor: Electricidad \(70,0 %, 70,00 t\); Gas natural \(20,0 %/); assert.match(c[1], /«Electricidad» supera el umbral/);
   assert.match(c[2], /la que más aumenta es «Combustibles» \(\+5,00 t, \+33,3 %\) y la que más disminuye es «Electricidad» \(−15,00 t, −17,6 %\)/);
-  assert.match(c[3], /Intensidad: 0,01 t CO₂e por estancia \(0,012 en 2023; −16,7 %, mejora\)/);
+  assert.match(c[3], /Intensidad: 0,0100 t CO₂e por estancia \(0,0120 en 2023; −16,7 %, mejora\)/);
   assert.ok(!c.some((x) => /pendiente|por resolver/i.test(x))); // los avisos internos no van en las conclusiones
   // empeora / estable
   assert.match(conclusiones({ ...base, total: 140, variacion: { pct: 16.7, anioRef: 2023, tipo: 'base' } })[0], /suben 20,00 t \(\+16,7 %\): evolución claramente desfavorable/);

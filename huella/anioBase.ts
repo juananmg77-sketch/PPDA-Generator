@@ -58,6 +58,18 @@ export interface DecisionRecalculo {
 }
 
 /** Validación de una definición de año base. Devuelve las incidencias (vacío = válida). */
+/** Cifras que no cuadran entre sí en un año base (categorías, fuentes y total): suele ser un error al leerlo o teclearlo. Tolerancia: redondeos de 0,05 t. */
+export function coherenciaAnioBase(r: Pick<ResumenAnio, 'porCategoria' | 'total' | 'porFuente'>): string[] {
+  const out: string[] = [];
+  const tol = (a: number, b: number) => Math.abs(a - b) <= Math.max(0.05, 0.0005 * Math.max(a, b));
+  const f = (x: number) => fmtOpc(x, 'tCO2e') ?? '—';
+  const c = (r.porCategoria[1] ?? 0) + (r.porCategoria[2] ?? 0);
+  if (r.total > 0 && c > 0 && !tol(c, r.total)) out.push(`Las categorías 1 y 2 suman ${f(c)} t y el total es ${f(r.total)} t: una de las cifras no es correcta.`);
+  const fuentes = Object.values(r.porFuente ?? {}).reduce((t, x) => t + x, 0);
+  if (r.total > 0 && fuentes > 0 && !tol(fuentes, r.total)) out.push(`Las fuentes suman ${f(fuentes)} t y el total es ${f(r.total)} t: revise las cifras del año base.`);
+  return out;
+}
+
 export function validarAnioBase(d: AnioBaseDef): string[] {
   const out: string[] = [];
   if (!(d.anio >= 2007 && d.anio <= 2100)) out.push('Año base no válido.');
@@ -67,6 +79,7 @@ export function validarAnioBase(d: AnioBaseDef): string[] {
     if (!d.origen?.trim()) out.push('Año base introducido a mano: falta indicar su origen.');
     if (!d.evidenciaUrl?.trim() && !d.evidenciaPath) out.push('Año base introducido a mano: falta la evidencia (enlace o documento).');
     if (d.manual && !(d.manual.total > 0)) out.push('Año base introducido a mano: falta el total de emisiones.');
+    if (d.manual) out.push(...coherenciaAnioBase(d.manual));
   }
   return out;
 }

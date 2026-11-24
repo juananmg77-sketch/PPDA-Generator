@@ -90,3 +90,13 @@ test('cambio de límites: un centro con otras mayúsculas, acentos o espacios si
   const nuevo = evaluarRecalculo(base, r(2024, { centros: ['Astoria Playa', 'Hotel Nuevo'] }), CONFIG_RECALCULO_POR_DEFECTO, null).disparadores.find((d) => d.regla === 'limites');
   assert.ok(nuevo && /Hotel Nuevo/.test(nuevo.detalle.join(' ')) && /Hotel\s+Mar-Azul/.test(nuevo.detalle.join(' ')));
 });
+
+test('año base: se detectan cifras que no cuadran (categorías, fuentes y total), como un 243 en lugar de 245', async () => {
+  const { coherenciaAnioBase } = await import('../anioBase.ts');
+  const ok = { porCategoria: { 1: 245, 2: 288.94 }, total: 533.94, porFuente: { A: 119.1, B: 6.03, C: 288.94, D: 119.87 } };
+  assert.deepEqual(coherenciaAnioBase(ok), []);
+  const mal = coherenciaAnioBase({ ...ok, porCategoria: { 1: 243, 2: 288.94 }, total: 531.94 });
+  assert.equal(mal.length, 1); assert.match(mal[0], /Las fuentes suman 533,94 t y el total es 531,94 t/); // la categoría 1 y el total son coherentes entre sí, las fuentes no
+  assert.ok(validarAnioBase({ anio: 2023, manual: { ...ok, anio: 2023, porCategoria: { 1: 243, 2: 288.94 }, total: 531.94, factoresId: null } as never, origen: 'x', evidenciaUrl: 'y', justificacion: 'j' }).some((x) => /fuentes suman/.test(x)));
+  assert.deepEqual(coherenciaAnioBase({ porCategoria: { 1: 1, 2: 1 }, total: 2, porFuente: {} }), []); // sin desglose por fuente no se compara
+});

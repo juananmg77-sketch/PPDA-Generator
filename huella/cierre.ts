@@ -1,6 +1,7 @@
 // Comprobaciones previas al cierre de un inventario. Los errores impiden cerrar; los avisos se muestran y quedan a criterio del consultor.
 import { variacionAnual } from './extraccion.ts';
 import { agruparPorTipoYContador, mesesTocados, NOMBRES_MES } from './mensual.ts';
+import { cupsValido } from './cups.ts';
 
 export type Nivel = 'error' | 'aviso' | 'info' | 'ok';
 /** Dónde se resuelve cada comprobación: pestañas de la aplicación o tarjetas de la propia pantalla de cierre. */
@@ -10,7 +11,7 @@ export interface DetalleCierre { texto: string; nota?: string; /** Factura concr
 export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string; /** Qué elementos concretos afecta. */ detalle?: DetalleCierre[]; /** Pantalla donde se resuelve. */ ir?: DestinoCierre; irEtiqueta?: string }
 
 export interface DocCierre {
-  verificado?: boolean; noDuplicada?: boolean; id?: string; nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
+  verificado?: boolean; noDuplicada?: boolean; /** Identificador del suministro tal como figura en la factura (CUPS, nº de contador, póliza…). */ idContador?: string | null; id?: string; nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -39,7 +40,7 @@ export interface EntradaCierre {
   /** Incidencias de las exclusiones de la categoría 1 (falta de % o de evidencia, umbral superado). */
   exclusionesDirectas?: string[];
   /** Año base: sin definir / sin datos, y evaluación de las reglas de recálculo con la decisión documentada. */
-  anioBase?: { definido: boolean; conDatos: boolean; recalculo: { disparadores: Array<{ titulo: string; detalle: string[] }>; noEvaluables: string[]; incidencias: string[] } | null };
+  anioBase?: { definido: boolean; conDatos: boolean; /** Cifras del año base que no cuadran entre sí (categorías, fuentes y total). */ incoherencias?: string[]; recalculo: { disparadores: Array<{ titulo: string; detalle: string[] }>; noEvaluables: string[]; incidencias: string[] } | null };
   /** Datos de la organización: obligatorios que faltan (bloquean el cierre) y avisos (razón social, forma jurídica). */
   organizacion?: { faltan: string[]; avisos: string[] };
   ncAbiertas: number;
@@ -181,6 +182,14 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   const ceros = e.docs.filter((d) => d.estado === 'revisado' && d.cantidad === 0 && !d.verificado && d.tipo !== 'otro');
   if (ceros.length > 0) add('aviso', 'consumo_cero', `${ceros.length} factura(s) confirmadas con consumo 0: compruebe que no falta una página o una lectura (el consumo quedaría subestimado).`, { detalle: ceros.map((d) => ({ docId: d.id, texto: nom(d) })) });
 
+  // Datos que, aun siendo válidos para el cálculo, estropean el informe o dan dudas al verificador
+  const dudosos = contadoresDudosos(e.docs);
+  if (dudosos.length > 0) add('aviso', 'contador_dudoso', `${dudosos.length} factura(s) con un identificador de suministro erróneo: no se agruparán bien y el verificador lo verá en el Anexo A.`, { ir: 'facturas', irEtiqueta: 'Corregir en Facturas', detalle: dudosos.map((x) => ({ docId: x.doc.id, texto: nom(x.doc), nota: x.motivo })) });
+  const nombres = nombresProblematicos(e.docs);
+  if (nombres.length > 0) add('aviso', 'nombre_archivo', `${nombres.length} factura(s) con un nombre de archivo que aparecería tal cual en el índice de evidencias del informe (contiene «falta», «duplicado», «copia»…): renómbrela y vuelva a subirla.`, { detalle: nombres.map((d) => ({ docId: d.id, texto: nom(d) })) });
+  for (const g of posiblesRepetidasPuntuales(e.docs)) add('aviso', 'recarga_repetida', `Posible intervención contada dos veces: ${g.length} registros de ${g[0].tipo === 'refrigerante' ? 'refrigerante' : 'gas envasado'} con la misma cantidad (${Number(g[0].cantidad).toLocaleString('es-ES')}) en fechas ${g[0].tipo === 'refrigerante' ? 'contiguas' : 'iguales'}. Si son distintas, márquelas como «No es duplicada».`, { ir: 'facturas', irEtiqueta: 'Revisar en Facturas', detalle: g.map((d) => ({ docId: d.id, texto: nom(d), nota: `${d.periodoDesde}` })) });
+  if ((e.anioBase?.incoherencias ?? []).length > 0) add('aviso', 'anio_base_incoherente', 'Las cifras del año base no cuadran entre sí.', { ir: 'anio_base', irEtiqueta: 'Revisar el año base', detalle: e.anioBase!.incoherencias!.map((texto) => ({ texto })) });
+
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;
   if (!e.variaciones) add('info', 'sin_anterior', 'No hay cálculo del año anterior con el que comparar.');
@@ -210,7 +219,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     if (a.recalculo) {
       if (a.recalculo.incidencias.length) add('error', 'recalculo_sin_decision', 'Se cumple una regla de recálculo del año base y falta documentar la decisión.', { detalle: [...a.recalculo.disparadores.flatMap((d) => d.detalle.map((t) => ({ texto: d.titulo, nota: t }))), ...a.recalculo.incidencias.map((texto) => ({ texto }))] , ir: 'recalculo', irEtiqueta: 'Documentar la decisión' });
       else if (a.recalculo.disparadores.length) add('info', 'recalculo_documentado', 'Se cumple una regla de recálculo del año base y la decisión está documentada.');
-      if (a.recalculo.noEvaluables.length) add('info', 'recalculo_no_evaluable', 'Reglas de recálculo no evaluables con los datos disponibles.', { detalle: a.recalculo.noEvaluables.map((texto) => ({ texto })) });
+      if (a.recalculo.noEvaluables.length) add('aviso', 'recalculo_no_evaluable', 'Reglas de recálculo no evaluables con los datos del año base (p. ej. no consta el mix eléctrico ni los PCA que usó): el informe no puede afirmar que no haya que recalcularlo.', { ir: 'anio_base', irEtiqueta: 'Completar el año base', detalle: a.recalculo.noEvaluables.map((texto) => ({ texto })) });
     }
   }
   if (e.cuadreIso && !e.cuadreIso.ok) add('error', 'cuadre_iso', 'Los resultados por gas o por categoría no cuadran con el total del inventario: no se puede cerrar ni entregar el informe.', { detalle: e.cuadreIso.incidencias.map((texto) => ({ texto })) });
@@ -251,4 +260,38 @@ export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]):
     if (d.estado === 'revisado' && x.estado !== 'revisado') return false;
     return (x.creada ?? '') <= (d.creada ?? '') && x.id !== d.id && ((x.creada ?? '') < (d.creada ?? '') || x.id < d.id);
   });
+}
+
+/** Identificador de suministro con aspecto de CUPS pero erróneo, o que no es un identificador (p. ej. «REFERENCIA086163150041/0935»). */
+export function contadoresDudosos(docs: DocCierre[]): Array<{ doc: DocCierre; motivo: string }> {
+  const out: Array<{ doc: DocCierre; motivo: string }> = [];
+  for (const d of docs) {
+    if (d.estado !== 'revisado' || !['electricidad', 'gas_natural'].includes(d.tipo)) continue;
+    const id = (d.idContador ?? '').trim(); if (!id) continue;
+    if (cupsValido(id) === false) out.push({ doc: d, motivo: `el CUPS «${id}» no cumple su dígito de control (una cifra mal leída)` });
+    else if (/referencia|ref\.|n[ºo°]\s*fra|factura/i.test(id)) out.push({ doc: d, motivo: `«${id}» es una referencia de la factura, no el CUPS ni el nº de contador` });
+  }
+  return out;
+}
+/** Nombres de archivo que no deberían figurar tal cual en el índice de evidencias del informe («falta 2a página», «duplicado», «copia», «prueba»…). */
+export function nombresProblematicos(docs: DocCierre[]): DocCierre[] {
+  return docs.filter((d) => d.estado === 'revisado' && /\b(falta|duplicad[oa]|copia|prueba|test|borrar|provisional)\b/i.test(d.nombre ?? ''));
+}
+/**
+ * Recargas de refrigerante (mismo gas y cantidad, con un día de diferencia o menos) y entregas de gas envasado (misma cantidad el mismo día) que pueden ser la misma intervención
+ * contada dos veces (albarán y factura, o dos subidas). Es solo un aviso: los nombres de archivo pueden ser distintos.
+ */
+export function posiblesRepetidasPuntuales(docs: DocCierre[]): DocCierre[][] {
+  const v = docs.filter((d) => d.estado === 'revisado' && !d.noDuplicada && (d.tipo === 'refrigerante' || d.tipo === 'glp') && Number(d.cantidad) > 0 && d.periodoDesde);
+  const dia = (s: string) => Date.parse(s + 'T00:00:00Z') / 86400000;
+  const grupos: DocCierre[][] = [];
+  for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) {
+    const a = v[i], b = v[j];
+    if (a.tipo !== b.tipo || a.cantidad !== b.cantidad || (a.centro ?? '') !== (b.centro ?? '')) continue;
+    const gap = Math.abs(dia(a.periodoDesde!) - dia(b.periodoDesde!));
+    if (gap > (a.tipo === 'refrigerante' ? 1 : 0)) continue;
+    const g = grupos.find((x) => x.includes(a) || x.includes(b));
+    if (g) { for (const x of [a, b]) if (!g.includes(x)) g.push(x); } else grupos.push([a, b]);
+  }
+  return grupos;
 }

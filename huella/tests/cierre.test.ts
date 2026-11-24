@@ -268,3 +268,19 @@ test('duplicadas: nombres de archivo claramente distintos o «No es duplicada» 
   assert.equal(buscarDuplicada({ ...b, nombre: 'Abril - Contrato 5226 - Primera parte.pdf' }, [a]), undefined); // otro contrato en el nombre
   assert.equal(buscarDuplicada({ ...b, noDup: true }, [a, b]), undefined); // confirmada como no duplicada
 });
+
+test('cierre: identificadores erróneos, nombres de archivo problemáticos, recargas repetidas y año base incoherente salen como avisos', async () => {
+  const { contadoresDudosos, nombresProblematicos, posiblesRepetidasPuntuales, evaluarCierre } = await import('../cierre.ts');
+  const d = (o: Record<string, unknown>) => ({ estado: 'revisado' as const, tipo: 'electricidad', centro: 'C', ...o }) as unknown as import('../cierre.ts').DocCierre;
+  const duda = contadoresDudosos([d({ id: 'a', idContador: 'ES0031500199603001ES' }), d({ id: 'b', idContador: 'ES0031500109960301ES' }), d({ id: 'c', tipo: 'gas_natural', idContador: 'REFERENCIA086163150041/0935' }), d({ id: 'd', idContador: '315001233' })]);
+  assert.deepEqual(duda.map((x) => x.doc.id), ['b', 'c']); // un CUPS válido y un nº de contador corto no se marcan
+  assert.deepEqual(nombresProblematicos([d({ id: '1', nombre: '2024-01 Enero - Gas - falta 2a pagina.pdf' }), d({ id: '2', nombre: 'DUPLICADO - x.pdf' }), d({ id: '3', nombre: '2024-02 Febrero - Endesa Elec.pdf' })]).map((x) => x.id), ['1', '2']);
+  const rec = (id: string, dia: string, kg: number) => d({ id, tipo: 'refrigerante', cantidad: kg, periodoDesde: dia, periodoHasta: dia });
+  const recND = (id: string, dia: string, kg: number) => d({ id, tipo: 'refrigerante', cantidad: kg, periodoDesde: dia, periodoHasta: dia, noDuplicada: true });
+  assert.equal(posiblesRepetidasPuntuales([rec('x', '2024-09-12', 30), rec('y', '2024-09-13', 30), rec('z', '2024-09-17', 24)]).length, 1); // 12 y 13 de septiembre, mismos 30 kg
+  assert.equal(posiblesRepetidasPuntuales([rec('x', '2024-09-12', 30), rec('y', '2024-09-20', 30)]).length, 0);
+  assert.equal(posiblesRepetidasPuntuales([recND('x', '2024-09-12', 30), rec('y', '2024-09-12', 30)]).length, 0);
+  const ent = { anio: 2024, docs: [rec('x', '2024-09-12', 30), rec('y', '2024-09-13', 30)], actividadConfirmada: 2, actividadManual: 0, fallosCalculo: 0, centrosSinIndice: [], factoresId: 'f', factoresFijados: true, estadoInventario: 'borrador', exclusiones: [], anioBase: { definido: true, conDatos: true, incoherencias: ['Las fuentes suman 533,94 t y el total es 531,94 t.'], recalculo: null } } as never;
+  const codigos = evaluarCierre(ent).items.map((i: { codigo: string }) => i.codigo);
+  assert.ok(codigos.includes('recarga_repetida')); assert.ok(codigos.includes('anio_base_incoherente'));
+});

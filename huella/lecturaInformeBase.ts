@@ -71,6 +71,8 @@ export function resumenDeLectura(l: LecturaInformeBase): { resumen: ResumenAnio 
   let total = l.total == null ? null : l.total * k;
   if (total == null && c1 != null && c2 != null) { total = c1 + c2; avisos.push('El informe no da el total: se ha sumado de las categorías 1 y 2.'); }
   if (total != null && c1 != null && c2 != null && Math.abs(c1 + c2 - total) > Math.max(0.01 * total, 0.01)) avisos.push('Las categorías 1 y 2 no suman el total del informe: compruébelo.');
+  const fuentes = l.porFuente.reduce((s, x) => s + x.emisiones * k, 0);
+  if (total != null && fuentes > 0 && Math.abs(fuentes - total) > Math.max(0.05, 0.0005 * total)) avisos.push(`Las fuentes del informe suman ${fuentes.toLocaleString('es-ES', { maximumFractionDigits: 2 })} t y el total es ${total.toLocaleString('es-ES', { maximumFractionDigits: 2 })} t: compruebe cuál es correcto.`);
   if (l.anio == null) avisos.push('No se ha podido leer el año del inventario.');
   if (l.unidad == null && (l.total != null || l.categoria1 != null)) avisos.push('No consta la unidad de las emisiones: se han tomado como toneladas.');
   if (total == null) return { resumen: null, avisos: [...avisos, 'No se ha podido leer el total de emisiones.'] };

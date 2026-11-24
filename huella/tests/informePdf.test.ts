@@ -74,11 +74,13 @@ test('ratio por trabajador: el divisor mostrado es el que se usa en el cálculo'
   assert.ok(t.includes(esperado), `ratio ${esperado} calculado con 63,465`);
 });
 
-test('las marcas (*) generan su nota al pie desde el catálogo de fuentes, en cada formato', () => {
+test('las marcas (*) generan su nota al pie desde el catálogo de fuentes: el texto completo una vez y después una remisión al apartado', () => {
   const m = construirInforme(base());
   const tablas = m.secciones.flatMap((s) => s.bloques).filter((b) => b.k === 'tabla' && b.notas?.length);
   assert.ok(tablas.length >= 2, 'varias tablas llevan la marca');
-  for (const b of tablas) assert.ok((b as { notas: string[] }).notas.some((n) => n === `* ${NOTAS_FUENTES['*']}`));
+  const notas = tablas.flatMap((b) => (b as { notas: string[] }).notas);
+  assert.equal(notas.filter((n) => n === `* ${NOTAS_FUENTES['*']}`).length, 1); // el texto completo, una sola vez
+  assert.ok(notas.filter((n) => /^\* Véase la nota (anterior|del apartado \d+)\.$/.test(n)).length >= 1); // en las demás tablas, una remisión
   assert.ok(todo(base()).includes(NOTAS_FUENTES['*']));
   assert.ok(informeAHtml(m).includes('PCS'));
 });

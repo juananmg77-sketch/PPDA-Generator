@@ -95,6 +95,9 @@ const ORIGEN: Record<string, string> = { red: 'Red', autoconsumo: 'Autoconsumo',
 /** Correspondencia entre el contenido obligatorio de la ISO 14064-1 (9.3.1) y los apartados de este informe. */
 export const CORRESPONDENCIA_ISO: Array<[string, string, string]> = APARTADOS_ISO;
 
+/** «calculadora-2024.1@2024» → «Calculadora 2024.1»: el identificador técnico no se muestra al lector. */
+export const etiquetaConjunto = (id: string): string => { const m = /^calculadora-(\d{4}(?:\.\d+)?)(?:@\d{4})?$/i.exec(id); return m ? `Calculadora ${m[1]}` : id; };
+
 export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const pendientes: string[] = [];
   const { organizacion: o, inventario: inv, factores: f, totales: tot } = d;
@@ -217,8 +220,8 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     { k: 'p', texto: `Cada dato procede de una factura revisada y confirmada por una persona; ${d.actividad.filter((a) => !a.documento).length} dato(s) se introdujeron manualmente con su origen anotado. El detalle está en el Anexo A.` },
     { k: 'h', texto: '7.3 Factores de emisión y potenciales de calentamiento' },
     { k: 'tabla', cab: ['Concepto', 'Valor'], filas: [
-      ['Conjunto de factores', f.id], ['Procedencia', f.procedencia], ['Potencial de calentamiento CH₄', `${fmt(f.gwp.ch4, 'pca')} kg CO₂e/kg`], ['Potencial de calentamiento N₂O', `${fmt(f.gwp.n2o, 'pca')} kg CO₂e/kg`],
-      ['Fuente de los potenciales', f.gwp.fuente], ['Mix eléctrico balear', `${fmt(f.mixElectrico, 'factor')} kg CO₂e/kWh`],
+      ['Conjunto de factores', etiquetaConjunto(f.id)], ['Procedencia', f.procedencia], ['Potencial de calentamiento CH₄', `${fmt(f.gwp.ch4, 'pca')} kg CO₂e/kg`], ['Potencial de calentamiento N₂O', `${fmt(f.gwp.n2o, 'pca')} kg CO₂e/kg`],
+      ['Fuente de los potenciales', String(f.gwp.fuente).replace(/calculadora-(\d{4}(?:\.\d+)?)/gi, 'Calculadora $1')], ['Mix eléctrico balear', `${fmt(f.mixElectrico, 'factor')} kg CO₂e/kWh`],
     ] },
     { k: 'p', texto: resFactores ? textoResolucion(resFactores) : `Resolución anual de factores de emisión correspondiente al año ${anio}: pendiente de citar.` },
     ...(f.notas.length ? [{ k: 'lista' as const, items: f.notas.map((n) => `Nota sobre los factores: ${n}`) }] : []),
@@ -419,10 +422,11 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const secciones = [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12];
   // Notas al pie: cada marca (*, †) al final del nombre de una fuente o factor genera su nota bajo la tabla donde aparece; sin texto en el catálogo es una incidencia
   const sinNota = new Set<string>();
+  const notaVista = new Map<string, string>(); // marca → apartado donde se imprimió su texto completo (después solo se remite a él)
   for (const sec of secciones) for (const b of sec.bloques) if (b.k === 'tabla') {
     const marcas = [...new Set(b.filas.flatMap((fila) => fila.map(marcaFinal)).filter((m): m is string => !!m))].sort();
     if (!marcas.length) continue;
-    b.notas = marcas.filter((m) => NOTAS_FUENTES[m]).map((m) => `${m} ${NOTAS_FUENTES[m]}`);
+    b.notas = marcas.filter((m) => NOTAS_FUENTES[m]).map((m) => { const antes = notaVista.get(m); if (antes) return antes === sec.id ? `${m} Véase la nota anterior.` : `${m} Véase la nota del apartado ${antes}.`; notaVista.set(m, sec.id); return `${m} ${NOTAS_FUENTES[m]}`; });
     for (const m of marcas) if (!NOTAS_FUENTES[m]) sinNota.add(m);
   }
   for (const m of sinNota) pendientes.push(`La marca «${m}» aparece en nombres de fuentes pero no tiene nota en el catálogo de fuentes.`);

@@ -35,3 +35,15 @@ test('hoteles de HS Suite: coordenadas y CNAE de hotel', () => {
   assert.equal(coordenada('120', 90), null);
   assert.equal(organizacionDesdeHotel(h).cnae, '5510');
 });
+
+test('la exclusión de extintores se recalcula con el total actual del inventario y respeta el texto editado a mano', async () => {
+  const { calcularExtintores, justificacionExtintores, refrescarExclusion } = await import('../exclusiones.ts');
+  const calc = { ...calcularExtintores([{ cantidad: 26, kgPorExtintor: 4.42 }] as never, 435.42), certificadoNombre: 'cert.pdf' };
+  const x = { porcentaje: 0.026, justificacion: justificacionExtintores(calc as never), calculo: calc as never };
+  const r = refrescarExclusion(x, 527.94);
+  assert.equal(r.porcentaje, Math.round(((calc.tCO2e / (527.94 + calc.tCO2e)) * 100) * 1000) / 1000);
+  assert.match(r.justificacion, /527,94 t CO₂e sin la exclusión/); assert.ok(!/435,42/.test(r.justificacion));
+  const editada = refrescarExclusion({ ...x, justificacion: 'Texto escrito por la persona responsable.' }, 527.94);
+  assert.equal(editada.justificacion, 'Texto escrito por la persona responsable.'); assert.notEqual(editada.porcentaje, 0.026);
+  assert.equal(refrescarExclusion({ porcentaje: 3, justificacion: 'x' }, 527.94).porcentaje, 3); // otras exclusiones no cambian
+});

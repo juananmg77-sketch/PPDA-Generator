@@ -1377,10 +1377,8 @@ const PanelFacturas: React.FC<{
           return { sm, mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string, tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
         }).sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
         // Controles posteriores a la lectura: dar nombre a un suministro y unir dos identificadores que son el mismo (p. ej. CUPS y nº de contador)
-        const nombrar = async (mios: Documento[], actual?: string) => {
-          const n = prompt('Nombre o dirección de este suministro (p. ej. «Av. México 1 – GAS COCINA»):', actual ?? '');
-          if (n == null) return;
-          try { for (const d of mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: n.trim() || undefined } }); onCambio(); } catch (e) { falla(e); }
+        const nombrarA = async (mios: Documento[], nombre: string) => {
+          try { for (const d of mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: nombre || undefined } }); onCambio(); } catch (e) { falla(e); throw e; }
         };
         const unir = async (destino: string, origen: typeof filas[number]) => {
           const d0 = filas.find((f) => f.sm.id === destino); if (!d0) return;
@@ -1393,17 +1391,12 @@ const PanelFacturas: React.FC<{
             <ul className="mt-3 divide-y divide-slate-100">{filas.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900">{sm.direccion ?? `${tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} (sin nombre)`} <span className="text-[11px] font-normal text-slate-500">· {sm.direccion ? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural') + ' · ' : ''}{centro}</span></p>
+                  <p className="text-sm font-bold text-slate-900"><NombreEditable valor={sm.direccion} vacio={`${tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} sin nombre`} puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} /> <span className="text-[11px] font-normal text-slate-500">· {centro}</span></p>
                   <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
-                {puedeEliminar && (
-                  <div className="basis-full flex flex-wrap items-center gap-2 text-[11px]">
-                    <button className={btnS} onClick={() => nombrar(fila.mios, sm.direccion)}><Pencil size={12} /> {sm.direccion ? 'Cambiar nombre' : 'Poner nombre o dirección'}</button>
-                    {filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).length > 0 && (
-                      <select className="border border-slate-300 rounded-lg px-2 py-1.5 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro"><option value="">Es el mismo que…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
-                    )}
-                  </div>
+                {puedeEliminar && filas.some((o) => o.sm.id !== sm.id && o.tp === tp) && (
+                  <select className="text-[11px] text-slate-500 border border-slate-200 rounded-md px-1.5 py-1 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro" title="Si es el mismo suministro con otro CUPS o contador, únalos"><option value="">Unir con…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
                 )}
                 <p className={`text-[11px] w-28 text-right ${meses.size === 12 ? 'text-green-700 font-semibold' : 'text-slate-500'}`} title={`Meses con factura: ${NOMBRES_MES.filter((_, i) => meses.has(i)).join(', ') || 'ninguno'}`}>{meses.size === 12 ? '12 meses completos' : `${meses.size} de 12 meses`}</p>
               </li>
@@ -2176,6 +2169,30 @@ const TarjetaRecalculo: React.FC<{ inv: Inventario; ab: ReturnType<typeof useAni
       )}
       {ev.noEvaluables.length > 0 && <ul className="mt-2 text-[11px] text-slate-500 list-disc pl-5">{ev.noEvaluables.map((x, i) => <li key={i}>{x}</li>)}</ul>}
     </div>
+  );
+};
+
+/** Nombre editable en línea: un lápiz lo convierte en un campo; Intro guarda, Esc cancela. */
+const NombreEditable: React.FC<{ valor?: string; vacio: string; puedeEditar: boolean; onGuardar: (v: string) => Promise<void> }> = ({ valor, vacio, puedeEditar, onGuardar }) => {
+  const [editando, setEditando] = useState(false);
+  const [t, setT] = useState(valor ?? '');
+  const [guardando, setGuardando] = useState(false);
+  const guardar = async () => { setGuardando(true); try { await onGuardar(t.trim()); setEditando(false); } finally { setGuardando(false); } };
+  if (editando) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <input autoFocus className={`${input} !py-1 !text-sm w-72 max-w-full`} value={t} placeholder="Ej.: Av. México 1 – GAS COCINA" onChange={(e) => setT(e.target.value)} disabled={guardando}
+          onKeyDown={(e) => { if (e.key === 'Enter') void guardar(); if (e.key === 'Escape') setEditando(false); }} aria-label="Nombre del suministro" />
+        <button className="p-1 text-green-700 hover:text-green-900 disabled:opacity-40" onClick={() => void guardar()} disabled={guardando} aria-label="Guardar nombre" title="Guardar"><CheckCircle2 size={16} /></button>
+        <button className="p-1 text-slate-500 hover:text-slate-900" onClick={() => setEditando(false)} aria-label="Cancelar" title="Cancelar"><XCircle size={16} /></button>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={valor ? '' : 'text-slate-400 font-semibold'}>{valor || vacio}</span>
+      {puedeEditar && <button className="p-1 text-slate-400 hover:text-brand-700" onClick={() => { setT(valor ?? ''); setEditando(true); }} aria-label="Editar nombre" title="Editar nombre"><Pencil size={13} /></button>}
+    </span>
   );
 };
 

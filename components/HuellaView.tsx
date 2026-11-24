@@ -1661,8 +1661,10 @@ const TablaLineas: React.FC<{
   const totalesUd = unidades.map((u) => ({ u, t: visibles.filter((a) => unidadDe(a) === u).reduce((t, a) => t + Number(a.cantidad), 0) }));
   const variosCentros = new Set(lineas.map((a) => a.centro_id)).size > 1;
   const hayContador = visibles.some((a) => a.contador);
-  const nCols = 6 + (variosCentros ? 1 : 0) + (hayContador ? 1 : 0);
+  const nCols = 5 + (variosCentros ? 1 : 0) + (hayContador ? 1 : 0);
   const fecha = (d: string | null | undefined) => (d ? d.split('-').reverse().join('/') : '—');
+  /** Fecha o periodo de la línea: «dd/mm/aaaa → dd/mm/aaaa» si abarca un periodo; una sola fecha si es puntual. */
+  const periodoLinea = (a: Actividad) => (a.periodo_desde && a.periodo_hasta && a.periodo_hasta !== a.periodo_desde ? `${fecha(a.periodo_desde)} → ${fecha(a.periodo_hasta)}` : fecha(a.periodo_desde ?? a.periodo_hasta));
   return (
     <div>
     <div className="flex flex-wrap items-end gap-3 mb-3">
@@ -1679,7 +1681,7 @@ const TablaLineas: React.FC<{
       <p className="text-[11px] text-slate-600 ml-auto self-center">{visibles.length} de {lineas.length} líneas · <strong>{num(totalVisT, 3)}</strong> t CO₂e</p>
     </div>
     <div className="overflow-x-auto"><table className="w-full text-xs">
-      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{variosCentros && th('centro', 'Centro', 'py-2 pr-3')}{th('fuente', 'Fuente', 'py-2 pr-3')}{hayContador && th('contador', 'Contador')}{th('periodo', 'Fecha')}{th('cantidad', 'Cantidad', 'pr-3 text-right', udUnica ?? 'según fuente')}{th('factor', 'Factor', 'pr-3 text-right', udUnica ? `kg CO₂e / ${udUnica}` : 'kg CO₂e / unidad')}{th('tco2e', 'Emisiones', 'pr-3 text-right', 't CO₂e')}<th className="pr-3 text-right align-bottom pb-2 font-semibold">Incert.</th><th /></tr></thead>
+      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{variosCentros && th('centro', 'Centro', 'py-2 pr-3')}{th('fuente', 'Fuente', 'py-2 pr-3')}{hayContador && th('contador', 'Contador')}{th('periodo', 'Fecha / periodo')}{th('cantidad', 'Cantidad', 'pr-3 text-right', udUnica ?? 'según fuente')}{th('factor', 'Factor', 'pr-3 text-right', udUnica ? `kg CO₂e / ${udUnica}` : 'kg CO₂e / unidad')}{th('tco2e', 'Emisiones', 'pr-3 text-right', 't CO₂e')}<th /></tr></thead>
       <tbody>{visibles.map((a) => {
         const r = kg.get(a.id);
         const ud = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : factores.unidades[a.fuente] ?? (a.unidad ?? '');
@@ -1692,11 +1694,10 @@ const TablaLineas: React.FC<{
               {variosCentros && <td className="py-2.5 pr-3">{nombreCentro(a.centro_id)}</td>}
               <td className="py-2.5 pr-3"><span className="block text-[13px] font-semibold text-slate-900">{nombreFuente(a)}</span><span className="block text-[10px] text-slate-500">{CATEGORIAS[a.categoria]}{!a.documento_id ? ' · manual' : ''}</span></td>
               {hayContador && <td className="pr-3 text-slate-600 tabular-nums">{etqSum(docs)(a.contador) || '—'}</td>}
-              <td className="pr-3 tabular-nums whitespace-nowrap">{fecha(a.periodo_desde)}</td>
+              <td className="pr-3 tabular-nums whitespace-nowrap">{periodoLinea(a)}</td>
               <td className="pr-3 text-right tabular-nums text-[13px]">{num(a.cantidad, 2)}{!udUnica && <span className="text-slate-500 text-[10px] ml-1">{ud}</span>}</td>
               <td className="pr-3 text-right tabular-nums text-slate-600">{factor === null ? '—' : num(factor, 4)}{!udUnica && factor !== null && <span className="text-slate-500 text-[10px] ml-1">/{ud || 'ud'}</span>}</td>
               <td className="pr-3 text-right tabular-nums text-sm font-bold text-slate-900">{r ? num(r.kgCO2e / 1000, 3) : '—'}</td>
-              <td className="pr-3 text-right tabular-nums text-slate-500" title={r ? (() => { const u = incertidumbreLinea(r, factores, cfgInc); return `Dato ±${fmt(u.datoPct, 'porcentaje')} % (${ORIGENES_DATO[u.origen]}) · factor ±${fmt(u.factorPct, 'porcentaje')} %${u.ajustada ? ' · ajustada' : ''}`; })() : ''}>{r ? <>±{fmt(incertidumbreLinea(r, factores, cfgInc).pct, 'porcentaje')} %{a.incertidumbre ? <span className="text-amber-600"> ✎</span> : ''}</> : '—'}</td>
               <td className="text-right whitespace-nowrap">
                 {doc && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" title="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={15} /></button>}
                 {abierto && r && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Incertidumbre" title="Incertidumbre del dato y del factor" onClick={() => abrirInc(a, r)}><Gauge size={15} /></button>}
@@ -1749,7 +1750,7 @@ const TablaLineas: React.FC<{
           <td className="pr-3 text-right tabular-nums font-bold">{totalesUd.map((x) => <span key={x.u} className="block">{num(x.t, 2)}{!udUnica && <span className="text-slate-500 text-[10px] font-normal ml-1">{x.u}</span>}</span>)}</td>
           <td />
           <td className="pr-3 text-right tabular-nums text-sm font-bold">{num(totalVisT, 3)}<span className="block text-[10px] font-normal text-slate-500">t CO₂e</span></td>
-          <td colSpan={2} />
+          <td />
         </tr></tfoot>
       )}
       

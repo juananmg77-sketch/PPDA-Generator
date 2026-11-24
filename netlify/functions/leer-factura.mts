@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { usuarioAutorizado } from '../lib/auth.ts';
 import { cargarConjunto } from '../../huella/catalogo.ts';
 import { extractText, getDocumentProxy } from 'unpdf';
-import { ESQUEMA_EXTRACCION, LIMITES, instrucciones, leerFactura, validarEntrada } from '../../huella/lectura.ts';
+import { ESQUEMA_BASE, ESQUEMA_EXTRACCION, LIMITES, instrucciones, leerFactura, validarEntrada } from '../../huella/lectura.ts';
 import type { EntradaLectura, LlamarModelo } from '../../huella/lectura.ts';
 import type { ExtraccionFactura, TipoFactura } from '../../huella/extraccion.ts';
 
@@ -20,13 +20,18 @@ function crearLlamada(cliente: Anthropic): LlamarModelo {
         : [{ type: 'image', source: { type: 'base64', media_type: entrada.mediaType as 'image/jpeg' | 'image/png', data: entrada.base64! } }];
     contenido.push({ type: 'text', text: 'Extrae los datos de esta factura.' });
 
-    const r = await cliente.messages.create({
+    const crear = (esquema: unknown) => cliente.messages.create({
       model: modelo,
       max_tokens: LIMITES.maxTokensSalida,
       system: instrucciones(entrada.tipoEsperado),
       messages: [{ role: 'user', content: contenido }],
-      output_config: { effort: 'low', format: { type: 'json_schema', schema: ESQUEMA_EXTRACCION as unknown as Record<string, unknown> } },
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: esquema as Record<string, unknown> } },
     });
+    let r;
+    try { r = await crear(ESQUEMA_EXTRACCION); } catch (e) {
+      // Si la API rechaza el esquema por complejo, se lee con el esquema reducido (sin datos de suministro): la factura se lee igual
+      if ((e as { status?: number })?.status === 400 && /complex|schema/i.test(String((e as Error).message))) r = await crear(ESQUEMA_BASE); else throw e;
+    }
     if (r.stop_reason === 'refusal' || r.stop_reason === 'max_tokens') throw new Error(`Lectura no válida (${r.stop_reason}).`);
     const bloque = r.content.find((b) => b.type === 'text');
     if (!bloque || bloque.type !== 'text') throw new Error('Respuesta sin contenido.');

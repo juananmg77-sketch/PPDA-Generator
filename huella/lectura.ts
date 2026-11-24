@@ -20,12 +20,7 @@ export const ESQUEMA_EXTRACCION = {
     tipo: { type: 'string', enum: ['electricidad', 'gas_natural', 'gasoleo', 'glp', 'combustible_vehiculo', 'refrigerante', 'otro'], description: 'electricidad; gas_natural (contador de red); glp = butano, propano o GLP (bombonas, botellas, granel, depósito); gasoleo = gasóleo de calefacción o usos fijos; combustible_vehiculo = carburante de vehículos; refrigerante = recarga de gases fluorados; otro solo si no encaja' },
     proveedor: { type: 'string' },
     contador: { type: 'string', description: 'Punto de suministro: CUPS (luz o gas), nº de contador o de instalación, tal como figura. VARIOS si la factura agrupa varios.' },
-    cups: { type: 'string', description: 'CUPS del suministro (ES + 16 cifras + 2 letras), tal como figura; cadena vacía si no consta' },
-    numeroContador: { type: 'string', description: 'Nº de contador o de equipo de medida, tal como figura; cadena vacía si no consta' },
-    contrato: { type: 'string', description: 'Referencia o nº de contrato; cadena vacía si no consta' },
-    usoSuministro: { type: 'string', description: 'Uso o instalación abastecida si consta (cocina, enfriadora, calefacción, piscina…); cadena vacía si no consta' },
-    direccionSuministro: { type: 'string', description: 'Dirección del punto de suministro; cadena vacía si no consta' },
-    peaje: { type: 'string', description: 'Peaje o tarifa de acceso (RL.4, RLTB5, 2.0TD…); cadena vacía si no consta' },
+    suministro: { type: 'string', description: 'Una sola cadena con los datos del suministro que consten, separados por «;»: CUPS=…; contador=…; contrato=…; uso=…; direccion=…; peaje=…. Cadena vacía si no consta ninguno' },
     periodoDesde: { type: 'string', description: 'AAAA-MM-DD, inicio del periodo facturado' },
     periodoHasta: { type: 'string', description: 'AAAA-MM-DD, fin del periodo facturado' },
     cantidad: { type: 'number', description: 'Consumo total del periodo en la unidad indicada (no el importe)' },
@@ -36,10 +31,16 @@ export const ESQUEMA_EXTRACCION = {
     garantiaOrigen: { type: 'string', enum: ['no', 'renovable_balear', 'renovable_otra', 'desconocida'] },
     confianza: { type: 'number', description: 'De 0 a 1: seguridad global de la lectura' },
   },
-  // Los datos del suministro van como obligatorios (cadena vacía si no constan): la API limita los parámetros opcionales de un esquema («Schema is too complex»)
-  required: ['tipo', 'confianza', 'cups', 'numeroContador', 'contrato', 'usoSuministro', 'direccionSuministro', 'peaje'],
+  // Un solo campo nuevo (obligatorio): la API rechaza esquemas demasiado complejos («Schema is too complex»); si aun así lo rechazara, la función reintenta con ESQUEMA_BASE
+  required: ['tipo', 'confianza', 'suministro'],
   additionalProperties: false,
 } as const;
+
+/** Esquema reducido (sin datos de suministro): respaldo si la API rechaza el completo por complejidad. */
+export const ESQUEMA_BASE = (() => {
+  const { suministro: _s, ...props } = ESQUEMA_EXTRACCION.properties;
+  return { type: 'object', properties: props, required: ['tipo', 'confianza'], additionalProperties: false } as const;
+})();
 
 const NOMBRE_TIPO: Record<string, string> = {
   electricidad: 'electricidad', gas_natural: 'gas natural', gasoleo: 'gasóleo (calefacción u otros usos fijos)', glp: 'GLP (propano o butano)',
@@ -60,7 +61,7 @@ const INSTRUCCIONES_BASE = [
   'cantidad es el consumo físico del periodo (kWh, litros, kg), nunca el importe en euros. Si el consumo del periodo es cero, devuelve cantidad 0 (no omitas el campo). Si hay varios periodos o lecturas, suma solo los del periodo facturado.',
   'Gas natural: indica la unidad exacta (kWh PCS, kWh PCI, kWh o m3) tal como aparezca; no conviertas. Si el consumo está en m3, copia en factorConversion el factor kWh/m3 de la factura si figura.',
   'Electricidad: garantiaOrigen = renovable_balear solo si la factura acredita garantía de origen renovable de Baleares; renovable_otra si acredita otra; no si indica mix de red; desconocida si no consta.',
-  'Revisa TODAS las páginas: los datos del contrato (CUPS, nº de contador, contrato, peaje, uso y dirección del suministro) suelen estar en la 2.ª página. Rellena cups, numeroContador, contrato, peaje, usoSuministro y direccionSuministro cuando consten, cada uno tal como figura.',
+  'Revisa TODAS las páginas: los datos del contrato suelen estar en la 2.ª. En suministro escribe, separados por «;» y solo los que consten, CUPS=…; contador=… (nº de contador); contrato=…; uso=… (cocina, enfriadora, calefacción…); direccion=…; peaje=… . Cadena vacía si no consta ninguno.',
   'contador: copia el CUPS (electricidad y gas) o el número de contador/instalación exactamente como figura; no lo inventes. Si la factura agrupa varios suministros, pon VARIOS y confianza baja.',
   'Butano, propano o GLP (bombonas, botellas, granel): tipo = glp, producto = Butano o Propano, cantidad en kg si la factura da los kg totales; si solo da el número de bombonas, cantidad = ese número, unidad = bombonas y en producto añade el peso (p. ej. «Butano 12,5 kg»).',
   'Fechas en formato AAAA-MM-DD. confianza baja (<0,8) si el documento es ilegible, está incompleto o dudas de la cantidad o del periodo.',
@@ -111,13 +112,26 @@ const nErrores = (i: Incidencia[]) => i.filter((x) => x.gravedad === 'error').le
 const nLectura = (i: Incidencia[]) => i.filter((x) => CODIGOS_DE_LECTURA.has(x.codigo)).length;
 
 /** Deja el contador en forma normalizada (CUPS sin caracteres de control, mayúsculas) para poder compararlo. */
-const CLAVES_SUMINISTRO = ['cups', 'numeroContador', 'contrato', 'usoSuministro', 'direccionSuministro', 'peaje'] as const;
-const limpiar = (e0: ExtraccionFactura): ExtraccionFactura => {
-  const e: ExtraccionFactura = { ...e0 };
-  for (const k of CLAVES_SUMINISTRO) { const v = e[k]; if (typeof v !== 'string' || !v.trim()) delete e[k]; else e[k] = v.trim(); } // vacío = no consta
+const RE_CUPS = /ES\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?[A-Z]{2}/gi;
+/** Interpreta la cadena «CUPS=…; contador=…; …» que devuelve la lectura. */
+export function parsearSuministro(t?: string): Partial<ExtraccionFactura> {
+  const out: Record<string, string> = {};
+  const claves: Record<string, keyof ExtraccionFactura> = { cups: 'cups', contador: 'numeroContador', contrato: 'contrato', uso: 'usoSuministro', direccion: 'direccionSuministro', peaje: 'peaje' };
+  for (const parte of (t ?? '').split(/[;\n]/)) {
+    const m = /^\s*([a-záéíóú]+)\s*[=:]\s*(.+?)\s*$/i.exec(parte);
+    const k = m && claves[m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
+    if (k && m![2] && !/^(no consta|—|-|n\/a)$/i.test(m![2])) out[k] = m![2];
+  }
+  return out as Partial<ExtraccionFactura>;
+}
+const limpiar = (e0: ExtraccionFactura & { suministro?: string }, texto?: string): ExtraccionFactura => {
+  const { suministro, ...resto } = e0;
+  const e: ExtraccionFactura = { ...resto, ...parsearSuministro(suministro) };
+  // CUPS: si la lectura no lo trae y el texto de la factura tiene uno solo, se toma de ahí
+  if (!e.cups && texto) { const u = [...new Set((texto.match(RE_CUPS) ?? []).map((x) => normalizarContador(x)))]; if (u.length === 1) e.cups = u[0]; }
   const cups = normalizarContador(e.cups) || undefined;
   const contador = cups ?? (normalizarContador(e.contador) || undefined); // el CUPS identifica el suministro; si no consta, lo que figure como contador
-  if (cups) e.cups = cups;
+  if (cups) e.cups = cups; else delete e.cups;
   if (contador) e.contador = contador; else delete e.contador;
   return e;
 };
@@ -125,7 +139,7 @@ const limpiar = (e0: ExtraccionFactura): ExtraccionFactura => {
 export async function leerFactura(llamar: LlamarModelo, entrada: EntradaLectura, ctx: ContextoValidacion): Promise<ResultadoLectura> {
   const consumo: ResultadoLectura['consumo'] = [];
   const primera = await llamar(MODELO_BASE, entrada);
-  primera.extraccion = limpiar(primera.extraccion);
+  primera.extraccion = limpiar(primera.extraccion, entrada.texto);
   consumo.push({ modelo: MODELO_BASE, tokensEntrada: primera.tokensEntrada, tokensSalida: primera.tokensSalida });
   const inc1 = [...validarExtraccion(primera.extraccion, ctx), ...incidenciaTipo(primera.extraccion, entrada)];
 
@@ -134,7 +148,7 @@ export async function leerFactura(llamar: LlamarModelo, entrada: EntradaLectura,
   // Segundo intento con el modelo mayor, solo cuando hay señales de mala lectura. Se queda con el que tenga menos problemas.
   try {
     const segunda = await llamar(MODELO_REFUERZO, entrada);
-    segunda.extraccion = limpiar(segunda.extraccion);
+    segunda.extraccion = limpiar(segunda.extraccion, entrada.texto);
     consumo.push({ modelo: MODELO_REFUERZO, tokensEntrada: segunda.tokensEntrada, tokensSalida: segunda.tokensSalida });
     const inc2 = [...validarExtraccion(segunda.extraccion, ctx), ...incidenciaTipo(segunda.extraccion, entrada)];
     const mejor = nErrores(inc2) + nLectura(inc2) < nErrores(inc1) + nLectura(inc1);

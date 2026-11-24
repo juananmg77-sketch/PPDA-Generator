@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { construirConjunto } from '../factores.ts';
-import { ESQUEMA_EXTRACCION, MODELO_BASE, MODELO_REFUERZO, instrucciones, leerFactura, validarEntrada } from '../lectura.ts';
+import { ESQUEMA_BASE, ESQUEMA_EXTRACCION, MODELO_BASE, MODELO_REFUERZO, instrucciones, leerFactura, validarEntrada } from '../lectura.ts';
 import type { LlamarModelo } from '../lectura.ts';
 import type { ExtraccionFactura } from '../extraccion.ts';
 import type { DatosCalculadora } from '../tipos.ts';
@@ -66,7 +66,7 @@ test('entrada: límites de tamaño, formato y vacío', () => {
 
 test('el esquema coincide con ExtraccionFactura (todas las claves del tipo están definidas)', () => {
   const claves = Object.keys(ESQUEMA_EXTRACCION.properties).sort();
-  assert.deepEqual(claves, ['cantidad', 'confianza', 'contador', 'contrato', 'cups', 'direccionSuministro', 'factorConversion', 'garantiaOrigen', 'importe', 'numeroContador', 'peaje', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'tipo', 'unidad', 'usoSuministro']);
+  assert.deepEqual(claves, ['cantidad', 'confianza', 'contador', 'factorConversion', 'garantiaOrigen', 'importe', 'periodoDesde', 'periodoHasta', 'producto', 'proveedor', 'suministro', 'tipo', 'unidad']);
 });
 
 test('tipo indicado de antemano: va en las instrucciones y una lectura distinta obliga a revisar', async () => {
@@ -79,11 +79,16 @@ test('tipo indicado de antemano: va en las instrucciones y una lectura distinta 
   assert.deepEqual(ok.incidencias, []);
 });
 
-test('esquema: pocos parámetros opcionales (la API rechaza esquemas demasiado complejos) y datos de suministro vacíos = no constan', async () => {
+test('esquema: tamaño contenido (la API rechaza esquemas complejos) y la cadena de suministro se interpreta', async () => {
   const props = Object.keys(ESQUEMA_EXTRACCION.properties);
-  const opcionales = props.filter((k) => !(ESQUEMA_EXTRACCION.required as readonly string[]).includes(k));
-  assert.ok(opcionales.length <= 10, `opcionales: ${opcionales.length}`);
-  const vacia = { tipo: 'gas_natural', confianza: 0.9, cantidad: 100, periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', unidad: 'kWh PCS', cups: '', numeroContador: ' ', contrato: '', usoSuministro: '', direccionSuministro: '', peaje: '' };
-  const r = await leerFactura(simulado({ [MODELO_BASE]: vacia as never }).llamar, { texto: 'f' }, ctx);
-  assert.equal(r.extraccion.cups, undefined); assert.equal('contrato' in r.extraccion, false);
+  assert.ok(props.length <= 13, `propiedades: ${props.length}`);
+  assert.deepEqual(Object.keys(ESQUEMA_BASE.properties).length, props.length - 1);
+  const e = { tipo: 'gas_natural', confianza: 0.9, cantidad: 100, periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', unidad: 'kWh PCS', suministro: 'CUPS=ES0238330000167922NX; contador=816000231; contrato=086163150041; uso=Cocina; direccion=Av. Mèxic 1; peaje=RL.4' };
+  const r = await leerFactura(simulado({ [MODELO_BASE]: e as never }).llamar, { texto: 'f' }, ctx);
+  assert.equal(r.extraccion.cups, 'ES0238330000167922NX'); assert.equal(r.extraccion.contador, 'ES0238330000167922NX');
+  assert.equal(r.extraccion.numeroContador, '816000231'); assert.equal(r.extraccion.usoSuministro, 'Cocina'); assert.equal(r.extraccion.peaje, 'RL.4');
+  assert.equal('suministro' in r.extraccion, false);
+  // sin suministro en la lectura: el CUPS único del texto de la factura
+  const t = await leerFactura(simulado({ [MODELO_BASE]: { ...e, suministro: '' } as never }).llamar, { texto: 'Punto de suministro ES0238 3300 0016 7922 NX contrato' }, ctx);
+  assert.equal(t.extraccion.cups, 'ES0238330000167922NX');
 });

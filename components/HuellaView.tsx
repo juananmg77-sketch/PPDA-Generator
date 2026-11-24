@@ -13,7 +13,8 @@ import type { ConfigPlantillaInforme } from '../huella/configInforme';
 import { INCERTIDUMBRE_POR_DEFECTO, ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre, incertidumbreLinea, valoracion as valoracionInc } from '../huella/incertidumbre';
 import type { ConfigIncertidumbre } from '../huella/incertidumbre';
 import type { AjusteIncertidumbre, OrigenDato } from '../huella/tipos';
-import { agruparSuministros, resolutorSuministro, suministroDe } from '../huella/suministros';
+import { resolutorSuministro } from '../huella/suministros';
+import { cupsValido, repararCups } from '../huella/cups';
 import { CRITERIOS_CONSOLIDACION, avisosRazonSocial, validarOrganizacion } from '../huella/organizacion';
 import type { CriterioConsolidacion } from '../huella/organizacion';
 import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
@@ -37,7 +38,7 @@ import { aplicarGas, modoAutomatico, resolverGas } from '../huella/gas';
 import { conMezclas, normalizarGas } from '../huella/mezclas';
 import { aplicarEnvases, esEnvase, fuenteGlp, KG_BOMBONA_BUTANO } from '../huella/glp';
 import type { ModoGas } from '../huella/gas';
-import { asignarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
+import { asignarContador, normalizarContador, proponerActividad, validarExtraccion, variacionAnual, ExtraccionFactura, TipoFactura } from '../huella/extraccion';
 import type { Categoria, ConjuntoFactores, LineaActividad, OrigenElectricidad, ResultadoLinea } from '../huella/tipos';
 
 type Pestana = 'resumen' | 'centros' | 'facturas' | 'consumos' | 'resultados' | 'cierre' | 'ajustes';
@@ -1231,6 +1232,7 @@ const PanelFacturas: React.FC<{
   const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido' && d.estado !== 'subido'), [docs]);
   const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, (d) => etqSum(docs)(idSum(d))), [docsArchivo]);
   // Paquetes por tipología (electricidad, gas natural…), cada uno con sus contadores dentro
+  const conocidosCups = useMemo(() => Array.from(new Set(docs.filter((d) => d.estado !== 'rechazado').map((d) => d.extraccion?.cups ?? d.extraccion?.contador).filter((x): x is string => !!x && /^ES\d{16}[A-Z]{2}/.test(x)))), [docs]);
   const paquetes = useMemo(() => {
     const m = new Map<string, { tipo: string; items: Documento[]; subgrupos: typeof gruposTodas }>();
     for (const g of gruposTodas) { const x = m.get(g.tipo) ?? { tipo: g.tipo, items: [], subgrupos: [] }; x.items.push(...g.items); x.subgrupos.push(g); m.set(g.tipo, x); }
@@ -1366,59 +1368,6 @@ const PanelFacturas: React.FC<{
           {listaFacturas(sinLeerDocs)}
         </div>
       )}
-      {(() => {
-        const utiles = docs.filter((d) => d.estado !== 'rechazado' && d.extraccion && ['electricidad', 'gas_natural', 'glp', 'gasoleo'].includes((d.extraccion.tipo ?? d.tipo) as string));
-        const sums = agruparSuministros(utiles.map((d) => ({ ...d.extraccion, tipo: (d.extraccion?.tipo ?? d.tipo) as string })));
-        if (!sums.length) return null;
-        const filasConId = sums.map((sm) => {
-          const mios = utiles.filter((d) => suministroDe([sm], { ...d.extraccion })?.id === sm.id);
-          const meses = new Set<number>(); let kwh = 0; let ud = '';
-          for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
-          return { sm, mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string, tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
-        });
-        // Facturas sin CUPS ni contador: no se pueden agrupar por suministro, pero cuentan en el cálculo; se muestran aparte para que el panel cuadre
-        const conId = new Set(filasConId.flatMap((f) => f.mios.map((d) => d.id)));
-        const sinId = new Map<string, Documento[]>();
-        for (const d of utiles) if (!conId.has(d.id)) { const t = (d.extraccion?.tipo ?? d.tipo) as string; sinId.set(t, [...(sinId.get(t) ?? []), d]); }
-        const filasSin = [...sinId.entries()].map(([t, mios]) => {
-          const meses = new Set<number>(); let kwh = 0; let ud = '';
-          for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
-          return { sm: { id: `sin-${t}`, etiqueta: 'Sin contador identificado', identificadores: [] as string[], direccion: undefined, cups: undefined, numeroContador: undefined } as (typeof filasConId)[number]['sm'], mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: t, tipo: t, sin: true };
-        });
-        const filas = [...filasConId.map((f) => ({ ...f, sin: false })), ...filasSin].sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
-        // Controles posteriores a la lectura: dar nombre a un suministro y unir dos identificadores que son el mismo (p. ej. CUPS y nº de contador)
-        const nombrarA = async (mios: Documento[], nombre: string) => {
-          try { for (const d of mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: nombre || undefined } }); onCambio(); } catch (e) { falla(e); throw e; }
-        };
-        const unir = async (destino: string, origen: typeof filas[number]) => {
-          const d0 = filas.find((f) => f.sm.id === destino); if (!d0) return;
-          if (!confirm(`¿Unir «${origen.sm.direccion ?? origen.sm.id}» con «${d0.sm.direccion ?? d0.sm.id}»? Serán un solo suministro (mismo CUPS o contador).`)) return;
-          try { for (const d of origen.mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, cups: d0.sm.cups ?? d0.sm.id, direccionSuministro: d.extraccion?.direccionSuministro ?? d0.sm.direccion } }); onCambio(); } catch (e) { falla(e); }
-        };
-        return (
-          <details className={`${card} group`} open>
-            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({filas.filter((f) => !f.sin).length})<span className="ml-auto text-[11px] font-normal text-slate-500">Agrupadas por CUPS o contador</span></summary>
-            <div className="mt-3 space-y-5">{Object.keys(TIPOS_SUMINISTRO).filter((t) => filas.some((f) => f.tp === t)).map((t) => { const grupo = filas.filter((f) => f.tp === t); const info = TIPOS_SUMINISTRO[t]; const Ic = info.Icono; const unidadesGrupo = Array.from(new Set(grupo.map((f) => f.ud))); return (
-            <section key={t}>
-              <h3 className="flex items-center gap-2 mb-1"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${info.color}`}><Ic size={15} /></span><span className="text-sm font-bold text-slate-800">{info.nombre}</span><span className="text-[11px] text-slate-500">{grupo.length} suministro{grupo.length === 1 ? '' : 's'}{unidadesGrupo.length === 1 ? ` · ${num(grupo.reduce((a, f) => a + f.kwh, 0), 0)} ${unidadesGrupo[0]}` : ''}</span></h3>
-              <ul className="divide-y divide-slate-100 border-t border-slate-100">{grupo.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
-              <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900">{fila.sin ? <span className="text-amber-700">Sin contador identificado</span> : <><NombreEditable valor={sm.direccion} vacio="Sin nombre" puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} />{new Set(filas.map((f) => f.centro)).size > 1 && <span className="text-[11px] font-normal text-slate-500"> · {centro}</span>}</>}</p>
-                  <p className="text-[11px] text-slate-500 tabular-nums">{fila.sin ? 'Facturas sin CUPS ni contador: cuentan en el cálculo, pero no se pueden agrupar por suministro.' : [sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}{fila.mios.some((d) => d.estado === 'leido') ? ` · ${fila.mios.filter((d) => d.estado === 'leido').length} sin confirmar` : ''}</p>
-                </div>
-                <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
-                {puedeEliminar && !fila.sin && filas.some((o) => o.sm.id !== sm.id && o.tp === tp && !o.sin) && (
-                  <select className="text-[11px] text-slate-500 border border-slate-200 rounded-md px-1.5 py-1 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro" title="Si es el mismo suministro con otro CUPS o contador, únalos"><option value="">Unir con…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp && !o.sin).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
-                )}
-                <p className={`text-[11px] w-28 text-right ${meses.size === 12 ? 'text-green-700 font-semibold' : 'text-slate-500'}`} title={`Meses con factura: ${NOMBRES_MES.filter((_, i) => meses.has(i)).join(', ') || 'ninguno'}`}>{meses.size === 12 ? '12 meses completos' : `${meses.size} de 12 meses`}</p>
-              </li>
-            ); })}</ul>
-            </section>
-            ); })}</div>
-          </details>
-        );
-      })()}
       {pendientes.length > 0 && rol === 'cliente' && (
         <div className={`${card} text-sm text-slate-700`}><Eye size={15} className="inline mr-2 text-slate-500" />{pendientes.length} factura(s) pendientes de revisión por su consultor.</div>
       )}
@@ -1489,16 +1438,16 @@ const PanelFacturas: React.FC<{
             {paquetes.map((pq) => (
               <details key={pq.tipo} className="border border-slate-300 rounded-xl bg-white" open={paquetes.length === 1}>
                 <summary className="cursor-pointer px-4 py-3 rounded-xl flex items-center gap-3 hover:bg-slate-50">
-                  <span className="w-9 h-9 rounded-lg bg-green-100 text-green-800 flex items-center justify-center shrink-0"><FileText size={17} /></span>
+                  {(() => { const info = TIPOS_SUMINISTRO[pq.tipo]; const Ic = info?.Icono ?? FileText; return <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${info?.color ?? 'bg-green-100 text-green-800'}`}><Ic size={17} /></span>; })()}
                   <span className="flex-1 min-w-0"><CabeceraGrupo g={{ tipo: pq.tipo, contador: 'sin contador', items: pq.items }} anio={inv.anio} soloTipo /></span>
                   {puedeEliminar && <Papelera titulo={`Eliminar todas las facturas de ${TIPOS[pq.tipo as TipoFactura] ?? pq.tipo}`} onClick={() => eliminar(pq.items, `las ${pq.items.length} facturas de ${TIPOS[pq.tipo as TipoFactura] ?? pq.tipo}`)} />}
                 </summary>
                 <div className="px-3 pb-3 space-y-2">
                   {pq.subgrupos.map((g) => (
-                    pq.subgrupos.length === 1 && g.contador === 'sin contador' ? <div key={g.contador}>{listaFacturas(g.items)}</div> : (
+                    pq.subgrupos.length === 1 && g.contador === 'sin contador' ? <div key={g.contador}><EditorSuministro items={g.items} conocidos={conocidosCups} puedeEditar={puedeEliminar} onCambio={onCambio} falla={falla} />{listaFacturas(g.items)}</div> : (
                       <details key={g.contador} className="border border-slate-200 rounded-xl">
                         <summary className="cursor-pointer px-3 py-2 bg-slate-50 rounded-xl flex items-center gap-2"><span className="flex-1 inline-block align-middle"><CabeceraGrupo g={g} anio={inv.anio} /></span>{puedeEliminar && <Papelera titulo="Eliminar las facturas de este grupo" onClick={() => eliminar(g.items, `las ${g.items.length} facturas de este grupo`)} />}</summary>
-                        <div className="px-3">{listaFacturas(g.items)}</div>
+                        <div className="px-3"><EditorSuministro items={g.items} conocidos={conocidosCups} puedeEditar={puedeEliminar} onCambio={onCambio} falla={falla} />{listaFacturas(g.items)}</div>
                       </details>
                     )
                   ))}
@@ -2197,7 +2146,7 @@ const TIPOS_SUMINISTRO: Record<string, { nombre: string; Icono: React.ComponentT
 };
 
 /** Nombre editable en línea: un lápiz lo convierte en un campo; Intro guarda, Esc cancela. */
-const NombreEditable: React.FC<{ valor?: string; vacio: string; puedeEditar: boolean; onGuardar: (v: string) => Promise<void> }> = ({ valor, vacio, puedeEditar, onGuardar }) => {
+const NombreEditable: React.FC<{ valor?: string; vacio: string; puedeEditar: boolean; onGuardar: (v: string) => Promise<void>; placeholder?: string }> = ({ valor, vacio, puedeEditar, onGuardar, placeholder }) => {
   const [editando, setEditando] = useState(false);
   const [t, setT] = useState(valor ?? '');
   const [guardando, setGuardando] = useState(false);
@@ -2205,7 +2154,7 @@ const NombreEditable: React.FC<{ valor?: string; vacio: string; puedeEditar: boo
   if (editando) {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <input autoFocus className={`${input} !py-1 !text-sm w-72 max-w-full`} value={t} placeholder="Ej.: Av. México 1 – GAS COCINA" onChange={(e) => setT(e.target.value)} disabled={guardando}
+        <input autoFocus className={`${input} !py-1 !text-sm w-72 max-w-full`} value={t} placeholder={placeholder ?? 'Ej.: Av. México 1 – GAS COCINA'} onChange={(e) => setT(e.target.value)} disabled={guardando}
           onKeyDown={(e) => { if (e.key === 'Enter') void guardar(); if (e.key === 'Escape') setEditando(false); }} aria-label="Nombre del suministro" />
         <button className="p-1 text-green-700 hover:text-green-900 disabled:opacity-40" onClick={() => void guardar()} disabled={guardando} aria-label="Guardar nombre" title="Guardar"><CheckCircle2 size={16} /></button>
         <button className="p-1 text-slate-500 hover:text-slate-900" onClick={() => setEditando(false)} aria-label="Cancelar" title="Cancelar"><XCircle size={16} /></button>
@@ -2217,6 +2166,31 @@ const NombreEditable: React.FC<{ valor?: string; vacio: string; puedeEditar: boo
       <span className={valor ? '' : 'text-slate-400 font-semibold'}>{valor || vacio}</span>
       {puedeEditar && <button className="p-1 text-slate-400 hover:text-brand-700" onClick={() => { setT(valor ?? ''); setEditando(true); }} aria-label="Editar nombre" title="Editar nombre"><Pencil size={13} /></button>}
     </span>
+  );
+};
+
+/** Editor de un grupo de facturas confirmadas: nombre del suministro y su CUPS / contador / póliza. Poner a dos grupos el mismo identificador los une. */
+const EditorSuministro: React.FC<{ items: Documento[]; conocidos: string[]; puedeEditar: boolean; onCambio: () => void; falla: (e: unknown) => void }> = ({ items, conocidos, puedeEditar, onCambio, falla }) => {
+  const nombre = items.map((d) => d.extraccion?.direccionSuministro).find((x) => !!x);
+  const idActual = items.map((d) => d.extraccion?.cups ?? d.extraccion?.contador).find((x) => !!x);
+  const guardarNombre = async (v: string) => {
+    try { for (const d of items) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: v || undefined } }); onCambio(); } catch (e) { falla(e); throw e; }
+  };
+  const guardarId = async (v0: string) => {
+    try {
+      let v = normalizarContador(v0);
+      if (v && cupsValido(v) === false) { const r = repararCups(v, conocidos); if (r.corregido) v = r.cups; }
+      for (const d of items) { const { cups: _c, ...resto } = d.extraccion!; await huellaService.actualizarDocumento(d.id, { extraccion: { ...resto, contador: v || undefined, ...(v && /^ES\d{16}[A-Z]{2}$/.test(v) ? { cups: v } : {}) } }); }
+      await huellaService.asignarContadorActividades(items.map((d) => d.id), v || null);
+      onCambio();
+    } catch (e) { falla(e); throw e; }
+  };
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-x-6 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      <span className="inline-flex items-center gap-1.5"><span className="text-slate-500">Nombre:</span><span className="font-semibold"><NombreEditable valor={nombre} vacio="sin nombre" puedeEditar={puedeEditar} onGuardar={guardarNombre} /></span></span>
+      <span className="inline-flex items-center gap-1.5"><span className="text-slate-500">CUPS / contador / póliza:</span><span className="font-semibold tabular-nums"><NombreEditable valor={idActual} vacio="sin identificar" puedeEditar={puedeEditar} onGuardar={guardarId} placeholder="Ej.: ES0238330000167922NX" /></span></span>
+      <span className="text-[10px] text-slate-400">Afecta a las {items.length} factura{items.length === 1 ? '' : 's'} del grupo. Con el mismo identificador, dos grupos se unen.</span>
+    </div>
   );
 };
 

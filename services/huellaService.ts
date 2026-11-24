@@ -102,6 +102,11 @@ export const huellaService = {
   async actualizarOrganizacion(id: string, c: Partial<Omit<Organizacion, 'id'>>) {
     return ok<Organizacion>(await supabase.from('hc_organizaciones').update(c).eq('id', id).select().single());
   },
+  /** Pone (o quita) el contador de las líneas de actividad que salen de unas facturas, para que sigan agrupadas con ellas. */
+  async asignarContadorActividades(documentoIds: string[], contador: string | null) {
+    if (!documentoIds.length) return;
+    ok(await supabase.from('hc_actividad').update({ contador }).in('documento_id', documentoIds));
+  },
   async actualizarCentro(id: string, c: Partial<Omit<Centro, 'id' | 'organizacion_id'>>) {
     return ok<Centro>(await supabase.from('hc_centros').update(c).eq('id', id).select().single());
   },

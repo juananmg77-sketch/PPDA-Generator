@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Gauge, Printer, Search, Database, X } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { NOMBRES_MES, agruparPorTipoYContador, mesesTocados, repartirPorMes } from '../huella/mensual';
+import { NOMBRES_MES, agruparPorTipoYContador, mesFacturacion, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
 import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
@@ -1112,12 +1112,6 @@ const TIPOS_SUBIDA: Array<[TipoFactura | '', string]> = [
 ];
 
 const UN_MES = NOMBRES_MES;
-const Meses: React.FC<{ cubiertos: Set<number> }> = ({ cubiertos }) => (
-  <span className="inline-flex gap-0.5" aria-label="Meses cubiertos">
-    {UN_MES.map((m, i) => <span key={m} title={m} className={`text-[9px] w-4 text-center rounded ${cubiertos.has(i) ? 'bg-green-100 text-green-800 font-bold' : 'bg-slate-100 text-slate-400'}`}>{m[0].toUpperCase()}</span>)}
-  </span>
-);
-
 const tipoDoc = (d: Documento) => (d.extraccion?.tipo ?? d.tipo) as string;
 const contadorDoc = (d: Documento) => d.extraccion?.contador;
 /** Etiqueta de suministro (p. ej. «Cocina · …7922NX») para cualquier identificador de las facturas de la lista; se calcula una vez por lista. */
@@ -1132,7 +1126,6 @@ const idSum = (d: Documento) => d.extraccion?.contador ?? d.extraccion?.cups;
 /** Cabecera de un grupo de facturas: tipo y CUPS (cuando procede), nº, consumo total y meses cubiertos del año. */
 const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Documento[] }; anio: number; soloTipo?: boolean }> = ({ g, anio, soloTipo }) => {
   const validas = g.items.filter((d) => d.estado !== 'rechazado');
-  const cubiertos = new Set<number>(validas.flatMap((d) => mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, anio)));
   const unidad = validas.find((d) => d.extraccion?.unidad)?.extraccion?.unidad ?? '';
   const total = validas.reduce((s, d) => s + (d.extraccion?.cantidad ?? 0), 0);
   const conCups = g.tipo !== 'refrigerante' && g.contador !== 'sin contador';
@@ -1140,7 +1133,6 @@ const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Docu
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
       <span className="text-xs font-bold text-slate-800">{TIPOS[g.tipo as TipoFactura] ?? g.tipo}{soloTipo ? '' : conCups ? ` · ${g.contador}` : g.tipo !== 'refrigerante' ? ' · sin contador identificado' : ''}</span>
       <span className="text-[11px] text-slate-600">{g.items.length} factura{g.items.length === 1 ? '' : 's'}{total ? ` · ${num(total, 0)} ${unidad}` : ''}</span>
-      {g.tipo !== 'refrigerante' && <Meses cubiertos={cubiertos} />}
     </div>
   );
 };
@@ -1429,7 +1421,7 @@ const PanelFacturas: React.FC<{
                 </summary>
                 <div className="overflow-x-auto px-2 pb-2">
                   <table className="w-full text-xs">
-                    <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Tipo</th><th className="pr-3">Proveedor</th><th className="pr-3">Periodo</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
+                    <thead><tr className="text-left text-slate-600 border-b border-slate-200"><th className="py-2 pr-2 w-6" /><th className="pr-3">Archivo</th><th className="pr-3">Mes</th><th className="pr-3 text-right">Cantidad</th><th className="pr-3">Estado</th><th /></tr></thead>
                     <tbody>
                 {g.items.map((d) => {
                   const ev = evaluadas.get(d.id); const e = d.extraccion!;
@@ -1437,9 +1429,8 @@ const PanelFacturas: React.FC<{
                     <React.Fragment key={d.id}>
                       <tr className="border-b border-slate-100 align-top">
                         <td className="py-2 pr-2"><input type="checkbox" disabled={!ev?.listo} checked={sel.has(d.id)} onChange={() => alternar(d.id)} aria-label={`Seleccionar ${d.nombre_archivo}`} /></td>
-                        <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{nombreCentro(d.centro_id)}</span></td>
-                        <td className="pr-3">{TIPOS[e.tipo] ?? e.tipo}</td><td className="pr-3">{e.proveedor ?? '—'}<span className="block text-[10px] text-slate-500" title={ev?.asignacion.motivo}>{ev?.e.contador ? `Contador: ${ev.e.contador}${ev.asignacion.contador ? ' (asignado)' : ''}` : ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador'}</span></td>
-                        <td className="pr-3 whitespace-nowrap">{e.periodoDesde ?? '?'} → {e.periodoHasta ?? '?'}</td>
+                        <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{[nombreCentro(d.centro_id), e.proveedor, !ev?.e.contador ? (ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador') : ev.asignacion.contador ? 'contador asignado por fechas' : null].filter(Boolean).join(' · ')}</span></td>
+                        <td className="pr-3 whitespace-nowrap font-semibold text-slate-800" title={`${e.periodoDesde ?? '?'} → ${e.periodoHasta ?? '?'}`}>{mesFacturacion(e.periodoDesde, e.periodoHasta) ?? '?'}</td>
                         <td className="pr-3 text-right tabular-nums" title={ev?.e.nota}>{ev?.e.cantidad !== undefined ? num(ev.e.cantidad, 2) : '—'} {ev?.e.unidad ?? ''}{ev?.e.nota && ev.e.cantidad !== e.cantidad ? <span className="block text-[10px] text-slate-500">convertido</span> : null}</td>
                         <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.e.cantidad === 0 ? <span className="text-amber-700 font-semibold">Consumo cero · validar</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
                         <td className="text-right whitespace-nowrap">

@@ -37,3 +37,13 @@ test('meses tocados y agrupación por tipo y contador', () => {
   );
   assert.deepEqual(g.map((x) => [x.tipo, x.contador, x.items.length]), [['electricidad', 'A', 2], ['electricidad', 'B', 1], ['gas_natural', 'sin contador', 1]]);
 });
+
+test('mes de facturación: el mes con más días del periodo', async () => {
+  const { mesFacturacion } = await import('../mensual.ts');
+  assert.equal(mesFacturacion('2023-12-31', '2024-01-31'), 'Ene 2024');
+  assert.equal(mesFacturacion('2024-03-20', '2024-04-22'), 'Abr 2024');
+  assert.equal(mesFacturacion('2024-02-21', '2024-03-20'), 'Mar 2024');
+  assert.equal(mesFacturacion('2024-04-02', '2024-04-02'), 'Abr 2024');
+  assert.equal(mesFacturacion('2024-02-15', '2024-03-15'), 'Mar 2024'); // empate: el posterior
+  assert.equal(mesFacturacion(undefined, undefined), null);
+});

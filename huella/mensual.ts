@@ -48,3 +48,19 @@ export function agruparPorTipoYContador<T>(items: T[], tipo: (x: T) => string, c
   }
   return [...m.values()].sort((a, b) => a.tipo.localeCompare(b.tipo) || a.contador.localeCompare(b.contador));
 }
+
+/**
+ * Mes y año de facturación de un periodo: el mes que contiene más días del periodo (en empate, el posterior).
+ * Ej.: 31/12/2023 → 31/01/2024 = «Ene 2024»; 20/03 → 22/04 = «Abr 2024». Un periodo de un solo día da su mes.
+ */
+export function mesFacturacion(desde: string | null | undefined, hasta: string | null | undefined): string | null {
+  const d = fecha(desde ?? hasta);
+  const h = fecha(hasta ?? desde);
+  if (!d || !h || h < d) return null;
+  const dias = new Map<string, number>();
+  for (let t = d.getTime(); t <= h.getTime(); t += DIA) { const x = new Date(t); const k = `${x.getUTCFullYear()}-${String(x.getUTCMonth()).padStart(2, '0')}`; dias.set(k, (dias.get(k) ?? 0) + 1); }
+  const [k] = [...dias.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? 1 : -1))[0];
+  const [y, m] = k.split('-');
+  const nombre = NOMBRES_MES[Number(m)];
+  return `${nombre[0].toUpperCase()}${nombre.slice(1)} ${y}`;
+}

@@ -41,6 +41,8 @@ export interface EntradaCierre {
   /** Incidencias de las exclusiones de la categoría 1 (falta de % o de evidencia, umbral superado). */
   exclusionesDirectas?: string[];
   /** Año base: sin definir / sin datos, y evaluación de las reglas de recálculo con la decisión documentada. */
+  /** Avisos que la persona responsable ha revisado y acepta tal cual (códigos). */
+  avisosAceptados?: string[];
   anioBase?: { definido: boolean; conDatos: boolean; /** Cifras del año base que no cuadran entre sí (categorías, fuentes y total). */ incoherencias?: string[]; recalculo: { disparadores: Array<{ titulo: string; detalle: string[] }>; noEvaluables: string[]; incidencias: string[] } | null };
   /** Datos de la organización: obligatorios que faltan (bloquean el cierre) y avisos (razón social, forma jurídica). */
   organizacion?: { faltan: string[]; avisos: string[] };
@@ -187,7 +189,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   const dudosos = contadoresDudosos(e.docs);
   if (dudosos.length > 0) add('aviso', 'contador_dudoso', `${dudosos.length} factura(s) con un identificador de suministro erróneo: no se agruparán bien y el verificador lo verá en el Anexo A.`, { ir: 'facturas', irEtiqueta: 'Corregir en Facturas', detalle: dudosos.map((x) => ({ docId: x.doc.id, texto: nom(x.doc), nota: x.motivo })) });
   for (const g of posiblesRepetidasPuntuales(e.docs)) add('aviso', 'recarga_repetida', `Posible intervención contada dos veces: ${g.length} registros de ${g[0].tipo === 'refrigerante' ? 'refrigerante' : 'gas envasado'} con la misma cantidad (${Number(g[0].cantidad).toLocaleString('es-ES')}) en fechas ${g[0].tipo === 'refrigerante' ? 'contiguas' : 'iguales'}. Si son distintas, márquelas como «No es duplicada».`, { ir: 'facturas', irEtiqueta: 'Revisar en Facturas', detalle: g.map((d) => ({ docId: d.id, texto: nom(d), nota: `${d.periodoDesde}` })) });
-  if ((e.anioBase?.incoherencias ?? []).length > 0) add('aviso', 'anio_base_incoherente', 'Las cifras del año base no cuadran entre sí.', { ir: 'anio_base', irEtiqueta: 'Revisar el año base', detalle: e.anioBase!.incoherencias!.map((texto) => ({ texto })) });
+  if ((e.anioBase?.incoherencias ?? []).length > 0 && !(e.avisosAceptados ?? []).includes('anio_base_incoherente')) add('aviso', 'anio_base_incoherente', 'Las cifras del año base no cuadran entre sí.', { ir: 'anio_base', irEtiqueta: 'Revisar el año base', detalle: e.anioBase!.incoherencias!.map((texto) => ({ texto })) });
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;
@@ -264,7 +266,7 @@ export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]):
 export function contadoresDudosos(docs: DocCierre[]): Array<{ doc: DocCierre; motivo: string }> {
   const out: Array<{ doc: DocCierre; motivo: string }> = [];
   for (const d of docs) {
-    if (d.estado !== 'revisado' || !['electricidad', 'gas_natural'].includes(d.tipo)) continue;
+    if (d.estado !== 'revisado' || d.verificado || !['electricidad', 'gas_natural'].includes(d.tipo)) continue; // «verificado»: la persona ya lo ha revisado a mano
     const id = (d.idContador ?? '').trim(); if (!id) continue;
     if (cupsValido(id) === false) out.push({ doc: d, motivo: `el CUPS «${id}» no cumple su dígito de control (una cifra mal leída)` });
     else if (/referencia|ref\.|n[ºo°]\s*fra|factura/i.test(id)) out.push({ doc: d, motivo: `«${id}» es una referencia de la factura, no el CUPS ni el nº de contador` });
@@ -276,7 +278,7 @@ export function contadoresDudosos(docs: DocCierre[]): Array<{ doc: DocCierre; mo
  * contada dos veces (albarán y factura, o dos subidas). Es solo un aviso: los nombres de archivo pueden ser distintos.
  */
 export function posiblesRepetidasPuntuales(docs: DocCierre[]): DocCierre[][] {
-  const v = docs.filter((d) => d.estado === 'revisado' && !d.noDuplicada && (d.tipo === 'refrigerante' || d.tipo === 'glp') && Number(d.cantidad) > 0 && d.periodoDesde);
+  const v = docs.filter((d) => d.estado === 'revisado' && !d.noDuplicada && !d.verificado && (d.tipo === 'refrigerante' || d.tipo === 'glp') && Number(d.cantidad) > 0 && d.periodoDesde);
   const dia = (s: string) => Date.parse(s + 'T00:00:00Z') / 86400000;
   const grupos: DocCierre[][] = [];
   for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) {

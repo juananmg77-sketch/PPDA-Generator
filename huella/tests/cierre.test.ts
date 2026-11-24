@@ -294,3 +294,17 @@ test('cierre: el gas envasado con distinto nº de factura en el nombre no es rep
   assert.ok(!items.some((i) => i.codigo === 'sin_anterior') && !items.some((i) => i.codigo === 'recalculo_no_evaluable'));
   assert.ok(items.some((i) => /Factores fijados: Calculadora 2024\.1\./.test(i.mensaje)));
 });
+
+test('cierre: lo que la persona ya ha revisado (verificado, «No es duplicada», «Aceptar tal cual») deja de avisarse', async () => {
+  const { contadoresDudosos, posiblesRepetidasPuntuales, evaluarCierre } = await import('../cierre.ts');
+  type D = import('../cierre.ts').DocCierre;
+  const d = (o: Record<string, unknown>) => ({ estado: 'revisado', tipo: 'electricidad', centro: 'C', ...o }) as unknown as D;
+  assert.equal(contadoresDudosos([d({ id: 'a', idContador: 'ES0031500109960301ES' })]).length, 1);
+  assert.equal(contadoresDudosos([d({ id: 'a', idContador: 'ES0031500109960301ES', verificado: true })]).length, 0);
+  const r = (id: string, extra: Record<string, unknown> = {}) => d({ id, tipo: 'refrigerante', cantidad: 30, periodoDesde: '2024-09-12', periodoHasta: '2024-09-12', ...extra });
+  assert.equal(posiblesRepetidasPuntuales([r('x'), r('y')]).length, 1);
+  assert.equal(posiblesRepetidasPuntuales([r('x', { verificado: true }), r('y')]).length, 0);
+  const ent = (aceptados?: string[]) => ({ anio: 2024, docs: [], actividadConfirmada: 1, actividadManual: 0, fallosCalculo: 0, centrosSinIndice: [], factoresId: 'f', factoresFijados: true, estadoInventario: 'borrador', exclusiones: [], avisosAceptados: aceptados, anioBase: { definido: true, conDatos: true, incoherencias: ['Las fuentes suman 533,94 t y el total es 531,94 t.'], recalculo: null } }) as never;
+  assert.ok(evaluarCierre(ent()).items.some((i) => i.codigo === 'anio_base_incoherente'));
+  assert.ok(!evaluarCierre(ent(['anio_base_incoherente'])).items.some((i) => i.codigo === 'anio_base_incoherente'));
+});

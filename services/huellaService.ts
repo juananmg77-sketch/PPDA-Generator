@@ -14,6 +14,8 @@ export interface Organizacion { id: string; /** Nombre comercial. */ nombre: str
 export interface Centro { id: string; organizacion_id: string; nombre: string; direccion?: string | null; municipio?: string | null; isla?: string | null; en_baleares: boolean; unidades_alojamiento?: number | null; latitud?: number | string | null; longitud?: number | string | null; suite_hotel_id?: string | null; suite_codigo?: string | null; suite_actualizado?: string | null }
 export interface CierreDatos {
   analisisVariacion?: string;
+  /** Avisos del cierre que la persona responsable ha revisado y acepta tal cual (códigos de la lista de comprobación). */
+  avisosAceptados?: string[];
   /** Resultados fijados al cerrar (para reproducir y detectar cambios posteriores). */
   resumen?: { kgCO2eAlcance1: number; kgCO2eAlcance2: number; kgCO2eTotal: number; indiceActividad: number; factores: string; lineas: number; fecha: string };
   reaperturas?: Array<{ fecha: string; usuario: string; motivo: string }>;

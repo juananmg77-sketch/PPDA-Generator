@@ -2633,6 +2633,7 @@ const PanelCierre: React.FC<{
     { nombre: 'Total', actual: calculo.totales.kgCO2eTotal, anterior: previo.total },
   ] : undefined;
 
+  const conocidosCierre = useMemo(() => Array.from(new Set(docs.filter((d) => d.estado !== 'rechazado').map((d) => d.extraccion?.cups ?? d.extraccion?.contador).filter((x): x is string => !!x && /^ES\d{16}[A-Z]{2}/.test(x)))), [docs]);
   const isoCierre = useMemo(() => (factores && calculo ? resultadosIso(calculo.resultados, factores, exclusionesActuales<Exclusion>(exclusiones, calculo.totales.kgCO2eTotal / 1000).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion, categoriaIso: x.categoria_iso })), calculo.totales, resumenPorCategoria(sig.plantilla, sig.evals.map(aEvaluacion), sig.criterios)) : null), [factores, calculo, exclusiones, sig.plantilla, sig.evals, sig.criterios]);
   const evaluacion = useMemo(() => {
     if (!factores || !calculo || previo === undefined || !isoCierre) return null;
@@ -2645,7 +2646,7 @@ const PanelCierre: React.FC<{
       centrosSinIndice: centros.filter((c) => !(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad > 0)).map((c) => c.nombre),
       centrosSinPlantilla: plantilla > 0 ? centros.filter((c) => !(Number(invCentros.find((x) => x.centro_id === c.id)?.plantilla_media) > 0)).map((c) => c.nombre) : [],
       factoresId: factores.id, factoresFijados: !!inv.conjunto_factores,
-      variaciones, analisisVariacion: analisis,
+      variaciones, analisisVariacion: analisis, avisosAceptados: inv.cierre?.avisosAceptados,
       exclusiones: exclusionesActuales<Exclusion>(exclusiones, totalInvT).map((x) => ({ fuente: x.fuente, porcentaje: x.porcentaje, justificacion: x.justificacion })),
       organizacion: { faltan: datosOrg.filter((x) => x.obligatorio).map((x) => x.mensaje), avisos: datosOrg.filter((x) => !x.obligatorio).map((x) => x.mensaje) },
       anioBase: { definido: !!ab.def, conDatos: !!ab.base, incoherencias: ab.base ? coherenciaAnioBase(ab.base) : [], recalculo: ab.evaluacion ? { disparadores: ab.evaluacion.disparadores, noEvaluables: ab.evaluacion.noEvaluables, incidencias: ab.evaluacion.incidencias } : null },
@@ -2727,7 +2728,7 @@ const PanelCierre: React.FC<{
                   <p>{i.mensaje}</p>
                   {i.detalle && i.detalle.length > 0 && (
                     <details className="mt-1" open={i.nivel === 'error' && i.detalle.length <= 8}>
-                      <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900">Ver las {i.detalle.length} afectadas</summary>
+                      <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-900">{i.detalle.length === 1 ? 'Ver la afectada' : `Ver las ${i.detalle.length} afectadas`}</summary>
                       <ul className="mt-1 ml-1 border-l-2 border-slate-200 pl-3 space-y-0.5 max-h-48 overflow-auto">
                         {i.detalle.map((x, n) => {
                           const doc = x.docId ? docs.find((d) => d.id === x.docId) : undefined;
@@ -2735,6 +2736,23 @@ const PanelCierre: React.FC<{
                             <li key={n} className="text-[11px] text-slate-700 flex flex-wrap items-center gap-x-2 gap-y-1 py-0.5">
                               <span className="flex-1 min-w-[200px]"><strong>{x.texto}</strong>{x.nota ? <span className="text-slate-500"> · {x.nota}</span> : null}</span>
                               {doc && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={12} /> Abrir factura</button>}
+                              {doc && abierto && doc.extraccion && i.codigo === 'recarga_repetida' && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-green-600 bg-green-600 font-semibold text-white hover:bg-green-700 disabled:opacity-50" disabled={trabajando} title="Son intervenciones distintas: dejar de avisar" onClick={async () => { try { await huellaService.actualizarDocumento(doc.id, { extraccion: { ...doc.extraccion!, noDuplicada: true } }); onCambio(); } catch (e) { falla(e); } }}><CheckCircle2 size={12} /> No es duplicada</button>}
+                              {doc && abierto && doc.extraccion && i.codigo === 'contador_dudoso' && (() => {
+                                const idAct = doc.extraccion!.cups ?? doc.extraccion!.contador ?? '';
+                                const r = /^ES\d/i.test(idAct) ? repararCups(idAct, conocidosCierre) : null;
+                                const fijar = async (v: string, marcar: boolean) => {
+                                  try {
+                                    const { cups: _c, ...resto } = doc.extraccion!; const id = normalizarContador(v);
+                                    await huellaService.actualizarDocumento(doc.id, { extraccion: { ...resto, contador: id || undefined, ...(id && /^ES\d{16}[A-Z]{2}$/.test(id) ? { cups: id } : {}), ...(marcar ? { verificadoManual: true } : {}) } });
+                                    await huellaService.asignarContadorActividades([doc.id], id || null); onCambio();
+                                  } catch (e) { falla(e); }
+                                };
+                                return (<>
+                                  {r?.corregido && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-green-600 bg-green-600 font-semibold text-white hover:bg-green-700" title={`Leído ${idAct}; el dígito de control indica ${r.cups}`} onClick={() => void fijar(r.cups, true)}><CheckCircle2 size={12} /> Aceptar {r.cups}</button>}
+                                  <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50" onClick={() => { const v = prompt('CUPS o nº de contador de esta factura (tal como figura en la 2.ª página):', r?.corregido ? r.cups : ''); if (v != null) void fijar(v, true); }}><Pencil size={12} /> Indicar contador</button>
+                                  <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50" title="El identificador es correcto tal como está" onClick={async () => { try { await huellaService.actualizarDocumento(doc.id, { extraccion: { ...doc.extraccion!, verificadoManual: true } }); onCambio(); } catch (e) { falla(e); } }}>Es correcto</button>
+                                </>);
+                              })()}
                               {doc && abierto && doc.extraccion && i.codigo === 'consumo_cero' && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-green-600 bg-green-600 font-semibold text-white hover:bg-green-700 disabled:opacity-50" disabled={trabajando} title="Confirmo que el consumo de esta factura es realmente 0" onClick={async () => { if (!confirm(`¿Confirma que el consumo de «${x.texto}» es realmente 0 (no falta una página ni una lectura)?`)) return; try { await huellaService.actualizarDocumento(doc.id, { extraccion: { ...doc.extraccion!, verificadoManual: true } }); onCambio(); } catch (e) { falla(e); } }}><CheckCircle2 size={12} /> Validar consumo 0</button>}
                               {doc && abierto && doc.extraccion && doc.estado !== 'rechazado' && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-300 bg-white font-semibold text-brand-700 hover:bg-brand-50" onClick={() => setCorrigiendo(corrigiendo === doc.id ? null : doc.id)}><Pencil size={12} /> {corrigiendo === doc.id ? 'Cerrar' : 'Introducir dato'}</button>}
                               {doc && abierto && <button className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-red-200 bg-white font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50" disabled={trabajando} onClick={() => eliminarFactura(doc)}><Trash2 size={12} /> Eliminar</button>}
@@ -2747,6 +2765,7 @@ const PanelCierre: React.FC<{
                       </ul>
                     </details>
                   )}
+                  {abierto && i.codigo === 'anio_base_incoherente' && <button className="mt-1 mr-3 inline-flex items-center gap-1 px-2 py-1 rounded-md border border-green-600 bg-green-600 text-[11px] font-semibold text-white hover:bg-green-700" title="He comprobado las cifras con el informe del año base: quedan así" onClick={async () => { try { onInventario(await huellaService.guardarCierre(inv.id, { ...(inv.cierre ?? {}), avisosAceptados: Array.from(new Set([...(inv.cierre?.avisosAceptados ?? []), 'anio_base_incoherente'])) })); } catch (e) { falla(e); } }}><CheckCircle2 size={12} /> Aceptar tal cual</button>}
                   {i.ir && abierto && <button className="mt-1 text-[11px] font-bold text-brand-700 underline hover:text-brand-900" onClick={() => irA(i.ir!)}>{i.irEtiqueta ?? 'Resolver'} →</button>}
                 </div>
               </li>

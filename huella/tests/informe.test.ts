@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { PLANTILLA_HOTELES } from '../significancia.ts';
 import { construirConjunto } from '../factores.ts';
 import { calcularInventario } from '../motor.ts';
-import { CORRESPONDENCIA_ISO, construirInforme } from '../informe.ts';
+import { construirInforme } from '../informe.ts';
 import type { DatosInforme } from '../informe.ts';
 import type { DatosCalculadora, LineaActividad } from '../tipos.ts';
 
@@ -33,11 +33,9 @@ const base = (): DatosInforme => ({
 });
 const texto = (m: ReturnType<typeof construirInforme>) => JSON.stringify(m);
 
-test('el informe tiene las 12 secciones del esquema acordado y cubre los apartados a)-t) de la norma', () => {
+test('el informe tiene las 12 secciones del esquema acordado', () => {
   const m = construirInforme(base());
   assert.deepEqual(m.secciones.map((s) => s.id), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
-  assert.equal(CORRESPONDENCIA_ISO.length, 20);
-  assert.deepEqual(CORRESPONDENCIA_ISO.map((x) => x[0]), 'abcdefghijklmnopqrst'.split(''));
   assert.match(m.meta.estado, /PENDIENTE DE VERIFICACIÓN/);
 });
 
@@ -280,7 +278,7 @@ test('incertidumbre: el catálogo es configurable, las líneas ajustadas salen c
   assert.ok(construirInforme(sin).pendientes.some((p) => /ajustada sin justificación/.test(p)));
 });
 
-test('anexos: agrupados por categoría y fuente, con la unidad en la cabecera, totales, la fórmula una vez por grupo y cada evidencia con su código EV-001…', () => {
+test('anexos: agrupados por categoría y fuente, con la unidad en la cabecera, totales, la fórmula una vez por grupo y cada dato con su documento; sin anexos de correspondencia ni de índice de evidencias', () => {
   const d = base();
   d.documentos = [{ id: 'd2', nombre: 'b_gas.pdf', tipo: 'gas_natural', centro: 'Hotel A', periodoDesde: '2023-03-01', periodoHasta: '2023-03-31', estado: 'revisado' }, { id: 'd1', nombre: 'a_luz.pdf', tipo: 'electricidad', centro: 'Hotel A', periodoDesde: '2023-01-01', periodoHasta: '2023-01-31', estado: 'revisado' }];
   d.actividad = [
@@ -290,31 +288,22 @@ test('anexos: agrupados por categoría y fuente, con la unidad en la cabecera, t
   ] as never;
   const m = construirInforme(d); const bl = m.secciones.find((x) => x.id === '12')!.bloques;
   type T = { k: string; cab: string[]; filas: string[][]; texto?: string };
-  // cada anexo agrupa por categoría y fuente: un encabezado y su tabla
-  const despuesDe = (titulo: RegExp) => { const i = bl.findIndex((b) => b.k === 'h' && titulo.test((b as T).texto ?? '')); return i; };
-  const iA = despuesDe(/^Anexo A/), iB = despuesDe(/^Anexo B/), iC = despuesDe(/^Anexo C/), iD = despuesDe(/^Anexo D/), iE = despuesDe(/^Anexo E/), iF = despuesDe(/^Anexo F/);
+  const titulos = bl.filter((b) => b.k === 'h' && /^Anexo /.test((b as T).texto ?? '')).map((b) => (b as T).texto);
+  // sin la correspondencia con el 9.3.1 ni el índice de evidencias: A, B, C, y después las no conformidades y el control del documento
+  assert.deepEqual(titulos, ['Anexo A · Datos de actividad', 'Anexo B · Factores aplicados', 'Anexo C · Trazabilidad del cálculo por línea', 'Anexo D · Registro de no conformidades', 'Anexo E · Control del documento']);
+  assert.ok(!/Correspondencia con el contenido|Índice de evidencias|EV-\d{3}/.test(texto(m)));
+  const despuesDe = (titulo: RegExp) => bl.findIndex((b) => b.k === 'h' && titulo.test((b as T).texto ?? ''));
+  const iA = despuesDe(/^Anexo A/), iB = despuesDe(/^Anexo B/), iC = despuesDe(/^Anexo C/), iD = despuesDe(/^Anexo D/);
   const grupos = (desde: number, hasta: number) => bl.slice(desde + 1, hasta).filter((b) => b.k === 'h').map((b) => (b as T).texto);
   assert.deepEqual(grupos(iA, iB), ['Combustión fija · Gas natural (kWhPCS)*', 'Emisiones fugitivas (refrigerantes) · HFC-134a', 'Electricidad adquirida · Electricidad']); // por categoría y fuente
   const tablasA = bl.slice(iA + 1, iB).filter((b) => b.k === 'tabla') as unknown as T[];
-  assert.deepEqual(tablasA[2].cab, ['Suministro (contador)', 'Periodo', 'Cantidad (kWh)', 'Evidencia']); // la unidad va en la cabecera; sin repetir centro, categoría ni fuente
-  assert.equal(tablasA[2].filas[0][3], 'EV-001'); assert.equal(tablasA[0].filas[0][3], 'EV-002'); assert.match(tablasA[1].filas[0][3], /^Manual/); // electricidad (enero) es la primera evidencia por tipo
+  assert.deepEqual(tablasA[2].cab, ['Suministro (contador)', 'Periodo', 'Cantidad (kWh)', 'Documento']); // la unidad va en la cabecera; sin repetir centro, categoría ni fuente
+  assert.equal(tablasA[2].filas[0][3], 'a_luz.pdf'); assert.equal(tablasA[0].filas[0][3], 'b_gas.pdf'); assert.match(tablasA[1].filas[0][3], /^Manual/); // el documento de cada dato, o su origen si es manual
   assert.ok(tablasA[0].filas[0][1].includes('01/03/2023')); // incluye el periodo
   assert.match(tablasA[2].filas[tablasA[2].filas.length - 1][0], /^Total · Electricidad/); // total del grupo
   const tablasC = bl.slice(iC + 1, iD).filter((b) => b.k === 'tabla') as unknown as T[];
-  assert.deepEqual(tablasC[2].cab.slice(0, 2), ['Periodo', 'Cantidad (kWh)']); assert.equal(tablasC[2].cab[tablasC[2].cab.length - 1], 'Evidencia');
+  assert.deepEqual(tablasC[2].cab.slice(0, 2), ['Periodo', 'Cantidad (kWh)']); assert.equal(tablasC[2].cab[tablasC[2].cab.length - 1], 'kg CO₂e'); // sin columna de evidencia
   assert.ok(bl.slice(iC + 1, iD).some((b) => b.k === 'nota' && /^Cálculo: /.test((b as T).texto ?? ''))); // la fórmula una vez por grupo, no en cada fila
-  assert.deepEqual(grupos(iE, iF), ['Electricidad (1)', 'Gas natural (1)']);
-  const tablasE = bl.slice(iE + 1, iF).filter((b) => b.k === 'tabla') as unknown as T[];
-  assert.deepEqual(tablasE.map((t) => t.cab), [['Código', 'Documento', 'Periodo'], ['Código', 'Documento', 'Periodo']]); // sin centro ni estado cuando son todos iguales
-  assert.deepEqual(tablasE.flatMap((t) => t.filas.map((x) => [x[0], x[1]])), [['EV-001', 'a_luz.pdf'], ['EV-002', 'b_gas.pdf']]);
-});
-test('anexo D calculado: «k» No cumple sin inventario del año base y Cumple con él', () => {
-  const sinBase = construirInforme(base()); const tabla = (m: ReturnType<typeof construirInforme>) => (m.secciones.find((x) => x.id === '12')!.bloques.find((b) => b.k === 'tabla' && b.cab[0] === 'Apartado') as { filas: string[][] }).filas;
-  const k = tabla(sinBase).find((x) => x[0] === 'k')!; assert.equal(k[3], 'No cumple'); assert.match(k[4], /No existe inventario del año base/);
-  assert.equal(tabla(sinBase).length, 20);
-  const act = resumenActual(); const d = base(); d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase(), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
-  assert.equal(tabla(construirInforme(d)).find((x) => x[0] === 'k')![3], 'Cumple');
-  assert.ok(tabla(sinBase).every((x) => ['Cumple', 'No cumple', 'No aplica'].includes(x[3])));
 });
 test('resumen ejecutivo visual: tarjetas de cifras clave, gráficos y conclusiones generadas', () => {
   const m = construirInforme(base()); const r = m.resumen!;

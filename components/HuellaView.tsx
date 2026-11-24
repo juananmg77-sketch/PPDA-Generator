@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Gauge, Printer, Search, Database, X } from 'lucide-react';
+import { Mail, Copy, ArrowLeft, Building2, FileText, ListChecks, BarChart3, Upload, Plus, Trash2, AlertTriangle, CheckCircle2, XCircle, Loader2, Eye, Pencil, Lock, Unlock, LayoutDashboard, Settings, ChevronRight, FileCheck, Download, Gauge, Printer, Search, Database, X, Zap, Flame, Fuel } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { NOMBRES_MES, agruparPorTipoYContador, mesFacturacion, mesesTocados, repartirPorMes } from '../huella/mensual';
 import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
@@ -1367,7 +1367,7 @@ const PanelFacturas: React.FC<{
         </div>
       )}
       {(() => {
-        const utiles = docs.filter((d) => d.estado !== 'rechazado' && d.extraccion && ['electricidad', 'gas_natural'].includes((d.extraccion.tipo ?? d.tipo) as string));
+        const utiles = docs.filter((d) => d.estado !== 'rechazado' && d.extraccion && ['electricidad', 'gas_natural', 'glp', 'gasoleo'].includes((d.extraccion.tipo ?? d.tipo) as string));
         const sums = agruparSuministros(utiles.map((d) => ({ ...d.extraccion, tipo: (d.extraccion?.tipo ?? d.tipo) as string })));
         if (!sums.length) return null;
         const filas = sums.map((sm) => {
@@ -1388,10 +1388,13 @@ const PanelFacturas: React.FC<{
         return (
           <details className={`${card} group`} open>
             <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Agrupadas por CUPS o contador</span></summary>
-            <ul className="mt-3 divide-y divide-slate-100">{filas.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
+            <div className="mt-3 space-y-5">{Object.keys(TIPOS_SUMINISTRO).filter((t) => filas.some((f) => f.tp === t)).map((t) => { const grupo = filas.filter((f) => f.tp === t); const info = TIPOS_SUMINISTRO[t]; const Ic = info.Icono; const unidadesGrupo = Array.from(new Set(grupo.map((f) => f.ud))); return (
+            <section key={t}>
+              <h3 className="flex items-center gap-2 mb-1"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${info.color}`}><Ic size={15} /></span><span className="text-sm font-bold text-slate-800">{info.nombre}</span><span className="text-[11px] text-slate-500">{grupo.length} suministro{grupo.length === 1 ? '' : 's'}{unidadesGrupo.length === 1 ? ` · ${num(grupo.reduce((a, f) => a + f.kwh, 0), 0)} ${unidadesGrupo[0]}` : ''}</span></h3>
+              <ul className="divide-y divide-slate-100 border-t border-slate-100">{grupo.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900"><NombreEditable valor={sm.direccion} vacio={`${tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} sin nombre`} puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} /> <span className="text-[11px] font-normal text-slate-500">· {centro}</span></p>
+                  <p className="text-sm font-bold text-slate-900"><NombreEditable valor={sm.direccion} vacio="Sin nombre" puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} /> {new Set(filas.map((f) => f.centro)).size > 1 && <span className="text-[11px] font-normal text-slate-500">· {centro}</span>}</p>
                   <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
@@ -1401,6 +1404,8 @@ const PanelFacturas: React.FC<{
                 <p className={`text-[11px] w-28 text-right ${meses.size === 12 ? 'text-green-700 font-semibold' : 'text-slate-500'}`} title={`Meses con factura: ${NOMBRES_MES.filter((_, i) => meses.has(i)).join(', ') || 'ninguno'}`}>{meses.size === 12 ? '12 meses completos' : `${meses.size} de 12 meses`}</p>
               </li>
             ); })}</ul>
+            </section>
+            ); })}</div>
           </details>
         );
       })()}
@@ -2171,6 +2176,14 @@ const TarjetaRecalculo: React.FC<{ inv: Inventario; ab: ReturnType<typeof useAni
       {ev.noEvaluables.length > 0 && <ul className="mt-2 text-[11px] text-slate-500 list-disc pl-5">{ev.noEvaluables.map((x, i) => <li key={i}>{x}</li>)}</ul>}
     </div>
   );
+};
+
+/** Tipos de suministro del panel, con su icono y color. */
+const TIPOS_SUMINISTRO: Record<string, { nombre: string; Icono: React.ComponentType<{ size?: number }>; color: string }> = {
+  electricidad: { nombre: 'Electricidad', Icono: Zap, color: 'bg-amber-100 text-amber-700' },
+  gas_natural: { nombre: 'Gas natural', Icono: Flame, color: 'bg-orange-100 text-orange-700' },
+  glp: { nombre: 'Butano / propano', Icono: Flame, color: 'bg-sky-100 text-sky-700' },
+  gasoleo: { nombre: 'Gasóleo', Icono: Fuel, color: 'bg-slate-200 text-slate-700' },
 };
 
 /** Nombre editable en línea: un lápiz lo convierte en un campo; Intro guarda, Esc cancela. */

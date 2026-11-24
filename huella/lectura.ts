@@ -10,7 +10,7 @@ export const MODELO_REFUERZO = 'claude-sonnet-5-5';
 export const LIMITES = {
   bytesMax: 5 * 1024 * 1024, // por archivo
   paginasMax: 6, // orientativo: se avisa al usuario; el tope real es bytesMax y max_tokens
-  maxTokensSalida: 4000, // solo es un tope: se paga lo que se usa (la respuesta JSON ronda los 300 tokens, más el razonamiento del modelo)
+  maxTokensSalida: 1000, // la respuesta JSON ronda los 250 tokens: un tope bajo corta cualquier divagación del modelo en vez de dejarla gastar tiempo y dinero
   tiposPermitidos: ['application/pdf', 'image/jpeg', 'image/png'] as const,
 };
 
@@ -21,7 +21,6 @@ export const ESQUEMA_EXTRACCION = {
     tipo: { type: 'string', enum: ['electricidad', 'gas_natural', 'gasoleo', 'glp', 'combustible_vehiculo', 'refrigerante', 'otro'], description: 'electricidad; gas_natural (contador de red); glp = butano, propano o GLP (bombonas, botellas, granel, depósito); gasoleo = gasóleo de calefacción o usos fijos; combustible_vehiculo = carburante de vehículos; refrigerante = recarga de gases fluorados; otro solo si no encaja' },
     proveedor: { type: 'string' },
     contador: { type: 'string', description: 'Punto de suministro: CUPS (luz o gas), nº de contador o de instalación, tal como figura. VARIOS si la factura agrupa varios.' },
-    suministro: { type: 'string', description: 'Una sola cadena con los datos del suministro que consten, separados por «;»: CUPS=…; contador=…; direccion=…. Cadena vacía si no consta ninguno' },
     periodoDesde: { type: 'string', description: 'AAAA-MM-DD, inicio del periodo facturado' },
     periodoHasta: { type: 'string', description: 'AAAA-MM-DD, fin del periodo facturado' },
     cantidad: { type: 'number', description: 'Consumo total del periodo en la unidad indicada (no el importe)' },
@@ -32,16 +31,10 @@ export const ESQUEMA_EXTRACCION = {
     garantiaOrigen: { type: 'string', enum: ['no', 'renovable_balear', 'renovable_otra', 'desconocida'] },
     confianza: { type: 'number', description: 'De 0 a 1: seguridad global de la lectura' },
   },
-  // Un solo campo nuevo (obligatorio): la API rechaza esquemas demasiado complejos («Schema is too complex»); si aun así lo rechazara, la función reintenta con ESQUEMA_BASE
-  required: ['tipo', 'confianza', 'suministro'],
+  required: ['tipo', 'confianza'],
   additionalProperties: false,
 } as const;
 
-/** Esquema reducido (sin datos de suministro): respaldo si la API rechaza el completo por complejidad. */
-export const ESQUEMA_BASE = (() => {
-  const { suministro: _s, ...props } = ESQUEMA_EXTRACCION.properties;
-  return { type: 'object', properties: props, required: ['tipo', 'confianza'], additionalProperties: false } as const;
-})();
 
 const NOMBRE_TIPO: Record<string, string> = {
   electricidad: 'electricidad', gas_natural: 'gas natural', gasoleo: 'gasóleo (calefacción u otros usos fijos)', glp: 'GLP (propano o butano)',
@@ -62,13 +55,11 @@ const INSTRUCCIONES_BASE = [
   'cantidad es el consumo físico del periodo (kWh, litros, kg), nunca el importe en euros. Si el consumo del periodo es cero, devuelve cantidad 0 (no omitas el campo). Si hay varios periodos o lecturas, suma solo los del periodo facturado.',
   'Gas natural: indica la unidad exacta (kWh PCS, kWh PCI, kWh o m3) tal como aparezca; no conviertas. Si el consumo está en m3, copia en factorConversion el factor kWh/m3 de la factura si figura.',
   'Electricidad: garantiaOrigen = renovable_balear solo si la factura acredita garantía de origen renovable de Baleares; renovable_otra si acredita otra; no si indica mix de red; desconocida si no consta.',
-  'Revisa TODAS las páginas: los datos del contrato suelen estar en la 2.ª. En suministro escribe, separados por «;» y solo los que consten: CUPS=…; contador=… (nº de contador); direccion=… (dirección de suministro tal como figura, incluida su descripción si la lleva, p. ej. «Av. México 1 – GAS COCINA»; NO la del titular ni la fiscal). Cadena vacía si no consta ninguno.',
-  'CUPS: son 20 caracteres (ES + 16 cifras + 2 letras de control; en las facturas de luz a veces 2 más, p. ej. «0F»). Cópialo con mucho cuidado cifra a cifra; en escaneos un 8 y un 9 o un 1 y un 7 se confunden con facilidad. En las facturas de luz el CUPS, el nº de contador y la dirección de suministro están en «Datos del contrato», normalmente en la 2.ª página; el consumo del periodo está en la 1.ª («Consumo total»). El titular y su dirección fiscal NO son la dirección de suministro.',
-  'contador: copia el CUPS (electricidad y gas) o el número de contador/instalación exactamente como figura; no lo inventes. Si la factura agrupa varios suministros, pon VARIOS y confianza baja.',
+  'contador: copia el CUPS (ES + 16 cifras + 2 letras; electricidad y gas) o el número de contador/instalación tal como figura; no lo inventes. Si la factura agrupa varios suministros, pon VARIOS y confianza baja.',
   'Butano, propano o GLP (bombonas, botellas, granel): tipo = glp, producto = Butano o Propano, cantidad en kg si la factura da los kg totales; si solo da el número de bombonas, cantidad = ese número, unidad = bombonas y en producto añade el peso (p. ej. «Butano 12,5 kg»).',
-  'Gas envasado (p. ej. Repsol, «Factura a Clientes de Gas Envasado»): tipo = glp; cantidad = los «Total Kg» de la tabla del impuesto (nº de envases × kg por envase), en kg; producto = Propano o Butano según la descripción («MEZCLA B PROPANO» = Propano). Ignora las líneas de «Fianza envases» (entregado/retirado), que no son consumo. Es una entrega puntual: periodoDesde = periodoHasta = fecha de la operación.',
-  'Recarga de gas refrigerante (técnico de frío): tipo = refrigerante; producto = el gas (R-448A, R-410A…); cantidad = los kg de CARGA de gas (línea «Kg de carga de gas refrigerante…»), en kg, una sola vez. La línea de «Impuesto sobre gases fluorados» repite esa misma cantidad: NO la sumes. Reparaciones, soldadura, material y mano de obra no son consumo. Servicio puntual: periodoDesde = periodoHasta = fecha del servicio o del albarán.',
-  'Gas natural de red: en «Lecturas y consumos» el consumo puede venir en m3 y en kWh; usa los kWh (PCS si lo indica) y, si el consumo es 0, cantidad 0. El periodo es el de «Periodo de facturación».',
+  'Gas envasado (Repsol…): tipo = glp; cantidad = «Total Kg» de la tabla del impuesto (envases × kg), producto = Propano o Butano; ignora «Fianza envases». Entrega puntual: periodoDesde = periodoHasta = fecha de la operación.',
+  'Recarga de refrigerante: tipo = refrigerante; producto = el gas (R-448A…); cantidad = kg de CARGA de gas, una sola vez (el «Impuesto sobre gases fluorados» repite esa cantidad: no la sumes). Servicio puntual: periodoDesde = periodoHasta = fecha del servicio.',
+  'Gas natural de red: usa el consumo en kWh (PCS si lo indica) del «Periodo de facturación»; si es 0, cantidad 0.',
   'Fechas en formato AAAA-MM-DD. confianza baja (<0,8) si el documento es ilegible, está incompleto o dudas de la cantidad o del periodo.',
 ].join('\n');
 
@@ -97,7 +88,6 @@ export interface ResultadoLectura {
 
 /** Incidencias que pueden deberse a un error de lectura (y por tanto merecen un segundo intento con el modelo mayor). */
 const CODIGOS_DE_LECTURA = new Set([
-  'cups_invalido',
   'cantidad', 'unidad', 'periodo', 'periodo_invertido', 'tipo_distinto', 'unidad_incoherente', 'unidad_gas', 'confianza_baja', 'periodo_largo', 'tipo_otro',
 ]);
 
@@ -121,33 +111,21 @@ const nLectura = (i: Incidencia[]) => i.filter((x) => CODIGOS_DE_LECTURA.has(x.c
 
 /** Deja el contador en forma normalizada (CUPS sin caracteres de control, mayúsculas) para poder compararlo. */
 const RE_CUPS = /ES\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?[A-Z]{2}/gi;
-/** Interpreta la cadena «CUPS=…; contador=…; …» que devuelve la lectura. */
-export function parsearSuministro(t?: string): Partial<ExtraccionFactura> {
-  const out: Record<string, string> = {};
-  const claves: Record<string, keyof ExtraccionFactura> = { cups: 'cups', contador: 'numeroContador', direccion: 'direccionSuministro' };
-  for (const parte of (t ?? '').split(/[;\n]/)) {
-    const m = /^\s*([a-záéíóú]+)\s*[=:]\s*(.+?)\s*$/i.exec(parte);
-    const k = m && claves[m[1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')];
-    if (k && m![2] && !/^(no consta|—|-|n\/a)$/i.test(m![2])) out[k] = m![2];
-  }
-  return out as Partial<ExtraccionFactura>;
-}
-const limpiar = (e0: ExtraccionFactura & { suministro?: string }, texto?: string, conocidos: string[] = []): { e: ExtraccionFactura; avisos: Incidencia[] } => {
-  const { suministro, ...resto } = e0;
-  const e: ExtraccionFactura = { ...resto, ...parsearSuministro(suministro) };
+/**
+ * Controles posteriores a la lectura (sin IA, instantáneos): el CUPS se valida con sus letras de control y se corrige si una cifra del escaneo está mal.
+ * Si la factura tiene texto y la lectura no trajo CUPS, se toma el único CUPS del texto.
+ */
+const limpiar = (e0: ExtraccionFactura, texto?: string, conocidos: string[] = []): { e: ExtraccionFactura; avisos: Incidencia[] } => {
+  const e: ExtraccionFactura = { ...e0 };
   const avisos: Incidencia[] = [];
-  // CUPS: si la lectura no lo trae y el texto de la factura tiene uno solo, se toma de ahí
-  if (!e.cups && texto) { const u = [...new Set((texto.match(RE_CUPS) ?? []).map((x) => normalizarContador(x)))]; if (u.length === 1) e.cups = u[0]; }
-  let cups = normalizarContador(e.cups) || undefined;
-  // El CUPS lleva 2 letras de control: una cifra mal leída en un escaneo se detecta y, si la corrección es única, se corrige
-  if (cups && cupsValido(cups) === false) {
-    const r = repararCups(cups, conocidos);
-    if (r.corregido) { avisos.push({ gravedad: 'aviso', codigo: 'cups_corregido', mensaje: `El CUPS leído (${r.leido}) no cumple su dígito de control; se ha corregido a ${r.cups}. Compruébelo con la factura.` }); cups = r.cups; }
-    else avisos.push({ gravedad: 'aviso', codigo: 'cups_invalido', mensaje: `El CUPS leído (${cups}) no cumple su dígito de control${r.ambiguo ? ' y hay varias correcciones posibles' : ''}: revíselo con la factura para que se agrupe bien con su suministro.` });
+  let id = normalizarContador(e.contador) || undefined;
+  if (!id && texto) { const u = [...new Set((texto.match(RE_CUPS) ?? []).map((x) => normalizarContador(x)))]; if (u.length === 1) id = u[0]; }
+  if (id && cupsValido(id) === false) {
+    const r = repararCups(id, conocidos);
+    if (r.corregido) { avisos.push({ gravedad: 'aviso', codigo: 'cups_corregido', mensaje: `El CUPS leído (${r.leido}) no cumple su dígito de control; se ha corregido a ${r.cups}. Compruébelo con la factura.` }); id = r.cups; }
+    else avisos.push({ gravedad: 'aviso', codigo: 'cups_dudoso', mensaje: `El CUPS leído (${id}) no cumple su dígito de control${r.ambiguo ? ' y hay varias correcciones posibles' : ''}: revíselo con la factura para que se agrupe bien con su suministro.` });
   }
-  const contador = cups ?? (normalizarContador(e.contador) || undefined); // el CUPS identifica el suministro; si no consta, lo que figure como contador
-  if (cups) e.cups = cups; else delete e.cups;
-  if (contador) e.contador = contador; else delete e.contador;
+  if (id) e.contador = id; else delete e.contador;
   return { e, avisos };
 };
 

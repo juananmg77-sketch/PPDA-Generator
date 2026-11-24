@@ -1146,7 +1146,7 @@ const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Docu
 };
 
 const MAX_BYTES = 5 * 1024 * 1024;
-const PARALELO = 3;
+const PARALELO = 6;
 
 interface Tarea { id: number; nombre: string; estado: 'espera' | 'subiendo' | 'leyendo' | 'listo' | 'error'; msg?: string }
 
@@ -1371,21 +1371,40 @@ const PanelFacturas: React.FC<{
           const mios = utiles.filter((d) => suministroDe([sm], { ...d.extraccion })?.id === sm.id);
           const meses = new Set<number>(); let kwh = 0; let ud = '';
           for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
-          return { sm, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
+          return { sm, mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string, tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
         }).sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
+        // Controles posteriores a la lectura: dar nombre a un suministro y unir dos identificadores que son el mismo (p. ej. CUPS y nº de contador)
+        const nombrar = async (mios: Documento[], actual?: string) => {
+          const n = prompt('Nombre o dirección de este suministro (p. ej. «Av. México 1 – GAS COCINA»):', actual ?? '');
+          if (n == null) return;
+          try { for (const d of mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: n.trim() || undefined } }); onCambio(); } catch (e) { falla(e); }
+        };
+        const unir = async (destino: string, origen: typeof filas[number]) => {
+          const d0 = filas.find((f) => f.sm.id === destino); if (!d0) return;
+          if (!confirm(`¿Unir «${origen.sm.direccion ?? origen.sm.id}» con «${d0.sm.direccion ?? d0.sm.id}»? Serán un solo suministro (mismo CUPS o contador).`)) return;
+          try { for (const d of origen.mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, cups: d0.sm.cups ?? d0.sm.id, direccionSuministro: d.extraccion?.direccionSuministro ?? d0.sm.direccion } }); onCambio(); } catch (e) { falla(e); }
+        };
         return (
           <details className={`${card} group`} open>
             <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Las facturas se agrupan solas por suministro (CUPS, contador y dirección de suministro)</span></summary>
-            <ul className="mt-3 divide-y divide-slate-100">{filas.map(({ sm, n, meses, kwh, ud, centro, tipo: tp }) => (
+            <ul className="mt-3 divide-y divide-slate-100">{filas.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
                   <p className="text-sm font-bold text-slate-900">{sm.direccion ?? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural')} <span className="text-[11px] font-normal text-slate-500">· {tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} · {centro}</span></p>
                   <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
+                {puedeEliminar && (
+                  <div className="basis-full flex flex-wrap items-center gap-2 text-[11px]">
+                    <button className={btnS} onClick={() => nombrar(fila.mios, sm.direccion)}><Pencil size={12} /> {sm.direccion ? 'Cambiar nombre' : 'Poner nombre o dirección'}</button>
+                    {filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).length > 0 && (
+                      <select className="border border-slate-300 rounded-lg px-2 py-1.5 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro"><option value="">Es el mismo que…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-0.5" aria-label={`Meses con factura: ${meses.size} de 12`}>{NOMBRES_MES.map((m, i) => <span key={m} title={m} className={`w-4 h-5 rounded-sm text-[8px] leading-5 text-center ${meses.has(i) ? 'bg-green-500 text-white' : 'bg-red-100 text-red-700'}`}>{m[0].toUpperCase()}</span>)}</div>
               </li>
-            ))}</ul>
+            ); })}</ul>
           </details>
         );
       })()}

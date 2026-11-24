@@ -1293,6 +1293,13 @@ const PanelFacturas: React.FC<{
     setSel(new Set()); setCargando(false); onCambio();
     if (fallos.length) falla(`No se pudieron confirmar ${fallos.length} facturas:\n${fallos.join('\n')}`);
   };
+  /** Sin errores, sin avisos y con consumo: se puede validar con un solo clic, sin abrir la revisión. */
+  const sinIncidencias = (d: Documento) => { const ev = evaluadas.get(d.id); return !!ev?.listo && !ev.avisos && !ev.errores && !ev.sinFuente && ev.e.cantidad !== 0; };
+  const validarUna = async (d: Documento) => {
+    const ev = evaluadas.get(d.id); if (!ev || !abierto) return;
+    setCargando(true);
+    try { await confirmarDocumento(d, ev.e, ev.fuente, inv); onCambio(); } catch (x) { falla(x); } finally { setCargando(false); }
+  };
   const alternar = (id: string) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
@@ -1435,6 +1442,7 @@ const PanelFacturas: React.FC<{
                         <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.e.cantidad === 0 ? <span className="text-amber-700 font-semibold">Consumo cero · validar</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
                         <td className="text-right whitespace-nowrap">
                           <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
+                          {abierto && sinIncidencias(d) && <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-50 mr-1" disabled={cargando} title="Sin incidencias: validar sin revisar" aria-label={`Validar ${d.nombre_archivo}`} onClick={() => void validarUna(d)}><CheckCircle2 size={14} /> Validar</button>}
                           <button className={btnS} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>
                           {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}
                         </td>

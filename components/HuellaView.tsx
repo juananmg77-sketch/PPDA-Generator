@@ -28,7 +28,7 @@ import type { DatosInforme } from '../huella/informe';
 import { informeAHtml } from '../huella/informeHtml';
 import { generarInformePdf } from '../huella/informePdf';
 import { emisionesMensuales } from '../huella/graficos';
-import { fmt, fmtLibre, fmtOpc } from '../huella/formato';
+import { fmt, fmtLibre, fmtOpc, leerNumeroEs } from '../huella/formato';
 import { resumenDeLectura } from '../huella/lecturaInformeBase';
 import { huellaService, EvaluacionDB, FilaBiblioteca, Verificacion, Actividad, Centro, CierreDatos, Documento, Exclusion, Inventario, InventarioCentro, NoConformidad, Organizacion } from '../services/huellaService';
 import { cargarConjunto, diferencias, gasesOficiales, VERSIONES, ConjuntoElegido } from '../huella/catalogo';
@@ -1513,7 +1513,7 @@ const Revision: React.FC<{
           <datalist id={`contadores-${doc.id}`}>{conocidos.map((c) => <option key={c} value={c} />)}</datalist></label>
         <label className="text-xs font-semibold text-slate-600">Desde<input type="date" className={`${input} mt-1`} value={e.periodoDesde ?? ''} onChange={(ev) => set('periodoDesde', ev.target.value || undefined)} /></label>
         <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" className={`${input} mt-1`} value={e.periodoHasta ?? ''} onChange={(ev) => set('periodoHasta', ev.target.value || undefined)} /></label>
-        <label className="text-xs font-semibold text-slate-600">Cantidad<input type="number" min={0} step="any" className={`${input} mt-1`} value={e.cantidad ?? ''} onChange={(ev) => set('cantidad', ev.target.value === '' ? undefined : Number(ev.target.value))} /></label>
+        <label className="text-xs font-semibold text-slate-600">Cantidad<input type="number" min={0} step="any" className={`${input} mt-1`} value={e.cantidad ?? ''} onChange={(ev) => set('cantidad', ev.target.value === '' ? undefined : Number(ev.target.value))} /><span className="block text-[10px] font-normal text-slate-500 mt-0.5">{typeof e.cantidad === 'number' ? `Se guardará: ${e.cantidad.toLocaleString('es-ES', { maximumFractionDigits: 3 })} ${e.unidad ?? ''}` : ' '}</span></label>
         <label className="text-xs font-semibold text-slate-600">Unidad<input className={`${input} mt-1`} value={e.unidad ?? ''} onChange={(ev) => set('unidad', ev.target.value)} placeholder="kWh, kWh PCS, l, kg" /></label>
         {e.tipo === 'electricidad' ? (
           <label className="text-xs font-semibold text-slate-600 col-span-2">Origen de la electricidad
@@ -1603,7 +1603,10 @@ const TablaLineas: React.FC<{
   const guardarManual = async (a: Actividad) => {
     setGuardando(true);
     try {
-      await huellaService.actualizarActividad(a.id, { cantidad: Number(m.cantidad.replace(',', '.')), contador: m.contador.trim() || null, notas: m.notas.trim() || null, periodo_desde: m.desde || null, periodo_hasta: m.hasta || null });
+      const q = leerNumeroEs(m.cantidad);
+      if (q.valor == null || q.valor < 0) { falla('La cantidad no es un número válido.'); return; }
+      if (q.ambiguo && !confirm(`«${m.cantidad}» se interpreta como ${q.valor.toLocaleString('es-ES')} (el punto es de miles). Si quería ${m.cantidad.replace('.', ',')} (con decimales), cancele y escríbalo con coma. ¿Guardar ${q.valor.toLocaleString('es-ES')}?`)) return;
+      await huellaService.actualizarActividad(a.id, { cantidad: q.valor, contador: m.contador.trim() || null, notas: m.notas.trim() || null, periodo_desde: m.desde || null, periodo_hasta: m.hasta || null });
       setEditando(null); onCambio();
     } catch (e) { falla(e); } finally { setGuardando(false); }
   };
@@ -1730,7 +1733,7 @@ const TablaLineas: React.FC<{
                   : (
                     <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <label className="text-xs font-semibold text-slate-600">Cantidad ({ud || 'unidad'})<input inputMode="decimal" className={`${input} mt-1`} value={m.cantidad} onChange={(e) => setM({ ...m, cantidad: e.target.value })} /></label>
+                        <label className="text-xs font-semibold text-slate-600">Cantidad ({ud || 'unidad'})<input inputMode="decimal" className={`${input} mt-1`} value={m.cantidad} onChange={(e) => setM({ ...m, cantidad: e.target.value })} /><span className="block text-[10px] font-normal text-slate-500 mt-0.5">{(() => { const q = leerNumeroEs(m.cantidad); return q.valor == null ? 'Escriba la cantidad: coma para decimales (25,765), punto para miles (25.765)' : `Se guardará: ${q.valor.toLocaleString('es-ES', { maximumFractionDigits: 3 })} ${ud}`; })()}</span></label>
                         <label className="text-xs font-semibold text-slate-600">Contador / CUPS<input className={`${input} mt-1`} value={m.contador} onChange={(e) => setM({ ...m, contador: e.target.value })} /></label>
                         <label className="text-xs font-semibold text-slate-600">Desde<input type="date" className={`${input} mt-1`} value={m.desde} onChange={(e) => setM({ ...m, desde: e.target.value })} /></label>
                         <label className="text-xs font-semibold text-slate-600">Hasta<input type="date" className={`${input} mt-1`} value={m.hasta} onChange={(e) => setM({ ...m, hasta: e.target.value })} /></label>

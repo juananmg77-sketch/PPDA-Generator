@@ -60,6 +60,7 @@ const INSTRUCCIONES_BASE = [
   'Gas envasado (Repsol…): tipo = glp; cantidad = «Total Kg» de la tabla del impuesto (envases × kg), producto = Propano o Butano; ignora «Fianza envases». Entrega puntual: periodoDesde = periodoHasta = fecha de la operación.',
   'Recarga de refrigerante: tipo = refrigerante; producto = el gas (R-448A…); cantidad = kg de CARGA de gas, una sola vez (el «Impuesto sobre gases fluorados» repite esa cantidad: no la sumes). Servicio puntual: periodoDesde = periodoHasta = fecha del servicio.',
   'Gas natural de red: usa el consumo en kWh (PCS si lo indica) del «Periodo de facturación»; si es 0, cantidad 0.',
+  'Números en formato español: el punto separa miles y la coma los decimales. «25,765 kWh» son 25,765 (veinticinco con setecientos sesenta y cinco milésimas), NO veinticinco mil; «20.005,670» es 20005,67. Endesa usa tres decimales. Si el importe es de pocas decenas de euros, el consumo no puede ser de miles de kWh: revisa dónde va la coma.',
   'Fechas en formato AAAA-MM-DD. confianza baja (<0,8) si el documento es ilegible, está incompleto o dudas de la cantidad o del periodo.',
 ].join('\n');
 

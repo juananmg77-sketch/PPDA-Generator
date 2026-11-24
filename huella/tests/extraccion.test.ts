@@ -178,3 +178,10 @@ test('misma cantidad y periodo que otra factura: solo aviso (no bloquea) y desap
   assert.ok(!inc.some((i) => i.gravedad === 'error'));
   assert.ok(!validarExtraccion({ ...e, noDuplicada: true }, { ...ctx, existentes: [previa] }).some((i) => i.codigo === 'duplicada'));
 });
+
+test('cantidad en miles en lugar de decimales: un precio por kWh imposible bloquea (25.765 kWh con 41,66 €)', () => {
+  const e: ExtraccionFactura = { tipo: 'gas_natural', proveedor: 'Endesa', contador: 'ES0238330000167922NX', periodoDesde: '2024-10-22', periodoHasta: '2024-11-21', cantidad: 25765, unidad: 'kWh PCS', importe: 41.66, confianza: 0.95 };
+  assert.ok(validarExtraccion(e, ctx).some((i) => i.codigo === 'cantidad_miles' && i.gravedad === 'error'));
+  assert.ok(!validarExtraccion({ ...e, cantidad: 25.765 }, ctx).some((i) => i.codigo === 'cantidad_miles'));
+  assert.ok(!validarExtraccion({ ...e, cantidad: 20005.67, importe: 1249.53 }, ctx).some((i) => i.codigo === 'cantidad_miles')); // factura normal
+});

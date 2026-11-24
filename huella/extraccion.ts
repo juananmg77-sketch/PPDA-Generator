@@ -150,6 +150,11 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
   const cero = e.cantidad === 0;
   if (cero) add('aviso', 'cantidad_cero', 'Consumo cero en el periodo: confirme que la factura no tiene consumo (p. ej. temporada cerrada) y que no es un error de lectura.');
   if (!e.unidad && !cero) add('error', 'unidad', 'Falta la unidad de la cantidad.');
+  // Cantidad en miles en lugar de decimales («25,765» leído como 25.765): con importe y kWh, un precio por kWh imposible lo delata
+  if ((e.tipo === 'electricidad' || e.tipo === 'gas_natural') && typeof e.importe === 'number' && e.importe > 0 && typeof e.cantidad === 'number' && e.cantidad >= 100 && /kwh/i.test(e.unidad ?? '')) {
+    const pk = e.importe / e.cantidad;
+    if (pk < 0.01) add('error', 'cantidad_miles', `La cantidad (${e.cantidad.toLocaleString('es-ES')}) con un importe de ${e.importe.toLocaleString('es-ES')} € sale a ${pk.toFixed(4)} €/kWh, un precio imposible. ¿Será ${(e.cantidad / 1000).toLocaleString('es-ES')} kWh? En las facturas «25,765» son 25,765 (decimales) y «25.765» son veinticinco mil.`);
+  }
 
   // Unidad esperada según el tipo (el gas natural exige kWh PCS; con PCI o m3 hay que convertir con el dato de la factura)
   const u = normalizarUnidad(e.unidad);

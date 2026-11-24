@@ -35,3 +35,14 @@ test('el valor mostrado se puede usar como divisor del ratio', () => {
   assert.equal(comoSeMuestra(63.4654, 'plantilla'), 63.465);
   assert.equal(comoSeMuestra(1.005, 'tCO2e') * 100 % 1, 0);
 });
+
+test('números a mano en formato español: miles con punto, decimales con coma, y aviso cuando es ambiguo', async () => {
+  const { leerNumeroEs } = await import('../formato.ts');
+  assert.deepEqual(leerNumeroEs('1.234,5'), { valor: 1234.5, ambiguo: false });
+  assert.deepEqual(leerNumeroEs('25,765'), { valor: 25.765, ambiguo: false });
+  assert.deepEqual(leerNumeroEs('25.765'), { valor: 25765, ambiguo: true });
+  assert.deepEqual(leerNumeroEs('20.005,670'), { valor: 20005.67, ambiguo: false });
+  assert.deepEqual(leerNumeroEs('7531'), { valor: 7531, ambiguo: false });
+  assert.deepEqual(leerNumeroEs('12.5'), { valor: 12.5, ambiguo: false });
+  assert.equal(leerNumeroEs('abc').valor, null);
+});

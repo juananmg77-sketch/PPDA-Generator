@@ -67,3 +67,18 @@ export const conUnidad = (v: number | null | undefined, mag: Magnitud, unidad: s
 export function fmtMax(v: number | null | undefined, max = 2): string {
   return valido(v) ? formateador(0, max).format(v) : '—';
 }
+
+/**
+ * Interpreta un número escrito a mano en formato español: «1.234,5» = 1234,5; «25,765» = 25,765; «25.765» = 25765 (el punto con tres cifras detrás es de miles).
+ * Devuelve null si no es un número. `ambiguo` avisa cuando el texto admitía las dos lecturas (un punto seguido de exactamente tres cifras).
+ */
+export function leerNumeroEs(texto: string): { valor: number | null; ambiguo: boolean } {
+  const t = texto.trim().replace(/\s/g, '');
+  if (!t || !/^-?[\d.,]+$/.test(t)) return { valor: null, ambiguo: false };
+  let ambiguo = false; let x = t;
+  if (t.includes(',') && t.includes('.')) x = t.replace(/\./g, '').replace(',', '.');
+  else if (t.includes(',')) x = t.replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) { x = t.replace(/\./g, ''); ambiguo = true; }
+  const v = Number(x);
+  return { valor: Number.isFinite(v) ? v : null, ambiguo };
+}

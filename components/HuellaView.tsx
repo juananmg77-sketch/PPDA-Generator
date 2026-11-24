@@ -1320,12 +1320,19 @@ const PanelFacturas: React.FC<{
               <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
             {!abierto && <p className="text-xs text-amber-700 mt-2">El cálculo no está en borrador: no admite facturas nuevas.</p>}
-            {tareas.length > 0 && !cargando && !tareas.some((t) => t.estado === 'error') && (
-              <p className="mt-2 text-xs text-green-700 font-semibold"><CheckCircle2 size={13} className="inline mr-1" />{tareas.length} factura{tareas.length === 1 ? '' : 's'} leída{tareas.length === 1 ? '' : 's'}: revíselas en «Pendientes de revisar».</p>
-            )}
+            {tareas.length > 0 && !cargando && (() => {
+              const ok = tareas.filter((t) => t.estado === 'listo').length;
+              return (
+                <div className="mt-2 flex items-center gap-2 text-xs">
+                  {ok > 0 && pendientes.length > 0 && <p className="flex-1 text-green-700 font-semibold"><CheckCircle2 size={13} className="inline mr-1" />{ok} factura{ok === 1 ? '' : 's'} leída{ok === 1 ? '' : 's'}: revíselas en «Pendientes de revisar».</p>}
+                  {!(ok > 0 && pendientes.length > 0) && <span className="flex-1" />}
+                  <button className="text-slate-500 hover:text-slate-900 underline" onClick={() => setTareas([])}>Cerrar aviso</button>
+                </div>
+              );
+            })()}
             {tareas.length > 0 && (cargando || tareas.some((t) => t.estado === 'error')) && (
               <ul className="mt-3 divide-y divide-slate-100 border border-slate-200 rounded-xl text-xs max-h-48 overflow-auto">
-                {tareas.map((t) => (
+                {(cargando ? tareas : tareas.filter((t) => t.estado === 'error')).map((t) => (
                   <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
                     {t.estado === 'listo' ? <CheckCircle2 size={14} className="text-green-600" /> : t.estado === 'error' ? <XCircle size={14} className="text-red-600" /> : t.estado === 'espera' ? <span className="w-3.5 h-3.5 rounded-full border border-slate-300" /> : <Loader2 size={14} className="animate-spin text-brand-700" />}
                     <span className="flex-1 truncate text-slate-800">{t.nombre}</span>

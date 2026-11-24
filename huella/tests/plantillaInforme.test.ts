@@ -51,17 +51,25 @@ test('correspondencia con el 9.3.1: cada apartado Cumple / No cumple / No aplica
   assert.equal(est({ ...ok, verificado: true, verificacionCompleta: true }, 's').estado, 'Cumple');
   assert.equal(est({ ...ok, incidenciasIncertidumbre: 1 }, 'q').estado, 'No cumple');
 });
-test('resumen ejecutivo: tres conclusiones por reglas (fuente > 25 %, variación > 15 %, incertidumbre alta…) y hechos de relleno', () => {
-  const base = { anio: 2024, total: 100, cat1: 30, cat2: 70, porFuente: { Electricidad: 70, 'Gas natural': 20, R410A: 10 }, ratioEstancia: 0.01, ratioTrabajador: null, variacion: { pct: 20, anioRef: 2019, tipo: 'base' as const }, incertidumbre: { pct: 25, valoracion: 'Alta', principal: 'Gas natural' }, pendientes: 2 };
+test('conclusiones: siempre valoran (evolución frente al año base, fuentes de mayor a menor, cambios por fuente, intensidad) y no incluyen avisos internos', () => {
+  const ref = { anio: 2023, tipo: 'base' as const, total: 120, ratioEstancia: 0.012, ratioTrabajador: null };
+  const base = { anio: 2024, total: 100, cat1: 30, cat2: 70, porFuente: { 'Gas natural': 20, Electricidad: 70, R410A: 10 }, ratioEstancia: 0.01, ratioTrabajador: null, variacion: { pct: -16.7, anioRef: 2023, tipo: 'base' as const }, incertidumbre: { pct: 4, valoracion: 'Baja', principal: 'Gas natural' }, pendientes: 2, ref, cambiosFuente: [{ fuente: 'Electricidad', actual: 70, ref: 85 }, { fuente: 'Combustibles', actual: 20, ref: 15 }, { fuente: 'Fugitivas', actual: 10, ref: 20 }] };
   const c = conclusiones(base);
-  assert.equal(c.length, 3);
-  assert.match(c[0], /«Electricidad» concentra el 70,0 %/); assert.match(c[1], /aumentan un 20,0 % respecto al año base \(2019\)/); assert.match(c[2], /incertidumbre combinada es alta/);
-  // sin nada llamativo siempre salen tres, con hechos
-  const calma = conclusiones({ ...base, porFuente: { A: 20, B: 20, C: 20, D: 20, E: 20 }, cat1: 50, cat2: 50, variacion: { pct: 5, anioRef: 2023, tipo: 'anterior' }, incertidumbre: { pct: 3, valoracion: 'Baja', principal: null }, pendientes: 0 });
-  assert.equal(calma.length, 3); assert.ok(calma.every((x) => !/NaN|undefined|null/.test(x)));
-  assert.match(conclusiones({ ...base, variacion: { pct: -30, anioRef: 2023, tipo: 'anterior' }, porFuente: { A: 20, B: 20, C: 20, D: 20, E: 20 } }).join(' '), /disminuyen un 30,0 % respecto al año anterior \(2023\)/);
+  assert.equal(c.length, 4);
+  assert.match(c[0], /Evolución: en 2024 se emiten 100,00 t CO₂e/); assert.match(c[0], /Frente al año base \(2023: 120,00 t\) bajan 20,00 t \(−16,7 %\): evolución claramente favorable/);
+  assert.match(c[1], /de mayor a menor: Electricidad \(70,0 %, 70,00 t\); Gas natural \(20,0 %/); assert.match(c[1], /«Electricidad» supera el umbral/);
+  assert.match(c[2], /la que más aumenta es «Combustibles» \(\+5,00 t, \+33,3 %\) y la que más disminuye es «Electricidad» \(−15,00 t, −17,6 %\)/);
+  assert.match(c[3], /Intensidad: 0,01 t CO₂e por estancia \(0,012 en 2023; −16,7 %, mejora\)/);
+  assert.ok(!c.some((x) => /pendiente|por resolver/i.test(x))); // los avisos internos no van en las conclusiones
+  // empeora / estable
+  assert.match(conclusiones({ ...base, total: 140, variacion: { pct: 16.7, anioRef: 2023, tipo: 'base' } })[0], /suben 20,00 t \(\+16,7 %\): evolución claramente desfavorable/);
+  assert.match(conclusiones({ ...base, total: 121 })[0], /estable/);
+  // sin año base: lo dice y no inventa valoración
+  const sin = conclusiones({ ...base, ref: null, variacion: null, cambiosFuente: [] });
+  assert.match(sin[0], /No hay año base ni año anterior/); assert.ok(sin.every((x) => !/NaN|undefined|null/.test(x)));
   assert.deepEqual(fuentesPrincipales(base.porFuente, 100, 2).map((x) => x.fuente), ['Electricidad', 'Gas natural']);
-  assert.equal(conclusiones({ ...base, variacion: null, pendientes: 0 }, { fuentePct: 80 }).some((x) => /concentra/.test(x)), false); // umbral configurable
+  // incertidumbre alta se destaca
+  assert.ok(conclusiones({ ...base, incertidumbre: { pct: 25, valoracion: 'Alta', principal: 'Gas natural' } }).some((x) => /Calidad del dato/.test(x)));
 });
 test('cláusula de confidencialidad configurable; por defecto, datos del cliente y metodología de HS Consulting Group', () => {
   assert.match(CONFIDENCIALIDAD_POR_DEFECTO, /pertenecen a la organización cliente/); assert.match(CONFIDENCIALIDAD_POR_DEFECTO, /metodología, el formato y el diseño.*HS CONSULTING GROUP/);

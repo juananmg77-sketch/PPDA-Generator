@@ -83,3 +83,10 @@ test('solo se comparan fuentes comparables: un tipo ausente en un año no da -10
   assert.ok(c.fuentes.find((x) => x.concepto === 'Electricidad')!.vsBase != null);
   assert.deepEqual(c.noComparables.sort(), ['Combustibles en instalaciones fijas', 'Combustibles en vehículos']);
 });
+
+test('cambio de límites: un centro con otras mayúsculas, acentos o espacios sigue siendo el mismo', () => {
+  const base = r(2023, { centros: ['ASTORIA PLAYA', 'Hotel  Mar-Azul'] }), act = r(2024, { centros: ['Astoria Playa', 'Hotel Mar Azul'] });
+  assert.deepEqual(evaluarRecalculo(base, act, CONFIG_RECALCULO_POR_DEFECTO, null).disparadores.filter((d) => d.regla === 'limites'), []);
+  const nuevo = evaluarRecalculo(base, r(2024, { centros: ['Astoria Playa', 'Hotel Nuevo'] }), CONFIG_RECALCULO_POR_DEFECTO, null).disparadores.find((d) => d.regla === 'limites');
+  assert.ok(nuevo && /Hotel Nuevo/.test(nuevo.detalle.join(' ')) && /Hotel\s+Mar-Azul/.test(nuevo.detalle.join(' ')));
+});

@@ -301,7 +301,7 @@ test('anexo D calculado: «k» No cumple sin inventario del año base y Cumple c
   assert.equal(tabla(construirInforme(d)).find((x) => x[0] === 'k')![3], 'Cumple');
   assert.ok(tabla(sinBase).every((x) => ['Cumple', 'No cumple', 'No aplica'].includes(x[3])));
 });
-test('resumen ejecutivo visual: tarjetas de cifras clave, gráficos y tres conclusiones generadas', () => {
+test('resumen ejecutivo visual: tarjetas de cifras clave, gráficos y conclusiones generadas', () => {
   const m = construirInforme(base()); const r = m.resumen!;
   assert.equal(r.titulo, 'Resumen ejecutivo');
   const kpis = r.bloques[0] as { k: string; items: Array<{ titulo: string; valor: string; destacado?: boolean; sub?: string }> };
@@ -311,7 +311,7 @@ test('resumen ejecutivo visual: tarjetas de cifras clave, gráficos y tres concl
   assert.ok(kpis.items.every((x) => !/NaN|undefined|null/.test(`${x.valor}${x.sub ?? ''}`)));
   const graficos = r.bloques.filter((b) => b.k === 'grafico') as Array<{ titulo: string; svg: string }>;
   assert.equal(graficos.length, 2); assert.match(graficos[0].titulo, /Reparto de las emisiones por fuente/); assert.match(graficos[1].titulo, /Emisiones por categoría/); for (const g of graficos) assert.match(g.svg, /^<svg/);
-  const lista = r.bloques.find((b) => b.k === 'lista') as { items: string[] }; assert.equal(lista.items.length, 3); assert.ok(lista.items.every((x) => !/NaN|undefined|null/.test(x)));
+  const lista = r.bloques.find((b) => b.k === 'lista') as { items: string[] }; assert.ok(lista.items.length >= 3 && lista.items.length <= 4); assert.ok(lista.items.every((x) => !/NaN|undefined|null/.test(x)));
   // con año base, el segundo gráfico compara con él
   const act = resumenActual(); const d = base(); d.anioBase = { def: { anio: 2019, inventarioId: 'i0', justificacion: 'j' }, base: resBase(), anterior: null, actual: act, decision: { metodologiaCambiada: false, decision: null, motivo: null } };
   const g2 = (construirInforme(d).resumen!.bloques.filter((b) => b.k === 'grafico') as Array<{ titulo: string }>)[1]; assert.match(g2.titulo, /Comparación con el año base 2019/);

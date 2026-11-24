@@ -444,7 +444,10 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const t1 = iso.porCategoria[1] ?? 0, t2 = iso.porCategoria[2] ?? 0, totalT = iso.totalInventario;
   const ref = ab?.base ? { pct: variacionPct(totalT, ab.base.total), anioRef: ab.base.anio, tipo: 'base' as const } : ab?.anterior ? { pct: variacionPct(totalT, ab.anterior.total), anioRef: ab.anterior.anio, tipo: 'anterior' as const } : null;
   const principales = fuentesPrincipales(Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), totalT, 5);
-  const concl = conclusiones({ anio, total: totalT, cat1: t1, cat2: t2, porFuente: Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), ratioEstancia: indiceTotal > 0 ? totalT / indiceTotal : null, ratioTrabajador: plantillaTotal > 0 ? totalT / plantillaTotal : null, variacion: ref, incertidumbre: { pct: inc.total.pct, valoracion: inc.total.valoracion, principal: inc.total.principal?.fuente ?? null }, pendientes: pendientes.length + bloqueantes.length }, d.resumen);
+const cmpRes = ab ? compararAnios(ab.base, ab.anterior, ab.actual) : null;
+  const refRes = ab?.base ?? ab?.anterior ?? null;
+  const cambiosFuente = cmpRes && refRes ? cmpRes.fuentes.map((x) => ({ fuente: x.concepto, actual: x.actual ?? 0, ref: (ab?.base ? x.base : x.anterior) ?? 0 })) : [];
+  const concl = conclusiones({ anio, total: totalT, cat1: t1, cat2: t2, porFuente: Object.fromEntries(inc.porFuente.map((x) => [x.nombre, x.emision / 1000])), ratioEstancia: indiceTotal > 0 ? totalT / indiceTotal : null, ratioTrabajador: plantillaTotal > 0 ? totalT / plantillaTotal : null, variacion: ref, ref: refRes ? { anio: refRes.anio, tipo: ab?.base ? 'base' as const : 'anterior' as const, total: refRes.total, ratioEstancia: ratioEstancia(refRes), ratioTrabajador: ratioTrabajador(refRes) } : null, cambiosFuente, incertidumbre: { pct: inc.total.pct, valoracion: inc.total.valoracion, principal: inc.total.principal?.fuente ?? null }, pendientes: pendientes.length + bloqueantes.length }, d.resumen);
   const refAnio = ab?.base ?? ab?.anterior ?? null;
   const segundoGrafico: Bloque = refAnio
     ? { k: 'grafico', titulo: `Comparación con ${ab?.base ? 'el año base' : 'el año anterior'} ${refAnio.anio} (t CO₂e)`, ...svgBarrasAgrupadas(['Emisiones directas', 'Energía importada', 'Total'], [

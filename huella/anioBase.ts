@@ -173,7 +173,10 @@ export function evaluarRecalculo(base: ResumenAnio | null, actual: ResumenAnio, 
   if (cfg.reglas.limites) {
     if (!base.centros || !actual.centros) noEvaluables.push('Cambio de límites: el año base no indica sus centros.');
     else {
-      const altas = actual.centros.filter((c) => !base.centros!.includes(c)), bajas = base.centros.filter((c) => !actual.centros!.includes(c));
+      // Un centro es el mismo aunque cambien las mayúsculas, los acentos, los espacios o la puntuación del nombre
+      const clave = (c: string) => c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+      const kb = new Set(base.centros.map(clave)), ka = new Set(actual.centros.map(clave));
+      const altas = actual.centros.filter((c) => !kb.has(clave(c))), bajas = base.centros.filter((c) => !ka.has(clave(c)));
       if (altas.length || bajas.length) disparadores.push({ regla: 'limites', titulo: 'Cambio de límites (alta o baja de centros)', detalle: [...altas.map((c) => `Alta de «${c}»`), ...bajas.map((c) => `Baja de «${c}»`)] });
     }
   }

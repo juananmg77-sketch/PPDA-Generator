@@ -1386,11 +1386,11 @@ const PanelFacturas: React.FC<{
         };
         return (
           <details className={`${card} group`} open>
-            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Las facturas se agrupan solas por suministro (CUPS, contador y dirección de suministro)</span></summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Agrupadas por CUPS o contador</span></summary>
             <ul className="mt-3 divide-y divide-slate-100">{filas.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900">{sm.direccion ?? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural')} <span className="text-[11px] font-normal text-slate-500">· {tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} · {centro}</span></p>
+                  <p className="text-sm font-bold text-slate-900">{sm.direccion ?? `${tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} (sin nombre)`} <span className="text-[11px] font-normal text-slate-500">· {sm.direccion ? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural') + ' · ' : ''}{centro}</span></p>
                   <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
@@ -1402,7 +1402,7 @@ const PanelFacturas: React.FC<{
                     )}
                   </div>
                 )}
-                <div className="flex gap-0.5" aria-label={`Meses con factura: ${meses.size} de 12`}>{NOMBRES_MES.map((m, i) => <span key={m} title={m} className={`w-4 h-5 rounded-sm text-[8px] leading-5 text-center ${meses.has(i) ? 'bg-green-500 text-white' : 'bg-red-100 text-red-700'}`}>{m[0].toUpperCase()}</span>)}</div>
+                <p className={`text-[11px] w-28 text-right ${meses.size === 12 ? 'text-green-700 font-semibold' : 'text-slate-500'}`} title={`Meses con factura: ${NOMBRES_MES.filter((_, i) => meses.has(i)).join(', ') || 'ninguno'}`}>{meses.size === 12 ? '12 meses completos' : `${meses.size} de 12 meses`}</p>
               </li>
             ); })}</ul>
           </details>

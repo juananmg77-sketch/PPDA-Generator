@@ -16,7 +16,7 @@ import { criteriosDe, declaracionConformidad, estadoEvaluacion, evaluarEvaluacio
 import { compararAnios, configRecalculo, evaluarRecalculo, ratioEstancia, ratioTrabajador, textoRecalculo } from './anioBase.ts';
 import type { AnioBaseDef, ConfigRecalculo, DecisionRecalculo, ResumenAnio } from './anioBase.ts';
 import type { CriteriosSignificancia, DeclaracionConformidad, Evaluacion, SubcategoriaPlantilla, TextosDeclaracion } from './significancia.ts';
-import { fmt, fmtOpc, comoSeMuestra } from './formato.ts';
+import { etiquetaConjunto, fmt, fmtOpc, comoSeMuestra } from './formato.ts';
 import { NOTAS_FUENTES, marcaFinal } from './notasFuentes.ts';
 
 export const VERSION_MOTOR = 'HS GREEN huella 1.0';
@@ -94,9 +94,6 @@ const ORIGEN: Record<string, string> = { red: 'Red', autoconsumo: 'Autoconsumo',
 
 /** Correspondencia entre el contenido obligatorio de la ISO 14064-1 (9.3.1) y los apartados de este informe. */
 export const CORRESPONDENCIA_ISO: Array<[string, string, string]> = APARTADOS_ISO;
-
-/** «calculadora-2024.1@2024» → «Calculadora 2024.1»: el identificador técnico no se muestra al lector. */
-export const etiquetaConjunto = (id: string): string => { const m = /^calculadora-(\d{4}(?:\.\d+)?)(?:@\d{4})?$/i.exec(id); return m ? `Calculadora ${m[1]}` : id; };
 
 export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const pendientes: string[] = [];

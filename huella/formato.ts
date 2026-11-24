@@ -82,3 +82,6 @@ export function leerNumeroEs(texto: string): { valor: number | null; ambiguo: bo
   const v = Number(x);
   return { valor: Number.isFinite(v) ? v : null, ambiguo };
 }
+
+/** «calculadora-2024.1@2024» → «Calculadora 2024.1»: el identificador técnico no se muestra al lector. */
+export const etiquetaConjunto = (id: string): string => { const m = /^calculadora-(\d{4}(?:\.\d+)?)(?:@\d{4})?$/i.exec(id); return m ? `Calculadora ${m[1]}` : id; };

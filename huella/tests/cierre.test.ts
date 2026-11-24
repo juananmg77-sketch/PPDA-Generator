@@ -183,7 +183,7 @@ test('año base en el cierre: sin definir, sin datos y regla de recálculo sin d
   const sin = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: disp, noEvaluables: [], incidencias: ['Se cumple una regla de recálculo del año base: hay que documentar si se recalcula o no.'] } } });
   assert.equal(sin.items.find((i) => i.codigo === 'recalculo_sin_decision')!.nivel, 'error'); assert.equal(sin.puedeCerrar, false);
   const con = evaluarCierre({ ...base, anioBase: { definido: true, conDatos: true, recalculo: { disparadores: disp, noEvaluables: ['Cambio de metodología: falta declarar.'], incidencias: [] } } });
-  assert.ok(cod(con).includes('recalculo_documentado')); assert.ok(cod(con).includes('recalculo_no_evaluable')); assert.ok(!cod(con).includes('recalculo_sin_decision'));
+  assert.ok(cod(con).includes('recalculo_documentado')); assert.ok(!cod(con).includes('recalculo_no_evaluable')); // no es accionable: se explica en el informe assert.ok(!cod(con).includes('recalculo_sin_decision'));
 });
 
 test('datos de la organización en el cierre: lo obligatorio que falta bloquea; los avisos de razón social no', () => {
@@ -269,12 +269,11 @@ test('duplicadas: nombres de archivo claramente distintos o «No es duplicada» 
   assert.equal(buscarDuplicada({ ...b, noDup: true }, [a, b]), undefined); // confirmada como no duplicada
 });
 
-test('cierre: identificadores erróneos, nombres de archivo problemáticos, recargas repetidas y año base incoherente salen como avisos', async () => {
-  const { contadoresDudosos, nombresProblematicos, posiblesRepetidasPuntuales, evaluarCierre } = await import('../cierre.ts');
+test('cierre: identificadores erróneos, recargas repetidas y año base incoherente salen como avisos', async () => {
+  const { contadoresDudosos, posiblesRepetidasPuntuales, evaluarCierre } = await import('../cierre.ts');
   const d = (o: Record<string, unknown>) => ({ estado: 'revisado' as const, tipo: 'electricidad', centro: 'C', ...o }) as unknown as import('../cierre.ts').DocCierre;
   const duda = contadoresDudosos([d({ id: 'a', idContador: 'ES0031500199603001ES' }), d({ id: 'b', idContador: 'ES0031500109960301ES' }), d({ id: 'c', tipo: 'gas_natural', idContador: 'REFERENCIA086163150041/0935' }), d({ id: 'd', idContador: '315001233' })]);
   assert.deepEqual(duda.map((x) => x.doc.id), ['b', 'c']); // un CUPS válido y un nº de contador corto no se marcan
-  assert.deepEqual(nombresProblematicos([d({ id: '1', nombre: '2024-01 Enero - Gas - falta 2a pagina.pdf' }), d({ id: '2', nombre: 'DUPLICADO - x.pdf' }), d({ id: '3', nombre: '2024-02 Febrero - Endesa Elec.pdf' })]).map((x) => x.id), ['1', '2']);
   const rec = (id: string, dia: string, kg: number) => d({ id, tipo: 'refrigerante', cantidad: kg, periodoDesde: dia, periodoHasta: dia });
   const recND = (id: string, dia: string, kg: number) => d({ id, tipo: 'refrigerante', cantidad: kg, periodoDesde: dia, periodoHasta: dia, noDuplicada: true });
   assert.equal(posiblesRepetidasPuntuales([rec('x', '2024-09-12', 30), rec('y', '2024-09-13', 30), rec('z', '2024-09-17', 24)]).length, 1); // 12 y 13 de septiembre, mismos 30 kg
@@ -283,4 +282,15 @@ test('cierre: identificadores erróneos, nombres de archivo problemáticos, reca
   const ent = { anio: 2024, docs: [rec('x', '2024-09-12', 30), rec('y', '2024-09-13', 30)], actividadConfirmada: 2, actividadManual: 0, fallosCalculo: 0, centrosSinIndice: [], factoresId: 'f', factoresFijados: true, estadoInventario: 'borrador', exclusiones: [], anioBase: { definido: true, conDatos: true, incoherencias: ['Las fuentes suman 533,94 t y el total es 531,94 t.'], recalculo: null } } as never;
   const codigos = evaluarCierre(ent).items.map((i: { codigo: string }) => i.codigo);
   assert.ok(codigos.includes('recarga_repetida')); assert.ok(codigos.includes('anio_base_incoherente'));
+});
+
+test('cierre: el gas envasado con distinto nº de factura en el nombre no es repetido; sin año anterior no se avisa si hay año base; los factores se muestran con nombre legible', async () => {
+  const { posiblesRepetidasPuntuales, evaluarCierre } = await import('../cierre.ts');
+  const g = (id: string, nombre: string) => ({ id, nombre, estado: 'revisado', tipo: 'glp', centro: 'C', cantidad: 66, periodoDesde: '2024-04-05', periodoHasta: '2024-04-05' }) as unknown as import('../cierre.ts').DocCierre;
+  assert.equal(posiblesRepetidasPuntuales([g('a', 'parte 4 - Fra 071840195271.pdf'), g('b', 'parte 2 - Fra 071840194907.pdf')]).length, 0);
+  assert.equal(posiblesRepetidasPuntuales([g('a', 'Fra 071840195271.pdf'), g('b', 'Fra 071840195271 (1).pdf')]).length, 1);
+  const ent = { anio: 2024, docs: [], actividadConfirmada: 1, actividadManual: 0, fallosCalculo: 0, centrosSinIndice: [], factoresId: 'calculadora-2024.1@2024', factoresFijados: true, estadoInventario: 'borrador', exclusiones: [], anioBase: { definido: true, conDatos: true, incoherencias: [], recalculo: { disparadores: [], noEvaluables: ['x'], incidencias: [] } } } as never;
+  const items = evaluarCierre(ent).items;
+  assert.ok(!items.some((i) => i.codigo === 'sin_anterior') && !items.some((i) => i.codigo === 'recalculo_no_evaluable'));
+  assert.ok(items.some((i) => /Factores fijados: Calculadora 2024\.1\./.test(i.mensaje)));
 });

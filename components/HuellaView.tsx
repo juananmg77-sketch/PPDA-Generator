@@ -2721,7 +2721,7 @@ const PanelCierre: React.FC<{
         <h2 className="text-sm font-bold text-slate-800 mb-3">Lista de comprobación previa al cierre</h2>
         {!evaluacion ? <p className="text-sm text-slate-600"><Loader2 size={14} className="inline animate-spin mr-2" />Calculando…</p> : (
           <>
-            <ul className="space-y-2">{evaluacion.items.map((i, k) => (
+            <ul className="space-y-2">{evaluacion.items.filter((i) => i.nivel !== 'ok').map((i, k) => (
               <li key={k} className="flex items-start gap-2 text-xs text-slate-800">{icono(i.nivel)}
                 <div className="flex-1 min-w-0">
                   <p>{i.mensaje}</p>
@@ -2751,6 +2751,12 @@ const PanelCierre: React.FC<{
                 </div>
               </li>
             ))}</ul>
+            {evaluacion.items.some((i) => i.nivel === 'ok') && (
+              <details className="mt-3 text-xs text-slate-600">
+                <summary className="cursor-pointer font-semibold text-green-800">{evaluacion.items.filter((i) => i.nivel === 'ok').length} comprobaciones correctas</summary>
+                <ul className="mt-2 space-y-1">{evaluacion.items.filter((i) => i.nivel === 'ok').map((i, k) => <li key={k} className="flex items-start gap-2">{icono(i.nivel)}<span>{i.mensaje}</span></li>)}</ul>
+              </details>
+            )}
             {abierto && docsSinOrigen.length > 0 && (
               <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
                 <p className="font-semibold mb-2">Garantía de origen de la electricidad: no consta en {docsSinOrigen.length} factura{docsSinOrigen.length === 1 ? '' : 's'}</p>

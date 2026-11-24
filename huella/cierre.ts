@@ -2,6 +2,7 @@
 import { variacionAnual } from './extraccion.ts';
 import { agruparPorTipoYContador, mesesTocados, NOMBRES_MES } from './mensual.ts';
 import { cupsValido } from './cups.ts';
+import { etiquetaConjunto } from './formato.ts';
 
 export type Nivel = 'error' | 'aviso' | 'info' | 'ok';
 /** Dónde se resuelve cada comprobación: pestañas de la aplicación o tarjetas de la propia pantalla de cierre. */
@@ -185,14 +186,12 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   // Datos que, aun siendo válidos para el cálculo, estropean el informe o dan dudas al verificador
   const dudosos = contadoresDudosos(e.docs);
   if (dudosos.length > 0) add('aviso', 'contador_dudoso', `${dudosos.length} factura(s) con un identificador de suministro erróneo: no se agruparán bien y el verificador lo verá en el Anexo A.`, { ir: 'facturas', irEtiqueta: 'Corregir en Facturas', detalle: dudosos.map((x) => ({ docId: x.doc.id, texto: nom(x.doc), nota: x.motivo })) });
-  const nombres = nombresProblematicos(e.docs);
-  if (nombres.length > 0) add('aviso', 'nombre_archivo', `${nombres.length} factura(s) con un nombre de archivo que aparecería tal cual en el índice de evidencias del informe (contiene «falta», «duplicado», «copia»…): renómbrela y vuelva a subirla.`, { detalle: nombres.map((d) => ({ docId: d.id, texto: nom(d) })) });
   for (const g of posiblesRepetidasPuntuales(e.docs)) add('aviso', 'recarga_repetida', `Posible intervención contada dos veces: ${g.length} registros de ${g[0].tipo === 'refrigerante' ? 'refrigerante' : 'gas envasado'} con la misma cantidad (${Number(g[0].cantidad).toLocaleString('es-ES')}) en fechas ${g[0].tipo === 'refrigerante' ? 'contiguas' : 'iguales'}. Si son distintas, márquelas como «No es duplicada».`, { ir: 'facturas', irEtiqueta: 'Revisar en Facturas', detalle: g.map((d) => ({ docId: d.id, texto: nom(d), nota: `${d.periodoDesde}` })) });
   if ((e.anioBase?.incoherencias ?? []).length > 0) add('aviso', 'anio_base_incoherente', 'Las cifras del año base no cuadran entre sí.', { ir: 'anio_base', irEtiqueta: 'Revisar el año base', detalle: e.anioBase!.incoherencias!.map((texto) => ({ texto })) });
 
   // Variaciones frente al año anterior
   const umbral = e.umbralVariacion ?? 0.2;
-  if (!e.variaciones) add('info', 'sin_anterior', 'No hay cálculo del año anterior con el que comparar.');
+  if (!e.variaciones) { if (!e.anioBase?.conDatos) add('info', 'sin_anterior', 'No hay año base ni cálculo del año anterior con el que comparar.'); } // con año base, la comparación ya se hace con él
   else {
     const grandes = e.variaciones.map((m) => ({ ...m, ...variacionAnual(m.actual, m.anterior, umbral) })).filter((m) => m.analizar);
     if (grandes.length === 0) add('ok', 'variacion', 'Ninguna magnitud varía más del 20 % respecto al año anterior.');
@@ -219,7 +218,6 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
     if (a.recalculo) {
       if (a.recalculo.incidencias.length) add('error', 'recalculo_sin_decision', 'Se cumple una regla de recálculo del año base y falta documentar la decisión.', { detalle: [...a.recalculo.disparadores.flatMap((d) => d.detalle.map((t) => ({ texto: d.titulo, nota: t }))), ...a.recalculo.incidencias.map((texto) => ({ texto }))] , ir: 'recalculo', irEtiqueta: 'Documentar la decisión' });
       else if (a.recalculo.disparadores.length) add('info', 'recalculo_documentado', 'Se cumple una regla de recálculo del año base y la decisión está documentada.');
-      if (a.recalculo.noEvaluables.length) add('aviso', 'recalculo_no_evaluable', 'Reglas de recálculo no evaluables con los datos del año base (p. ej. no consta el mix eléctrico ni los PCA que usó): el informe no puede afirmar que no haya que recalcularlo.', { ir: 'anio_base', irEtiqueta: 'Completar el año base', detalle: a.recalculo.noEvaluables.map((texto) => ({ texto })) });
     }
   }
   if (e.cuadreIso && !e.cuadreIso.ok) add('error', 'cuadre_iso', 'Los resultados por gas o por categoría no cuadran con el total del inventario: no se puede cerrar ni entregar el informe.', { detalle: e.cuadreIso.incidencias.map((texto) => ({ texto })) });
@@ -231,7 +229,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   }
   if (e.ncAbiertas > 0) add('aviso', 'nc_abiertas', `${e.ncAbiertas} no conformidad(es) abierta(s).`);
 
-  add(e.factoresFijados ? 'ok' : 'info', 'factores', e.factoresFijados ? `Factores fijados: ${e.factoresId}.` : `Al cerrar se fijarán los factores ${e.factoresId} (no podrán cambiarse sin reabrir).`);
+  add(e.factoresFijados ? 'ok' : 'info', 'factores', e.factoresFijados ? `Factores fijados: ${etiquetaConjunto(e.factoresId)}.` : `Al cerrar se fijarán los factores ${etiquetaConjunto(e.factoresId)} (no podrán cambiarse sin reabrir).`);
 
   return { items, puedeCerrar: !items.some((i) => i.nivel === 'error') };
 }
@@ -273,10 +271,6 @@ export function contadoresDudosos(docs: DocCierre[]): Array<{ doc: DocCierre; mo
   }
   return out;
 }
-/** Nombres de archivo que no deberían figurar tal cual en el índice de evidencias del informe («falta 2a página», «duplicado», «copia», «prueba»…). */
-export function nombresProblematicos(docs: DocCierre[]): DocCierre[] {
-  return docs.filter((d) => d.estado === 'revisado' && /\b(falta|duplicad[oa]|copia|prueba|test|borrar|provisional)\b/i.test(d.nombre ?? ''));
-}
 /**
  * Recargas de refrigerante (mismo gas y cantidad, con un día de diferencia o menos) y entregas de gas envasado (misma cantidad el mismo día) que pueden ser la misma intervención
  * contada dos veces (albarán y factura, o dos subidas). Es solo un aviso: los nombres de archivo pueden ser distintos.
@@ -288,6 +282,7 @@ export function posiblesRepetidasPuntuales(docs: DocCierre[]): DocCierre[][] {
   for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) {
     const a = v[i], b = v[j];
     if (a.tipo !== b.tipo || a.cantidad !== b.cantidad || (a.centro ?? '') !== (b.centro ?? '')) continue;
+    if (a.tipo === 'glp' && nombresMuyDistintos(a.nombre, b.nombre)) continue; // dos entregas con distinto nº de factura o «parte» no son la misma
     const gap = Math.abs(dia(a.periodoDesde!) - dia(b.periodoDesde!));
     if (gap > (a.tipo === 'refrigerante' ? 1 : 0)) continue;
     const g = grupos.find((x) => x.includes(a) || x.includes(b));

@@ -10,7 +10,7 @@ export interface DetalleCierre { texto: string; nota?: string; /** Factura concr
 export interface ItemCierre { nivel: Nivel; codigo: string; mensaje: string; /** Qué elementos concretos afecta. */ detalle?: DetalleCierre[]; /** Pantalla donde se resuelve. */ ir?: DestinoCierre; irEtiqueta?: string }
 
 export interface DocCierre {
-  verificado?: boolean; id?: string; nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
+  verificado?: boolean; noDuplicada?: boolean; id?: string; nombre?: string; centro?: string; estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; tipo: string; contador?: string | null; periodoDesde?: string | null; periodoHasta?: string | null; /** Garantía de origen de la electricidad indicada en la factura (si consta). */ origenElectricidad?: string | null; /** Cantidad leída de la factura (en su unidad). */ cantidad?: number | null }
 export interface MagnitudCierre { nombre: string; actual: number; anterior: number }
 
 export interface EntradaCierre {
@@ -96,14 +96,33 @@ export function huecosMensuales(docs: DocCierre[], anio: number): Array<{ tipo: 
 }
 
 /** Facturas confirmadas que repiten periodo y cantidad de otra del mismo centro y tipo (aunque el contador esté escrito distinto): se contarían dos veces. */
+
+const PALABRAS_COPIA = new Set(['copia', 'copy', 'duplicado', 'duplicada', 'dup', 'repetida', 'repetido']);
+const palabrasNombre = (n: string) => new Set(n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\.[a-z0-9]{2,4}$/, '').split(/[^a-z0-9]+/).filter((w) => w && !PALABRAS_COPIA.has(w) && !/^\d$/.test(w)));
+/**
+ * Nombres de archivo claramente distintos (otro contrato, otra «parte», otro nº de factura, o casi ninguna palabra en común):
+ * no se tratan como la misma factura. Una marca de copia («DUPLICADO», «copia», «(1)») no cuenta como diferencia.
+ */
+export function nombresMuyDistintos(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const A = palabrasNombre(a), B = palabrasNombre(b);
+  if (!A.size || !B.size) return false;
+  const comunes = [...A].filter((w) => B.has(w)).length;
+  const union = new Set([...A, ...B]).size;
+  const distintas = [...A, ...B].filter((w) => !(A.has(w) && B.has(w)));
+  const difiereNumero = distintas.some((w) => /\d{3,}/.test(w)) || distintas.some((w) => /^(primera|segunda|tercera|parte|p\d)$/.test(w)) ;
+  return difiereNumero || comunes / union < 0.6;
+}
+
 export function facturasDuplicadas(docs: DocCierre[]): DocCierre[][] {
   const m = new Map<string, DocCierre[]>();
-  const validas = docs.filter((d) => d.estado === 'revisado' && d.periodoDesde && d.periodoHasta && Number(d.cantidad) > 0);
+  const validas = docs.filter((d) => d.estado === 'revisado' && !d.noDuplicada && d.periodoDesde && d.periodoHasta && Number(d.cantidad) > 0);
   for (const d of validas) {
     const k = `${d.centro ?? ''}|${d.tipo}|${d.periodoDesde}|${d.periodoHasta}|${d.cantidad}`;
     m.set(k, [...(m.get(k) ?? []), d]);
   }
-  const grupos = [...m.values()].filter((g) => g.length > 1);
+  // Dentro de cada grupo solo cuentan las facturas cuyo nombre no es claramente distinto del de otra del grupo
+  const grupos = [...m.values()].map((g) => g.filter((x) => g.some((y) => y !== x && !nombresMuyDistintos(x.nombre, y.nombre)))).filter((g) => g.length > 1);
   // Misma cantidad exacta y mismo suministro con periodos que se solapan (aunque uno esté mal leído o sin contador): también se contaría dos veces
   const enGrupo = new Set(grupos.flat());
   const nSum = new Map<string, Set<string>>();
@@ -113,7 +132,7 @@ export function facturasDuplicadas(docs: DocCierre[]): DocCierre[][] {
   for (let i = 0; i < validas.length; i++) for (let j = i + 1; j < validas.length; j++) {
     const a = validas[i], b = validas[j];
     if (enGrupo.has(a) && enGrupo.has(b)) continue;
-    if ((a.centro ?? '') !== (b.centro ?? '') || a.tipo !== b.tipo || a.cantidad !== b.cantidad || !mismoSum(a, b) || diasSolape(a, b) < 1) continue;
+    if ((a.centro ?? '') !== (b.centro ?? '') || a.tipo !== b.tipo || a.cantidad !== b.cantidad || nombresMuyDistintos(a.nombre, b.nombre) || !mismoSum(a, b) || diasSolape(a, b) < 1) continue;
     const g = grupos.find((x) => x.includes(a) || x.includes(b));
     if (g) { for (const x of [a, b]) if (!g.includes(x)) g.push(x); } else grupos.push([a, b]);
     enGrupo.add(a); enGrupo.add(b);
@@ -208,7 +227,7 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
   return { items, puedeCerrar: !items.some((i) => i.nivel === 'error') };
 }
 
-export interface EntradaDuplicada { id: string; estado: string; centro?: string | null; tipo: string; cantidad?: number | null; desde?: string | null; hasta?: string | null; contador?: string | null; creada?: string | null }
+export interface EntradaDuplicada { nombre?: string | null; noDup?: boolean; id: string; estado: string; centro?: string | null; tipo: string; cantidad?: number | null; desde?: string | null; hasta?: string | null; contador?: string | null; creada?: string | null }
 
 /**
  * Factura de la que `d` es copia: mismo centro y tipo, misma cantidad exacta (mayor que 0), periodos que se solapan y mismo contador
@@ -216,12 +235,13 @@ export interface EntradaDuplicada { id: string; estado: string; centro?: string 
  * sea cual sea el proveedor o el nombre del archivo. Solo se marca la más reciente (o la pendiente si la otra ya está confirmada), para que la original no quede marcada.
  */
 export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]): EntradaDuplicada | undefined {
-  if (!(Number(d.cantidad) > 0) || !d.desde || !d.hasta) return undefined; // un consumo 0 coincide por casualidad entre suministros: no se compara
+  if (d.noDup || !(Number(d.cantidad) > 0) || !d.desde || !d.hasta) return undefined; // confirmada como no duplicada, o consumo 0 // un consumo 0 coincide por casualidad entre suministros: no se compara
   const dias = (a: string, b: string) => new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime();
   // Si el centro tiene varios suministros del mismo tipo, una factura sin contador puede ser de cualquiera: solo se compara con contador en ambas
   const contadores = new Set([d, ...otras].filter((x) => (x.centro ?? '') === (d.centro ?? '') && x.tipo === d.tipo && x.contador).map((x) => x.contador!.toUpperCase()));
   const variosSuministros = contadores.size > 1;
   return otras.find((x) => {
+    if (x.noDup || nombresMuyDistintos(d.nombre, x.nombre)) return false;
     if (variosSuministros && (!x.contador || !d.contador)) return false;
     if (x.id === d.id || x.estado === 'rechazado' || x.cantidad !== d.cantidad || !x.desde || !x.hasta) return false;
     if ((x.centro ?? '') !== (d.centro ?? '') || x.tipo !== d.tipo) return false;

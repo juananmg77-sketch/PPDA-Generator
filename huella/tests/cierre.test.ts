@@ -253,3 +253,18 @@ test('buscarDuplicada: un consumo 0 o dos suministros distintos no se toman por 
   assert.equal(buscarDuplicada({ ...sin, contador: 'ES0238330000091292SQ' }, [a, b]), undefined);
   assert.equal(buscarDuplicada({ ...sin, contador: 'ES0238330000167922NX' }, [a, b])?.id, 'a');
 });
+
+test('duplicadas: nombres de archivo claramente distintos o «No es duplicada» evitan la marca', async () => {
+  const { buscarDuplicada, nombresMuyDistintos } = await import('../cierre.ts');
+  assert.equal(nombresMuyDistintos('2024-04 Abril - Endesa Gas - Contrato 5226 - Primera parte.pdf', 'DUPLICADO - 2024-04 Abril - Endesa Gas - Contrato 5226 - Primera parte.pdf'), false);
+  assert.equal(nombresMuyDistintos('2024-01 Enero - Endesa Elec.pdf', '2024-01 Enero - Endesa Elec (1).pdf'), false);
+  assert.equal(nombresMuyDistintos('Gas - Contrato 0041.pdf', 'Gas - Contrato 5226.pdf'), true);
+  assert.equal(nombresMuyDistintos('Abril - Contrato 0041 - Primera parte.pdf', 'Abril - Contrato 0041 - Segunda parte.pdf'), true);
+  assert.equal(nombresMuyDistintos('Fra 071840195079.pdf', 'Fra 071840195080.pdf'), true);
+  assert.equal(nombresMuyDistintos(undefined, 'x.pdf'), false);
+  const a = { id: 'a', estado: 'leido', centro: 'C', tipo: 'gas_natural', cantidad: 25579, desde: '2024-03-20', hasta: '2024-04-02', contador: undefined, creada: '2026-11-24T09:00:00Z', nombre: 'Abril - Contrato 0041 - Primera parte.pdf' };
+  const b = { ...a, id: 'b', creada: '2026-11-24T09:10:00Z', nombre: 'DUPLICADO - Abril - Contrato 0041 - Primera parte.pdf' };
+  assert.equal(buscarDuplicada(b, [a, b])?.id, 'a');
+  assert.equal(buscarDuplicada({ ...b, nombre: 'Abril - Contrato 5226 - Primera parte.pdf' }, [a]), undefined); // otro contrato en el nombre
+  assert.equal(buscarDuplicada({ ...b, noDup: true }, [a, b]), undefined); // confirmada como no duplicada
+});

@@ -243,13 +243,14 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
       ['Total del inventario', fmt(inc.total.emision / 1000, 'tCO2e'), mpct(inc.total.pct), inc.total.valoracion ?? '—', inc.total.principal ? `${inc.total.principal.fuente} (${fmt(inc.total.principal.peso, 'porcentaje')} % de la varianza)` : '—'],
     ], numericas: [1, 2], pie: `Valoración cualitativa: Baja hasta ±${fmt(cfgInc.umbrales.baja, 'porcentaje')} %, Media hasta ±${fmt(cfgInc.umbrales.media, 'porcentaje')} %, Alta hasta ±${fmt(cfgInc.umbrales.alta, 'porcentaje')} %, Muy alta por encima.` },
     { k: 'p', texto: inc.total.pct != null ? `La incertidumbre combinada del inventario es de ${mpct(inc.total.pct)} (±${fmt(inc.total.absoluta / 1000, 'tCO2e')} t CO₂e sobre ${fmt(inc.total.emision / 1000, 'tCO2e')} t CO₂e), con un nivel de confianza del 95 %; su valoración cualitativa es ${String(inc.total.valoracion).toLowerCase()}.` : 'No se puede calcular la incertidumbre combinada: el inventario no tiene emisiones.' },
-    { k: 'tabla', cab: ['Fuente', 'Emisiones (t CO₂e)', 'Incertidumbre', 'Valoración'], filas: inc.porFuente.map((x) => [x.nombre, fmt(x.emision / 1000, 'tCO2e'), mpct(x.pct), x.valoracion ?? '—']), numericas: [1, 2] },
+    { k: 'p', texto: 'Cómo leer la tabla siguiente: cada consumo se mide con un margen de error que depende de su origen (una factura de la compañía es muy fiable; una estimación, mucho menos) y cada factor de emisión también tiene el suyo. Ambos márgenes se combinan en la incertidumbre de la fuente: cuanto menor es el porcentaje, más fiable es la cifra.' },
+    { k: 'tabla', cab: ['Fuente', 'Emisiones (t CO₂e)', 'Margen del consumo', 'Margen del factor de emisión', 'Incertidumbre de la fuente'], filas: inc.porFuente.map((x) => {
+      const ls = inc.lineas.filter((l) => l.fuente === x.nombre);
+      const rango = (f: (l: typeof ls[number]) => number) => { const v = ls.map(f); const mn = Math.min(...v), mx = Math.max(...v); return !ls.length ? '—' : mn === mx ? mpct(mn) : `±${fmt(mn, 'porcentaje')} a ±${fmt(mx, 'porcentaje')} %`; };
+      const origenes = [...new Set(ls.map((l) => ORIGENES_DATO[l.origen].toLowerCase()))].join(', ');
+      return [x.nombre, fmt(x.emision / 1000, 'tCO2e'), `${rango((l) => l.datoPct)}${origenes ? ` (${origenes})` : ''}`, rango((l) => l.factorPct), mpct(x.pct)];
+    }), numericas: [1], pie: 'Los márgenes se expresan con un nivel de confianza del 95 %. El margen de cada factor procede de las Directrices del IPCC 2006 y puede ajustarse por línea con su justificación.' },
     ...(ajustadas.length ? [{ k: 'tabla' as const, cab: ['Línea ajustada', 'Origen del dato', 'Dato', 'Factor', 'Justificación'], filas: ajustadas.map((x) => [x.fuente, ORIGENES_DATO[x.origen], mpct(x.datoPct), mpct(x.factorPct), x.justificacion ?? '—']), numericas: [2, 3], pie: 'Líneas cuya incertidumbre se ha ajustado respecto al catálogo.' }] : []),
-    { k: 'tabla', cab: ['Catálogo de incertidumbres por defecto', 'Incertidumbre'], filas: [
-      ...(Object.keys(cfgInc.dato) as Array<keyof typeof cfgInc.dato>).map((k) => [`Dato de actividad: ${ORIGENES_DATO[k].toLowerCase()}`, mpct(cfgInc.dato[k])]),
-      ['Factor de CO₂ de combustibles', mpct(cfgInc.factor.co2Combustible)], ['Factor de CH₄', mpct(cfgInc.factor.ch4)], ['Factor de N₂O', mpct(cfgInc.factor.n2o)], ['Mix eléctrico', mpct(cfgInc.factor.mixElectrico)],
-      ['PCA de gases puros', mpct(cfgInc.factor.pcaGasPuro)], ['PCA de mezclas', mpct(cfgInc.factor.pcaMezcla)],
-    ], numericas: [1] },
   ] };
 
   // ── 9

@@ -1370,12 +1370,22 @@ const PanelFacturas: React.FC<{
         const utiles = docs.filter((d) => d.estado !== 'rechazado' && d.extraccion && ['electricidad', 'gas_natural', 'glp', 'gasoleo'].includes((d.extraccion.tipo ?? d.tipo) as string));
         const sums = agruparSuministros(utiles.map((d) => ({ ...d.extraccion, tipo: (d.extraccion?.tipo ?? d.tipo) as string })));
         if (!sums.length) return null;
-        const filas = sums.map((sm) => {
+        const filasConId = sums.map((sm) => {
           const mios = utiles.filter((d) => suministroDe([sm], { ...d.extraccion })?.id === sm.id);
           const meses = new Set<number>(); let kwh = 0; let ud = '';
           for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
           return { sm, mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string, tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
-        }).sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
+        });
+        // Facturas sin CUPS ni contador: no se pueden agrupar por suministro, pero cuentan en el cálculo; se muestran aparte para que el panel cuadre
+        const conId = new Set(filasConId.flatMap((f) => f.mios.map((d) => d.id)));
+        const sinId = new Map<string, Documento[]>();
+        for (const d of utiles) if (!conId.has(d.id)) { const t = (d.extraccion?.tipo ?? d.tipo) as string; sinId.set(t, [...(sinId.get(t) ?? []), d]); }
+        const filasSin = [...sinId.entries()].map(([t, mios]) => {
+          const meses = new Set<number>(); let kwh = 0; let ud = '';
+          for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
+          return { sm: { id: `sin-${t}`, etiqueta: 'Sin contador identificado', identificadores: [] as string[], direccion: undefined, cups: undefined, numeroContador: undefined } as (typeof filasConId)[number]['sm'], mios, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tp: t, tipo: t, sin: true };
+        });
+        const filas = [...filasConId.map((f) => ({ ...f, sin: false })), ...filasSin].sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
         // Controles posteriores a la lectura: dar nombre a un suministro y unir dos identificadores que son el mismo (p. ej. CUPS y nº de contador)
         const nombrarA = async (mios: Documento[], nombre: string) => {
           try { for (const d of mios) await huellaService.actualizarDocumento(d.id, { extraccion: { ...d.extraccion!, direccionSuministro: nombre || undefined } }); onCambio(); } catch (e) { falla(e); throw e; }
@@ -1387,19 +1397,19 @@ const PanelFacturas: React.FC<{
         };
         return (
           <details className={`${card} group`} open>
-            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Agrupadas por CUPS o contador</span></summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({filas.filter((f) => !f.sin).length})<span className="ml-auto text-[11px] font-normal text-slate-500">Agrupadas por CUPS o contador</span></summary>
             <div className="mt-3 space-y-5">{Object.keys(TIPOS_SUMINISTRO).filter((t) => filas.some((f) => f.tp === t)).map((t) => { const grupo = filas.filter((f) => f.tp === t); const info = TIPOS_SUMINISTRO[t]; const Ic = info.Icono; const unidadesGrupo = Array.from(new Set(grupo.map((f) => f.ud))); return (
             <section key={t}>
               <h3 className="flex items-center gap-2 mb-1"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${info.color}`}><Ic size={15} /></span><span className="text-sm font-bold text-slate-800">{info.nombre}</span><span className="text-[11px] text-slate-500">{grupo.length} suministro{grupo.length === 1 ? '' : 's'}{unidadesGrupo.length === 1 ? ` · ${num(grupo.reduce((a, f) => a + f.kwh, 0), 0)} ${unidadesGrupo[0]}` : ''}</span></h3>
               <ul className="divide-y divide-slate-100 border-t border-slate-100">{grupo.map((fila) => { const { sm, n, meses, kwh, ud, centro, tipo: tp } = fila; return (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900"><NombreEditable valor={sm.direccion} vacio="Sin nombre" puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} /> {new Set(filas.map((f) => f.centro)).size > 1 && <span className="text-[11px] font-normal text-slate-500">· {centro}</span>}</p>
-                  <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
+                  <p className="text-sm font-bold text-slate-900">{fila.sin ? <span className="text-amber-700">Sin contador identificado</span> : <><NombreEditable valor={sm.direccion} vacio="Sin nombre" puedeEditar={puedeEliminar} onGuardar={(v) => nombrarA(fila.mios, v)} />{new Set(filas.map((f) => f.centro)).size > 1 && <span className="text-[11px] font-normal text-slate-500"> · {centro}</span>}</>}</p>
+                  <p className="text-[11px] text-slate-500 tabular-nums">{fila.sin ? 'Facturas sin CUPS ni contador: cuentan en el cálculo, pero no se pueden agrupar por suministro.' : [sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}{fila.mios.some((d) => d.estado === 'leido') ? ` · ${fila.mios.filter((d) => d.estado === 'leido').length} sin confirmar` : ''}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
-                {puedeEliminar && filas.some((o) => o.sm.id !== sm.id && o.tp === tp) && (
-                  <select className="text-[11px] text-slate-500 border border-slate-200 rounded-md px-1.5 py-1 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro" title="Si es el mismo suministro con otro CUPS o contador, únalos"><option value="">Unir con…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
+                {puedeEliminar && !fila.sin && filas.some((o) => o.sm.id !== sm.id && o.tp === tp && !o.sin) && (
+                  <select className="text-[11px] text-slate-500 border border-slate-200 rounded-md px-1.5 py-1 bg-white" value="" onChange={(e) => { if (e.target.value) void unir(e.target.value, fila); }} aria-label="Unir con otro suministro" title="Si es el mismo suministro con otro CUPS o contador, únalos"><option value="">Unir con…</option>{filas.filter((o) => o.sm.id !== sm.id && o.tp === tp && !o.sin).map((o) => <option key={o.sm.id} value={o.sm.id}>{o.sm.direccion ?? o.sm.id}</option>)}</select>
                 )}
                 <p className={`text-[11px] w-28 text-right ${meses.size === 12 ? 'text-green-700 font-semibold' : 'text-slate-500'}`} title={`Meses con factura: ${NOMBRES_MES.filter((_, i) => meses.has(i)).join(', ') || 'ninguno'}`}>{meses.size === 12 ? '12 meses completos' : `${meses.size} de 12 meses`}</p>
               </li>

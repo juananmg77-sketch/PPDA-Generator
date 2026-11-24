@@ -224,3 +224,15 @@ test('duplicados: misma cantidad y suministro con periodos que se solapan, aunqu
   // mismos kWh pero periodos que no se solapan (meses distintos): tampoco
   assert.equal(facturasDuplicadas([a, { ...b, periodoDesde: '2024-06-01', periodoHasta: '2024-06-30' }]).length, 0);
 });
+
+test('buscarDuplicada: misma cantidad y periodo solapado marca solo la copia más reciente, aunque cambie el proveedor o el nombre', async () => {
+  const { buscarDuplicada } = await import('../cierre.ts');
+  const a = { id: 'a', estado: 'leido', centro: 'C', tipo: 'electricidad', cantidad: 7531, desde: '2023-12-31', hasta: '2024-01-31', contador: 'ES0031500199603001ES', creada: '2026-11-24T09:00:00Z' };
+  const b = { ...a, id: 'b', contador: undefined, creada: '2026-11-24T09:30:00Z' };
+  assert.equal(buscarDuplicada(b, [a, b])?.id, 'a');
+  assert.equal(buscarDuplicada(a, [a, b]), undefined); // la original no se marca
+  assert.equal(buscarDuplicada({ ...a, estado: 'leido' }, [{ ...b, estado: 'revisado' }])?.id, 'b'); // la confirmada manda
+  assert.equal(buscarDuplicada(b, [{ ...a, cantidad: 7000 }]), undefined);
+  assert.equal(buscarDuplicada(b, [{ ...a, centro: 'Otro' }]), undefined);
+  assert.equal(buscarDuplicada({ ...b, contador: 'ES1' }, [{ ...a, contador: 'ES2' }]), undefined);
+});

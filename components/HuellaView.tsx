@@ -5,7 +5,7 @@ import { NOMBRES_MES, agruparPorTipoYContador, mesFacturacion, mesesTocados, rep
 import { OPERACIONES, agruparPorKg, incluirPorDefecto } from '../huella/extintores';
 import type { DocumentoExt, OperacionExt } from '../huella/extintores';
 import { FUENTES_EXCLUIBLES, FUENTE_EXTINTORES, FUENTE_OTRA, calcularExtintores, justificacionExtintores, porcentajeExcluido } from '../huella/exclusiones';
-import { evaluarCierre, huecosMensuales } from '../huella/cierre';
+import { buscarDuplicada, evaluarCierre, huecosMensuales } from '../huella/cierre';
 import { redactarCorreoPendientes } from '../huella/correo';
 import { CATEGORIAS_ISO, resultadosIso } from '../huella/iso';
 import { CONFIG_PLANTILLA_POR_DEFECTO } from '../huella/configInforme';
@@ -1152,11 +1152,15 @@ function evaluarDoc(d: Documento, factores: ConjuntoFactores | null, anio: numbe
   const asignacion = asignarContador(e0, { centro, existentes });
   const eContador: ExtraccionFactura = asignacion.contador ? { ...e0, contador: asignacion.contador } : e0;
   const e = resolverGas(eContador); // gas natural: se decide solo si son PCS, PCI o m³ (con nota)
-  const incidencias = factores ? validarExtraccion(e, { anioInventario: anio, centro, factores, existentes }) : [];
+  // Duplicada: misma cantidad y periodo solapado que otra factura del mismo centro y tipo (sea cual sea el proveedor o el nombre del archivo)
+  const aEntrada = (x: Documento) => ({ id: x.id, estado: x.estado, centro: x.centro_id, tipo: (x.extraccion?.tipo ?? x.tipo) as string, cantidad: x.extraccion?.cantidad, desde: x.periodo_desde ?? x.extraccion?.periodoDesde, hasta: x.periodo_hasta ?? x.extraccion?.periodoHasta, contador: x.extraccion?.contador, creada: x.created_at });
+  const orig = buscarDuplicada(aEntrada(d), otras.filter((x) => x.id !== d.id && (x.estado === 'revisado' || x.estado === 'leido') && x.extraccion).map(aEntrada));
+  const duplicada = orig ? otras.find((x) => x.id === orig.id) : undefined;
+  const incidencias = [...(factores ? validarExtraccion(e, { anioInventario: anio, centro, factores, existentes }) : []), ...(duplicada ? [{ gravedad: 'error' as const, codigo: 'duplicada_doc', mensaje: `Duplicada de «${duplicada.nombre_archivo}»: elimínela.` }] : [])];
   const fuente = fuentePorDefecto(e, factores);
   const errores = incidencias.filter((i) => i.gravedad === 'error').length;
   const sinFuente = e.tipo !== 'electricidad' && !fuente;
-  return { e, incidencias, fuente, errores, avisos: incidencias.length - errores, sinFuente, asignacion, listo: !!factores && errores === 0 && !sinFuente && e.tipo !== 'otro' };
+  return { e, incidencias, fuente, errores, duplicada, avisos: incidencias.length - errores, sinFuente, asignacion, listo: !!factores && errores === 0 && !sinFuente && e.tipo !== 'otro' };
 }
 
 /** Crea la línea de actividad confirmada y marca la factura como revisada (misma lógica para una o varias). */
@@ -1417,6 +1421,12 @@ const PanelFacturas: React.FC<{
             <button className={btnS} onClick={() => setSel(new Set(listas.map((d) => d.id)))} disabled={!listas.length}>Seleccionar las {listas.length} sin errores</button>
             <button className={btnP} onClick={confirmarSeleccion} disabled={!seleccionadasListas.length || cargando || !abierto}><CheckCircle2 size={15} /> Confirmar {seleccionadasListas.length || ''} seleccionadas</button>
           </div>
+          {(() => { const dups = pendientes.filter((d) => evaluadas.get(d.id)?.duplicada); return dups.length > 0 && puedeEliminar ? (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+              <AlertTriangle size={14} /><span className="flex-1 min-w-[200px]"><strong>{dups.length} factura{dups.length === 1 ? '' : 's'} duplicada{dups.length === 1 ? '' : 's'}</strong>: misma cantidad y periodo que otra ya cargada. Se contarían dos veces.</span>
+              <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50" disabled={cargando} onClick={() => eliminar(dups, `${dups.length} factura${dups.length === 1 ? '' : 's'} duplicada${dups.length === 1 ? '' : 's'}`)}><Trash2 size={14} /> Eliminar {dups.length === 1 ? 'la duplicada' : `las ${dups.length} duplicadas`}</button>
+            </div>
+          ) : null; })()}
           <p className="text-xs text-slate-600 mb-2">Compruebe los valores de la tabla contra las facturas («Ver»). Las que tienen errores o necesitan elegir combustible se revisan una a una.</p>
           <div className="space-y-2">
             {gruposPend.map((g) => (
@@ -1439,9 +1449,10 @@ const PanelFacturas: React.FC<{
                         <td className="pr-3 text-slate-800">{d.nombre_archivo}<span className="block text-[10px] text-slate-500">{[nombreCentro(d.centro_id), e.proveedor, !ev?.e.contador ? (ev && ev.asignacion.candidatos.length > 1 ? `¿Contador? ${ev.asignacion.candidatos.join(' o ')}` : 'Sin contador') : ev.asignacion.contador ? 'contador asignado por fechas' : null].filter(Boolean).join(' · ')}</span></td>
                         <td className="pr-3 whitespace-nowrap font-semibold text-slate-800" title={`${e.periodoDesde ?? '?'} → ${e.periodoHasta ?? '?'}`}>{mesFacturacion(e.periodoDesde, e.periodoHasta) ?? '?'}</td>
                         <td className="pr-3 text-right tabular-nums" title={ev?.e.nota}>{ev?.e.cantidad !== undefined ? num(ev.e.cantidad, 2) : '—'} {ev?.e.unidad ?? ''}{ev?.e.nota && ev.e.cantidad !== e.cantidad ? <span className="block text-[10px] text-slate-500">convertido</span> : null}</td>
-                        <td className="pr-3">{ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.e.cantidad === 0 ? <span className="text-amber-700 font-semibold">Consumo cero · validar</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
+                        <td className="pr-3">{ev?.duplicada ? <span className="text-red-700 font-semibold" title={`Duplicada de ${ev.duplicada.nombre_archivo}`}>Duplicada</span> : ev?.errores ? <span className="text-red-700 font-semibold">{ev.errores} error(es)</span> : ev?.sinFuente ? <span className="text-amber-700 font-semibold">Elegir combustible</span> : ev?.e.cantidad === 0 ? <span className="text-amber-700 font-semibold">Consumo cero · validar</span> : ev?.avisos ? <span className="text-amber-700 font-semibold">{ev.avisos} aviso(s)</span> : <span className="text-green-700 font-semibold">Sin incidencias</span>}</td>
                         <td className="text-right whitespace-nowrap">
                           <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(d.archivo_path), '_blank', 'noopener'); } catch (x) { falla(x); } }}><Eye size={14} /></button>
+                          {puedeEliminar && ev?.duplicada && <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-50 mr-1" disabled={cargando} title={`Es copia de ${ev.duplicada.nombre_archivo}`} onClick={() => eliminar([d], `la factura duplicada «${d.nombre_archivo}»`)}><Trash2 size={14} /> Eliminar duplicada</button>}
                           {abierto && sinIncidencias(d) && <button className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-semibold hover:bg-green-700 disabled:opacity-50 mr-1" disabled={cargando} title="Sin incidencias: validar sin revisar" aria-label={`Validar ${d.nombre_archivo}`} onClick={() => void validarUna(d)}><CheckCircle2 size={14} /> Validar</button>}
                           <button className={btnS} onClick={() => setRevisando(revisando === d.id ? null : d.id)}>{revisando === d.id ? 'Cerrar' : 'Revisar'}</button>
                           {puedeEliminar && <Papelera titulo={`Eliminar la factura ${d.nombre_archivo}`} onClick={() => eliminar([d], `la factura «${d.nombre_archivo}»`)} />}

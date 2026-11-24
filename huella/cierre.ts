@@ -204,3 +204,23 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
 
   return { items, puedeCerrar: !items.some((i) => i.nivel === 'error') };
 }
+
+export interface EntradaDuplicada { id: string; estado: string; centro?: string | null; tipo: string; cantidad?: number | null; desde?: string | null; hasta?: string | null; contador?: string | null; creada?: string | null }
+
+/**
+ * Factura de la que `d` es copia: mismo centro y tipo, misma cantidad exacta, periodos que se solapan y mismo contador (o alguno sin contador),
+ * sea cual sea el proveedor o el nombre del archivo. Solo se marca la más reciente (o la pendiente si la otra ya está confirmada), para que la original no quede marcada.
+ */
+export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]): EntradaDuplicada | undefined {
+  if (d.cantidad == null || !d.desde || !d.hasta) return undefined;
+  const dias = (a: string, b: string) => new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime();
+  return otras.find((x) => {
+    if (x.id === d.id || x.estado === 'rechazado' || x.cantidad !== d.cantidad || !x.desde || !x.hasta) return false;
+    if ((x.centro ?? '') !== (d.centro ?? '') || x.tipo !== d.tipo) return false;
+    if (x.contador && d.contador && x.contador.toUpperCase() !== d.contador.toUpperCase()) return false;
+    if (dias(d.desde!, x.hasta) < 0 || dias(x.desde, d.hasta!) < 0) return false; // no se solapan
+    if (x.estado === 'revisado' && d.estado !== 'revisado') return true; // la confirmada es la original
+    if (d.estado === 'revisado' && x.estado !== 'revisado') return false;
+    return (x.creada ?? '') <= (d.creada ?? '') && x.id !== d.id && ((x.creada ?? '') < (d.creada ?? '') || x.id < d.id);
+  });
+}

@@ -28,7 +28,7 @@ export interface InventarioCentro { inventario_id: string; centro_id: string; op
 export interface Documento {
   id: string; inventario_id: string; centro_id: string | null; tipo: string; proveedor?: string | null;
   periodo_desde?: string | null; periodo_hasta?: string | null; archivo_path: string; nombre_archivo?: string | null;
-  estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; extraccion?: ExtraccionFactura | null;
+  estado: 'subido' | 'leido' | 'revisado' | 'rechazado'; extraccion?: ExtraccionFactura | null; created_at?: string;
 }
 export interface Actividad {
   id: string; inventario_id: string; centro_id: string; documento_id?: string | null; categoria: Categoria; fuente: string;

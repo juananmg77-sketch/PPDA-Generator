@@ -236,7 +236,6 @@ export interface EntradaDuplicada { nombre?: string | null; noDup?: boolean; id:
  */
 export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]): EntradaDuplicada | undefined {
   if (d.noDup || !(Number(d.cantidad) > 0) || !d.desde || !d.hasta) return undefined; // confirmada como no duplicada, o consumo 0 // un consumo 0 coincide por casualidad entre suministros: no se compara
-  const dias = (a: string, b: string) => new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime();
   // Si el centro tiene varios suministros del mismo tipo, una factura sin contador puede ser de cualquiera: solo se compara con contador en ambas
   const contadores = new Set([d, ...otras].filter((x) => (x.centro ?? '') === (d.centro ?? '') && x.tipo === d.tipo && x.contador).map((x) => x.contador!.toUpperCase()));
   const variosSuministros = contadores.size > 1;
@@ -246,7 +245,8 @@ export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]):
     if (x.id === d.id || x.estado === 'rechazado' || x.cantidad !== d.cantidad || !x.desde || !x.hasta) return false;
     if ((x.centro ?? '') !== (d.centro ?? '') || x.tipo !== d.tipo) return false;
     if (x.contador && d.contador && x.contador.toUpperCase() !== d.contador.toUpperCase()) return false;
-    if (dias(d.desde!, x.hasta) < 0 || dias(x.desde, d.hasta!) < 0) return false; // no se solapan
+    const comunes = (Math.min(Date.parse(d.hasta! + 'T00:00:00Z'), Date.parse(x.hasta + 'T00:00:00Z')) - Math.max(Date.parse(d.desde! + 'T00:00:00Z'), Date.parse(x.desde + 'T00:00:00Z'))) / 86400000;
+    if (!(comunes > 0)) return false; // no se solapan: compartir solo el día de corte no cuenta
     if (x.estado === 'revisado' && d.estado !== 'revisado') return true; // la confirmada es la original
     if (d.estado === 'revisado' && x.estado !== 'revisado') return false;
     return (x.creada ?? '') <= (d.creada ?? '') && x.id !== d.id && ((x.creada ?? '') < (d.creada ?? '') || x.id < d.id);

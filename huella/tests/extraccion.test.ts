@@ -159,3 +159,12 @@ test('butano y propano: kilos y litros se aceptan; los envases piden convertir a
   assert.ok(!codigos({ ...glp, unidad: 'bombonas', cantidad: 0 }).includes('unidad_glp'));
   assert.equal(normalizarUnidad('Kilogramos'), 'kg');
 });
+
+test('solape: facturas consecutivas que comparten el día de corte no se solapan; un solape real sí', () => {
+  const base = { tipo: 'electricidad' as const, proveedor: 'Endesa', contador: 'ES0031500199603001ES', cantidad: 1000, unidad: 'kWh', confianza: 0.95 };
+  const previa = { id: 'x', centro: undefined, proveedor: 'Endesa', contador: 'ES0031500199603001ES', periodoDesde: '2024-01-23', periodoHasta: '2024-02-21', cantidad: 500, tipo: 'electricidad' as const };
+  const cod = (desde: string, hasta: string) => validarExtraccion({ ...base, periodoDesde: desde, periodoHasta: hasta }, { ...ctx, existentes: [previa] }).map((i) => i.codigo);
+  assert.ok(!cod('2024-02-21', '2024-03-20').includes('solape')); // empieza el día en que acaba la anterior
+  assert.ok(!cod('2024-02-22', '2024-03-20').includes('solape'));
+  assert.ok(cod('2024-02-10', '2024-03-10').includes('solape')); // 11 días en común
+});

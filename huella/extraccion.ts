@@ -90,7 +90,10 @@ export interface AsignacionContador {
 }
 
 const DIA = 86400000;
-const solapan = (d1: Date, h1: Date, d2: Date, h2: Date) => d1 <= h2 && h1 >= d2;
+/** Días que comparten dos periodos. Las facturas consecutivas comparten el día de corte (fin de una = inicio de la siguiente): eso no es solape. */
+export const diasComunes = (d1: Date, h1: Date, d2: Date, h2: Date) => Math.max(0, (Math.min(h1.getTime(), h2.getTime()) - Math.max(d1.getTime(), d2.getTime())) / DIA);
+/** Solape real: más de 1 día en común (el día de corte compartido no cuenta). */
+const solapan = (d1: Date, h1: Date, d2: Date, h2: Date) => diasComunes(d1, h1, d2, h2) > 1;
 
 /**
  * Cuando la factura no trae contador y su periodo se solapa con el de facturas de contadores ya conocidos del mismo centro y tipo,
@@ -207,7 +210,7 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
         x.cantidad === e.cantidad ? `Parece duplicada de la factura ${x.id}.${sufijo}` : `Hay otra factura del mismo proveedor y periodo (${x.id}) con distinta cantidad.${sufijo}`);
     } else {
       const xd = fecha(x.periodoDesde), xh = fecha(x.periodoHasta);
-      if (xd && xh && d && h && d <= xh && h >= xd) add('aviso', 'solape', `El periodo se solapa con el de la factura ${x.id} del mismo proveedor.${sufijo}`);
+      if (xd && xh && d && h && solapan(d, h, xd, xh)) add('aviso', 'solape', `El periodo se solapa ${Math.round(diasComunes(d, h, xd, xh))} días con el de la factura ${x.id} del mismo proveedor.${sufijo}`);
     }
   }
 

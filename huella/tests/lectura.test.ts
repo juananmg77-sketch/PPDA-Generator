@@ -105,3 +105,10 @@ test('CUPS mal leído en un escaneo: se corrige por su dígito de control o se a
   const k = await leerFactura(simulado({ [MODELO_BASE]: e('ES0031500109603001ES') as never }).llamar, { texto: 'f', cupsConocidos: ['ES0031500199603001ES'] }, ctx);
   assert.equal(k.extraccion.cups, 'ES0031500199603001ES');
 });
+
+test('las instrucciones recogen los formatos reales: gas envasado, recarga de refrigerante y gas de red', () => {
+  const t = instrucciones();
+  assert.match(t, /Fianza envases/); assert.match(t, /Total Kg/);
+  assert.match(t, /Impuesto sobre gases fluorados.*NO la sumes/s);
+  assert.match(t, /periodoDesde = periodoHasta/);
+});

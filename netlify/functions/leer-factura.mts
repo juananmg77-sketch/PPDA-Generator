@@ -34,7 +34,7 @@ function crearLlamada(cliente: Anthropic): LlamarModelo {
   };
 }
 
-export default async (req: Request): Promise<Response> => {
+export const manejarLectura = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura de facturas no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
@@ -68,12 +68,14 @@ export default async (req: Request): Promise<Response> => {
 
   try {
     const { conjunto: factores } = await cargarConjunto(anio, cuerpo.version);
-    const cliente = new Anthropic({ maxRetries: 1, timeout: 60_000 });
+    const cliente = new Anthropic({ maxRetries: 1, timeout: 150_000 });
     const resultado = await leerFactura(crearLlamada(cliente), entrada, { anioInventario: anio, factores });
     return json(resultado);
   } catch (e) {
     return json({ error: 'No se pudo leer la factura. Inténtelo de nuevo o introduzca los datos a mano.', detalle: e instanceof Error ? e.message : String(e) }, 502);
   }
 };
+
+export default manejarLectura;
 
 export const config = { path: '/api/leer-factura' };

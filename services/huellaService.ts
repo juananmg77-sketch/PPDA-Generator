@@ -47,13 +47,13 @@ const ok = <T>(r: { data: T | null; error: { message: string } | null }): T => {
 };
 
 /** Lanza una lectura con IA en segundo plano (no tiene el límite de tiempo de una función normal) y recoge su resultado, que queda junto al documento. */
-async function leerEnSegundoPlano<T>(nombre: string, path: string): Promise<T> {
+async function leerEnSegundoPlano<T>(nombre: string, path: string, extra: Record<string, unknown> = {}): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new Error('Sesión caducada: vuelva a entrar.');
   const resultado = `${path}.lectura.json`;
   await supabase.storage.from('hc-facturas').remove([resultado]); // por si quedó uno anterior
-  const resp = await fetch(`/.netlify/functions/${nombre}-background`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path }) });
+  const resp = await fetch(`/.netlify/functions/${nombre}-background`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ path, ...extra }) });
   if (!resp.ok && resp.status !== 202) throw new Error(`No se pudo iniciar la lectura (${resp.status}).`);
   const limite = Date.now() + 170_000;
   while (Date.now() < limite) {
@@ -213,7 +213,9 @@ export const huellaService = {
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */
-  async leerFactura(file: File, anioInventario: number, version?: string, tipo?: string): Promise<ResultadoLecturaApi> {
+  async leerFactura(file: File, anioInventario: number, version?: string, tipo?: string, path?: string): Promise<ResultadoLecturaApi> {
+    // Con la factura ya subida se lee en segundo plano (no hay límite de tiempo de 504); si no, por la función normal
+    if (path) return leerEnSegundoPlano<ResultadoLecturaApi>('leer-factura', path, { anioInventario, version, tipo });
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) throw new Error('Sesión caducada: vuelva a entrar.');

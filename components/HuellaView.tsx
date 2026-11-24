@@ -1211,7 +1211,7 @@ const PanelFacturas: React.FC<{
           cambiar(id, { estado: 'subiendo' });
           doc = await huellaService.subirDocumento(file, org.id, inv.id, centroId, tipo || undefined);
           cambiar(id, { estado: 'leyendo' });
-          const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined);
+          const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined, doc.archivo_path);
           const e = r.extraccion;
           await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
           const rep = Number(e.cantidad) > 0 && e.periodoDesde && e.periodoHasta ? docs.find((d) => d.id !== doc!.id && d.estado !== 'rechazado' && d.centro_id === centroId && Number(d.extraccion?.cantidad) === Number(e.cantidad) && (d.periodo_desde ?? d.extraccion?.periodoDesde ?? '9999') <= e.periodoHasta! && (d.periodo_hasta ?? d.extraccion?.periodoHasta ?? '0000') >= e.periodoDesde!) : undefined;

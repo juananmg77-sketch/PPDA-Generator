@@ -265,7 +265,9 @@ test('incertidumbre en el informe: tabla por categoría con t CO₂e, ±%, valor
   assert.match(total[4], /% de la varianza/);
   const inc = calcularIncertidumbre(resultados, f);
   assert.match(texto(m), new RegExp(`incertidumbre combinada del inventario es de ±${inc.total.pct!.toFixed(1).replace('.', ',')} %`));
-  assert.match(texto(m), /raíz de la suma de cuadrados/); assert.match(texto(m), /intervalos de confianza del 95 %/);
+  assert.match(texto(m), /método 1 del IPCC/); assert.match(texto(m), /intervalo de confianza del 95 %/);
+  // sin catálogo por defecto: solo lo aplicado en el inventario (origen del consumo y factor que pesa)
+  assert.ok(!/Catálogo de incertidumbres por defecto/.test(texto(m))); assert.match(texto(m), /Margen del consumo/); assert.match(texto(m), /Margen del factor de emisión/);
 });
 test('incertidumbre: el catálogo es configurable, las líneas ajustadas salen con su justificación y los ajustes sin ella son pendientes', () => {
   const d = base(); d.incertidumbre = { factor: { mixElectrico: 8 } as never, umbrales: { baja: 2, media: 4, alta: 6 } as never };

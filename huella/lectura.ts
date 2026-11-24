@@ -10,7 +10,7 @@ export const MODELO_REFUERZO = 'claude-sonnet-5-5';
 export const LIMITES = {
   bytesMax: 5 * 1024 * 1024, // por archivo
   paginasMax: 6, // orientativo: se avisa al usuario; el tope real es bytesMax y max_tokens
-  maxTokensSalida: 600,
+  maxTokensSalida: 4000, // solo es un tope: se paga lo que se usa (la respuesta JSON ronda los 300 tokens, más el razonamiento del modelo)
   tiposPermitidos: ['application/pdf', 'image/jpeg', 'image/png'] as const,
 };
 

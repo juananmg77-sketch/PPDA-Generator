@@ -7,7 +7,7 @@ const DIA = 86400000;
  * Reparte `cantidad` entre los 12 meses de `anio` en proporción a los días del periodo que caen en cada mes.
  * Devuelve también lo que queda fuera del año (periodos que cruzan de año) y si no se pudo repartir (sin periodo válido).
  */
-export function repartirPorMes(desde: string | null | undefined, hasta: string | null | undefined, cantidad: number, anio: number): { meses: number[]; fueraDeAnio: number; sinPeriodo: boolean } {
+export function repartirPorMes(desde: string | null | undefined, hasta: string | null | undefined, cantidad: number, anio: number, incluirFuera = false): { meses: number[]; fueraDeAnio: number; sinPeriodo: boolean } {
   const meses = Array(12).fill(0);
   const d = fecha(desde);
   const h = fecha(hasta ?? desde);
@@ -18,7 +18,11 @@ export function repartirPorMes(desde: string | null | undefined, hasta: string |
     const x = new Date(t);
     if (x.getUTCFullYear() === anio) { meses[x.getUTCMonth()] += cantidad / total; dentro += 1; }
   }
-  return { meses, fueraDeAnio: cantidad * (1 - dentro / total), sinPeriodo: false };
+  const fuera = cantidad * (1 - dentro / total);
+  // El cálculo cuenta cada factura entera. Con `incluirFuera`, la parte de un periodo que cruza de año se asigna al mes del extremo (enero si empieza antes, diciembre si acaba después)
+  // para que los gráficos y totales coincidan con las tablas y con el cálculo.
+  if (incluirFuera && fuera > 0 && dentro > 0) meses[d.getUTCFullYear() < anio ? 0 : 11] += fuera;
+  return { meses, fueraDeAnio: fuera, sinPeriodo: false };
 }
 
 /** Meses (0-11) del año en los que el periodo tiene al menos un día. */

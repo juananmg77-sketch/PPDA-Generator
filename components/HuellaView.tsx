@@ -1846,7 +1846,7 @@ const GraficoActividad: React.FC<{
           valor = calcularLinea(l, factores).kgCO2e / 1000;
         } catch { continue; }
       }
-      const r = repartirPorMes(a.periodo_desde, a.periodo_hasta, valor, inv.anio);
+      const r = repartirPorMes(a.periodo_desde, a.periodo_hasta, valor, inv.anio, true);
       if (r.sinPeriodo) { sinPeriodo += 1; continue; }
       fuera += r.fueraDeAnio;
       r.meses.forEach((v, i) => { datos[i][serie] = Number(datos[i][serie] ?? 0) + v; });
@@ -1860,14 +1860,14 @@ const GraficoActividad: React.FC<{
     for (const a of filtradas) {
       const f = a.fuente || 'Electricidad';
       const u = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : String(factores?.unidades[a.fuente] ?? a.unidad ?? '');
-      const rc = repartirPorMes(a.periodo_desde, a.periodo_hasta, Number(a.cantidad), inv.anio);
+      const rc = repartirPorMes(a.periodo_desde, a.periodo_hasta, Number(a.cantidad), inv.anio, true);
       if (rc.sinPeriodo) continue;
       const enAnio = rc.meses.reduce((x, y) => x + y, 0);
       const c = cons.get(f) ?? { v: 0, u }; c.v += enAnio; cons.set(f, c);
       if (!factores) continue;
       try {
         const l: LineaActividad = { id: a.id, centro: a.centro_id, categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined } as LineaActividad;
-        const rt = repartirPorMes(a.periodo_desde, a.periodo_hasta, calcularLinea(l, factores).kgCO2e / 1000, inv.anio);
+        const rt = repartirPorMes(a.periodo_desde, a.periodo_hasta, calcularLinea(l, factores).kgCO2e / 1000, inv.anio, true);
         t += rt.meses.reduce((x, y) => x + y, 0);
       } catch { /* sin factor: no suma */ }
     }
@@ -1926,7 +1926,7 @@ const GraficoActividad: React.FC<{
       {(sinPeriodo > 0 || fuera > 0.5) && (
         <p className="text-[11px] text-amber-800 mt-2">
           {sinPeriodo > 0 && `${sinPeriodo} dato(s) sin periodo no aparecen en el gráfico. `}
-          {fuera > 0.5 && `Parte de algún periodo cae fuera de ${inv.anio} y no se representa.`}
+          {fuera > 0.5 && `${fmt(fuera)} ${m === 'co2e' ? 't CO₂e' : unidad} de periodos que cruzan de año se asignan a enero o diciembre, como en el cálculo.`}
         </p>
       )}
       <p className="text-[11px] text-slate-500 mt-1">Cada consumo se reparte por meses en proporción a los días de su periodo de facturación.</p>

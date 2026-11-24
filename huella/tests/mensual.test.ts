@@ -47,3 +47,14 @@ test('mes de facturación: el mes con más días del periodo', async () => {
   assert.equal(mesFacturacion('2024-02-15', '2024-03-15'), 'Mar 2024'); // empate: el posterior
   assert.equal(mesFacturacion(undefined, undefined), null);
 });
+
+test('periodo que cruza de año: con incluirFuera el total coincide con el de la factura (la parte de fuera va al mes del extremo)', async () => {
+  const { repartirPorMes } = await import('../mensual.ts');
+  const a = repartirPorMes('2023-12-31', '2024-01-31', 3200, 2024);
+  assert.ok(Math.abs(a.meses.reduce((x, y) => x + y, 0) - 3100) < 1e-6); // sin incluirla: solo lo de 2024 (31 de 32 días)
+  const b = repartirPorMes('2023-12-31', '2024-01-31', 3200, 2024, true);
+  assert.ok(Math.abs(b.meses.reduce((x, y) => x + y, 0) - 3200) < 1e-6);
+  assert.ok(Math.abs(b.meses[0] - 3200) < 1e-6);
+  const c = repartirPorMes('2024-12-20', '2025-01-10', 2200, 2024, true); // acaba el año siguiente: a diciembre
+  assert.ok(Math.abs(c.meses.reduce((x, y) => x + y, 0) - 2200) < 1e-6 && c.meses[11] > 0 && c.meses[0] === 0);
+});

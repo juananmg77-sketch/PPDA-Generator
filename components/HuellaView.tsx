@@ -1826,6 +1826,25 @@ const GraficoActividad: React.FC<{
     return { datos, series, sinPeriodo, fuera };
   }, [filtradas, factores, m, inv.anio]);
 
+  // Totales del año para los filtros activos (lo que se ve en el gráfico): toneladas emitidas y consumo por fuente en su unidad
+  const totales = useMemo(() => {
+    let t = 0; const cons = new Map<string, { v: number; u: string }>();
+    for (const a of filtradas) {
+      const f = a.fuente || 'Electricidad';
+      const u = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : String(factores?.unidades[a.fuente] ?? a.unidad ?? '');
+      const rc = repartirPorMes(a.periodo_desde, a.periodo_hasta, Number(a.cantidad), inv.anio);
+      if (rc.sinPeriodo) continue;
+      const enAnio = rc.meses.reduce((x, y) => x + y, 0);
+      const c = cons.get(f) ?? { v: 0, u }; c.v += enAnio; cons.set(f, c);
+      if (!factores) continue;
+      try {
+        const l: LineaActividad = { id: a.id, centro: a.centro_id, categoria: a.categoria, fuente: a.fuente, cantidad: Number(a.cantidad), origenElectricidad: a.origen_electricidad ?? undefined, reparto: a.reparto_proporcion < 1 ? { proporcion: Number(a.reparto_proporcion), justificacion: a.reparto_justificacion ?? '' } : undefined } as LineaActividad;
+        const rt = repartirPorMes(a.periodo_desde, a.periodo_hasta, calcularLinea(l, factores).kgCO2e / 1000, inv.anio);
+        t += rt.meses.reduce((x, y) => x + y, 0);
+      } catch { /* sin factor: no suma */ }
+    }
+    return { t, cons: [...cons.entries()].map(([f, x]) => ({ f, ...x })).sort((x, y) => y.v - x.v) };
+  }, [filtradas, factores, inv.anio]);
   const fmt = (v: number) => v.toLocaleString('es-ES', { maximumFractionDigits: m === 'co2e' ? 2 : 0 });
   const hayDatos = series.some((s) => datos.some((d) => Number(d[s] ?? 0) > 0));
   return (
@@ -1852,7 +1871,8 @@ const GraficoActividad: React.FC<{
       </div>
       {actividad.length === 0 ? <p className="text-sm text-slate-600">Aún no hay datos de actividad para representar.</p>
         : !hayDatos ? <p className="text-sm text-slate-600">No hay datos con periodo para estos filtros.</p> : (
-        <div style={{ width: '100%', height: 280 }} role="img" aria-label={`Gráfico mensual de ${m === 'co2e' ? 'emisiones en toneladas de CO2 equivalente' : `consumo en ${unidad}`}`}>
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+        <div className="flex-1 min-w-0" style={{ height: 280 }} role="img" aria-label={`Gráfico mensual de ${m === 'co2e' ? 'emisiones en toneladas de CO2 equivalente' : `consumo en ${unidad}`}`}>
           <ResponsiveContainer>
             <BarChart data={datos} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -1863,6 +1883,16 @@ const GraficoActividad: React.FC<{
               {series.map((sr, i) => <Bar key={sr} dataKey={sr} stackId="a" fill={COLORES[i % COLORES.length]} isAnimationActive={false} />)}
             </BarChart>
           </ResponsiveContainer>
+        </div>
+        <aside className="lg:w-56 shrink-0 rounded-xl border border-slate-200 p-3 self-stretch" style={{ background: '#F4F7FA' }} aria-label="Totales del gráfico">
+          <p className="text-[11px] font-semibold text-slate-600">Total emitido {inv.anio}</p>
+          <p className="text-2xl font-bold text-slate-900 tabular-nums leading-tight">{totales.t.toLocaleString('es-ES', { maximumFractionDigits: 2 })}<span className="text-xs font-semibold text-slate-500 ml-1">t CO₂e</span></p>
+          <p className="text-[11px] font-semibold text-slate-600 mt-3 mb-1">Consumo total</p>
+          <ul className="space-y-1 max-h-40 overflow-auto">{totales.cons.map((x) => (
+            <li key={x.f} className="text-xs flex items-baseline justify-between gap-2"><span className="truncate text-slate-700">{x.f}</span><span className="tabular-nums font-semibold text-slate-900 whitespace-nowrap">{x.v.toLocaleString('es-ES', { maximumFractionDigits: 0 })} <span className="text-[10px] font-normal text-slate-500">{x.u}</span></span></li>
+          ))}</ul>
+          {(fCentro || fFuente || fContador) && <p className="text-[10px] text-slate-500 mt-2">Según los filtros elegidos.</p>}
+        </aside>
         </div>
       )}
       {(sinPeriodo > 0 || fuera > 0.5) && (

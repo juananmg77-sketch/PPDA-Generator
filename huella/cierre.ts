@@ -106,7 +106,10 @@ export function facturasDuplicadas(docs: DocCierre[]): DocCierre[][] {
   const grupos = [...m.values()].filter((g) => g.length > 1);
   // Misma cantidad exacta y mismo suministro con periodos que se solapan (aunque uno esté mal leído o sin contador): también se contaría dos veces
   const enGrupo = new Set(grupos.flat());
-  const mismoSum = (a: DocCierre, b: DocCierre) => !a.contador || !b.contador || a.contador === b.contador;
+  const nSum = new Map<string, Set<string>>();
+  for (const d of validas) if (d.contador) { const k = `${d.centro ?? ''}|${d.tipo}`; nSum.set(k, (nSum.get(k) ?? new Set()).add(d.contador)); }
+  // Con varios suministros del mismo tipo, una factura sin contador puede ser de cualquiera: solo se compara con contador en ambas
+  const mismoSum = (a: DocCierre, b: DocCierre) => (!a.contador || !b.contador ? (nSum.get(`${a.centro ?? ''}|${a.tipo}`)?.size ?? 0) <= 1 : a.contador === b.contador);
   for (let i = 0; i < validas.length; i++) for (let j = i + 1; j < validas.length; j++) {
     const a = validas[i], b = validas[j];
     if (enGrupo.has(a) && enGrupo.has(b)) continue;
@@ -208,13 +211,18 @@ export function evaluarCierre(e: EntradaCierre): { items: ItemCierre[]; puedeCer
 export interface EntradaDuplicada { id: string; estado: string; centro?: string | null; tipo: string; cantidad?: number | null; desde?: string | null; hasta?: string | null; contador?: string | null; creada?: string | null }
 
 /**
- * Factura de la que `d` es copia: mismo centro y tipo, misma cantidad exacta, periodos que se solapan y mismo contador (o alguno sin contador),
+ * Factura de la que `d` es copia: mismo centro y tipo, misma cantidad exacta (mayor que 0), periodos que se solapan y mismo contador
+ * (si falta en alguna, solo cuando el centro tiene un único suministro de ese tipo),
  * sea cual sea el proveedor o el nombre del archivo. Solo se marca la más reciente (o la pendiente si la otra ya está confirmada), para que la original no quede marcada.
  */
 export function buscarDuplicada(d: EntradaDuplicada, otras: EntradaDuplicada[]): EntradaDuplicada | undefined {
-  if (d.cantidad == null || !d.desde || !d.hasta) return undefined;
+  if (!(Number(d.cantidad) > 0) || !d.desde || !d.hasta) return undefined; // un consumo 0 coincide por casualidad entre suministros: no se compara
   const dias = (a: string, b: string) => new Date(b + 'T00:00:00Z').getTime() - new Date(a + 'T00:00:00Z').getTime();
+  // Si el centro tiene varios suministros del mismo tipo, una factura sin contador puede ser de cualquiera: solo se compara con contador en ambas
+  const contadores = new Set([d, ...otras].filter((x) => (x.centro ?? '') === (d.centro ?? '') && x.tipo === d.tipo && x.contador).map((x) => x.contador!.toUpperCase()));
+  const variosSuministros = contadores.size > 1;
   return otras.find((x) => {
+    if (variosSuministros && (!x.contador || !d.contador)) return false;
     if (x.id === d.id || x.estado === 'rechazado' || x.cantidad !== d.cantidad || !x.desde || !x.hasta) return false;
     if ((x.centro ?? '') !== (d.centro ?? '') || x.tipo !== d.tipo) return false;
     if (x.contador && d.contador && x.contador.toUpperCase() !== d.contador.toUpperCase()) return false;

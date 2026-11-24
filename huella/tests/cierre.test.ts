@@ -236,3 +236,20 @@ test('buscarDuplicada: misma cantidad y periodo solapado marca solo la copia má
   assert.equal(buscarDuplicada(b, [{ ...a, centro: 'Otro' }]), undefined);
   assert.equal(buscarDuplicada({ ...b, contador: 'ES1' }, [{ ...a, contador: 'ES2' }]), undefined);
 });
+
+test('buscarDuplicada: un consumo 0 o dos suministros distintos no se toman por duplicados', async () => {
+  const { buscarDuplicada } = await import('../cierre.ts');
+  const base = { estado: 'leido', centro: 'C', tipo: 'gas_natural', desde: '2024-11-21', hasta: '2024-12-23', creada: '2026-11-24T09:00:00Z' };
+  // dos suministros con 0 kWh en el mismo periodo
+  const c0 = { ...base, id: 'c0', cantidad: 0, contador: 'ES0238330000167922NX' }, e0 = { ...base, id: 'e0', cantidad: 0, contador: undefined, creada: '2026-11-24T09:10:00Z' };
+  assert.equal(buscarDuplicada(e0, [c0, e0]), undefined);
+  // el centro tiene dos suministros: una factura sin contador con la misma cantidad que la de uno de ellos no se marca
+  const a = { ...base, id: 'a', cantidad: 25579, contador: 'ES0238330000167922NX' }, b = { ...base, id: 'b', cantidad: 80000, contador: 'ES0238330000091292SQ' };
+  const sin = { ...base, id: 's', cantidad: 25579, contador: undefined, creada: '2026-11-24T09:20:00Z' };
+  assert.equal(buscarDuplicada(sin, [a, b, sin]), undefined);
+  // con un solo suministro, sí
+  assert.equal(buscarDuplicada(sin, [a, sin])?.id, 'a');
+  // con contador en ambas y distinto, no; con el mismo, sí
+  assert.equal(buscarDuplicada({ ...sin, contador: 'ES0238330000091292SQ' }, [a, b]), undefined);
+  assert.equal(buscarDuplicada({ ...sin, contador: 'ES0238330000167922NX' }, [a, b])?.id, 'a');
+});

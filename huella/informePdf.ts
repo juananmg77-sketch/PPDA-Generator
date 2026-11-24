@@ -147,7 +147,8 @@ export function definicionInforme(m: ModeloInforme, r: RecursosPdf): Record<stri
 
   const indice = [h2('ÍNDICE', true), { ul: m.secciones.map((s) => ({ text: `${s.id}. ${s.titulo}`, margin: [0, 0, 0, 3], alignment: 'left' })), markerColor: C.cian, margin: [0, 4, 0, 0] }];
   const minFilas = meta.minFilasSinPartir;
-  const cuerpo = m.secciones.flatMap((s, i) => unirTitulos([{ nodos: [h2(`${s.id}. ${s.titulo.toUpperCase()}`, i === 0 && !m.resumen)], titulo: true, pequeno: true }, ...s.bloques.map((b) => bloque(b, minFilas))]));
+  // Los anexos empiezan en página nueva (un nodo vacío con salto de página, fuera de cualquier grupo, para no crear páginas en blanco)
+  const cuerpo = m.secciones.flatMap((s, i) => [...(s.id === '12' ? [{ text: '', fontSize: 1, margin: [0, 0, 0, 0], pageBreak: 'before' }] : []), ...unirTitulos([{ nodos: [h2(`${s.id}. ${s.titulo.toUpperCase()}`, i === 0 && !m.resumen)], titulo: true, pequeno: true }, ...s.bloques.map((b) => bloque(b, minFilas))])]);
   // Resumen ejecutivo: una página propia tras la portada
   const resumen = m.resumen ? [{ ...h2('RESUMEN EJECUTIVO', true), margin: [0, 0, 0, 8] }, ...m.resumen.bloques.flatMap((b) => bloque(b, 99).nodos)] : [];
 

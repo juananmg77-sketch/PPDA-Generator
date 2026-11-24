@@ -366,15 +366,63 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
   const evidenciaDe = (a: { documentoId?: string | null; documento?: string | null; notas?: string | null }) => (a.documentoId && codigoDoc.get(a.documentoId)) || (a.documento && codigoNombre.get(a.documento)) || (a.documento ? a.documento : `Manual: ${a.notas ?? ''}`);
   const porCatFuenteFecha = <T extends { categoria: string; fuente: string; periodoDesde?: string | null }>(l: T[]) => [...l].sort((a, b) => ORDEN_CAT.indexOf(a.categoria) - ORDEN_CAT.indexOf(b.categoria) || (a.fuente || 'Electricidad').localeCompare(b.fuente || 'Electricidad') || (a.periodoDesde ?? '').localeCompare(b.periodoDesde ?? ''));
   const periodoTxt = (desde?: string | null, hasta?: string | null) => (desde ? `${fechaEs(desde)} – ${fechaEs(hasta)}` : '—');
-  const anexoA: Bloque = { k: 'tabla', cab: ['Centro', 'Categoría', 'Fuente', 'Contador', 'Periodo', 'Cantidad', 'Ud.', 'Evidencia'], filas: porCatFuenteFecha(d.actividad).map((a) => [
-    a.centro, CATEGORIA[a.categoria] ?? a.categoria, a.fuente || (a.origenElectricidad ? `Electricidad · ${ORIGEN[a.origenElectricidad] ?? a.origenElectricidad}` : 'Electricidad'), dash(a.contador),
-    periodoTxt(a.periodoDesde, a.periodoHasta), fmt(a.cantidad, 'actividad'), a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad), evidenciaDe(a),
-  ]), numericas: [5] };
+  const variosCentros = new Set(d.actividad.map((a) => a.centro)).size > 1;
+  const etiquetaActividad = (a: { fuente: string; origenElectricidad?: string | null }) => a.fuente || (a.origenElectricidad ? `Electricidad · ${ORIGEN[a.origenElectricidad] ?? a.origenElectricidad}` : 'Electricidad');
+  const unidadDe = (a: { categoria: string; fuente: string; unidad?: string | null }) => (a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : dash(f.unidades[a.fuente] ?? a.unidad));
+  type ActA = (typeof d.actividad)[number];
+  /** Agrupa por categoría y fuente (en ese orden) y, dentro de cada grupo, por suministro y fecha. */
+  const gruposActividad = (): Array<{ categoria: string; etiqueta: string; lineas: ActA[] }> => {
+    const m = new Map<string, { categoria: string; etiqueta: string; lineas: ActA[] }>();
+    for (const a of porCatFuenteFecha(d.actividad)) { const e = etiquetaActividad(a); const k = `${a.categoria}|${e}`; const g = m.get(k) ?? { categoria: a.categoria, etiqueta: e, lineas: [] }; g.lineas.push(a); m.set(k, g); }
+    return [...m.values()].map((g) => ({ ...g, lineas: [...g.lineas].sort((x, y) => (x.contador ?? '').localeCompare(y.contador ?? '') || (x.periodoDesde ?? '').localeCompare(y.periodoDesde ?? '')) }));
+  };
+  // Anexo A: una tabla por categoría y fuente, con la unidad en la cabecera, sin repetir centro, categoría ni fuente en cada fila, y un total
+  const anexoA: Bloque[] = [
+    ...(d.actividad.length ? [{ k: 'p' as const, texto: `Datos de actividad agrupados por categoría y fuente${variosCentros ? '' : `; centro: ${d.actividad[0].centro}`}. «Evidencia» remite al código del Anexo E.` }] : [{ k: 'p' as const, texto: 'No hay datos de actividad confirmados.' }]),
+    ...gruposActividad().flatMap((g): Bloque[] => {
+      const ud = unidadDe(g.lineas[0]); const total = g.lineas.reduce((t, a) => t + Number(a.cantidad), 0);
+      const nCol = variosCentros ? 1 : 0;
+      return [
+        { k: 'h', texto: `${CATEGORIA[g.categoria] ?? g.categoria} · ${g.etiqueta}` },
+        { k: 'tabla', cab: [...(variosCentros ? ['Centro'] : []), 'Suministro (contador)', 'Periodo', `Cantidad (${ud})`, 'Evidencia'], numericas: [nCol + 2], filas: [
+          ...g.lineas.map((a) => [...(variosCentros ? [a.centro] : []), dash(a.contador), periodoTxt(a.periodoDesde, a.periodoHasta), fmt(a.cantidad, 'actividad'), evidenciaDe(a)]),
+          [...(variosCentros ? [''] : []), `Total · ${g.etiqueta}`, `${g.lineas.length} registro${g.lineas.length === 1 ? '' : 's'}`, fmt(total, 'actividad'), ''],
+        ] },
+      ];
+    }),
+  ];
   const actPorId = new Map(d.actividad.filter((a) => a.id).map((a) => [a.id!, a]));
-  const resOrdenados = [...d.resultados].sort((a, b) => ORDEN_CAT.indexOf(a.linea.categoria) - ORDEN_CAT.indexOf(b.linea.categoria) || (a.linea.fuente || 'Electricidad').localeCompare(b.linea.fuente || 'Electricidad') || (actPorId.get(a.linea.id)?.periodoDesde ?? '').localeCompare(actPorId.get(b.linea.id)?.periodoDesde ?? ''));
-  const anexoC: Bloque = { k: 'tabla', cab: ['Centro', 'Fuente', 'Periodo', 'kg CO₂', 'g CH₄', 'g N₂O', 'kg CO₂e', 'Cálculo', 'Evidencia'], filas: resOrdenados.map((r) => { const a = actPorId.get(r.linea.id); return [
-    r.linea.centro, r.linea.fuente || 'Electricidad', a ? periodoTxt(a.periodoDesde, a.periodoHasta) : '—', fmt(r.kgCO2, 'kgCO2e'), fmt(r.gCH4, 'gramos'), fmt(r.gN2O, 'gramos'), fmt(r.kgCO2e, 'kgCO2e'), r.trazabilidad.factorUsado, a ? evidenciaDe(a) : '—',
-  ]; }), numericas: [3, 4, 5, 6] };
+  // Anexo C: por categoría y fuente; la fórmula (factor aplicado) se escribe una vez por grupo y no en cada fila
+  const anexoC: Bloque[] = [
+    { k: 'p', texto: 'Cada línea conserva el factor aplicado y su fórmula, de modo que el resultado es reproducible. Emisiones de cada línea en kg de CO₂, g de CH₄ y g de N₂O, y total en kg de CO₂e.' },
+    ...gruposActividad().flatMap((g): Bloque[] => {
+      const rs = d.resultados.filter((r) => g.lineas.some((a) => a.id === r.linea.id)).sort((x, y) => (actPorId.get(x.linea.id)?.periodoDesde ?? '').localeCompare(actPorId.get(y.linea.id)?.periodoDesde ?? ''));
+      if (!rs.length) return [];
+      const ud = unidadDe(g.lineas[0]); const factores = [...new Set(rs.map((r) => r.trazabilidad.factorUsado))]; const unico = factores.length === 1;
+      const sum = (f: (r: (typeof rs)[number]) => number) => rs.reduce((t, r) => t + f(r), 0);
+      return [
+        { k: 'h', texto: `${CATEGORIA[g.categoria] ?? g.categoria} · ${g.etiqueta}` },
+        ...(unico ? [{ k: 'nota' as const, texto: `Cálculo: ${factores[0]}` }] : []),
+        { k: 'tabla', cab: [...(variosCentros ? ['Centro'] : []), 'Periodo', `Cantidad (${ud})`, 'kg CO₂', 'g CH₄', 'g N₂O', 'kg CO₂e', ...(unico ? [] : ['Cálculo']), 'Evidencia'], numericas: [variosCentros ? 2 : 1, variosCentros ? 3 : 2, variosCentros ? 4 : 3, variosCentros ? 5 : 4, variosCentros ? 6 : 5], filas: [
+          ...rs.map((r) => { const a = actPorId.get(r.linea.id); return [...(variosCentros ? [r.linea.centro] : []), a ? periodoTxt(a.periodoDesde, a.periodoHasta) : '—', a ? fmt(a.cantidad, 'actividad') : '—', fmt(r.kgCO2, 'kgCO2e'), fmt(r.gCH4, 'gramos'), fmt(r.gN2O, 'gramos'), fmt(r.kgCO2e, 'kgCO2e'), ...(unico ? [] : [r.trazabilidad.factorUsado]), a ? evidenciaDe(a) : '—']; }),
+          [...(variosCentros ? [''] : []), `Total · ${g.etiqueta}`, fmt(g.lineas.reduce((t, a) => t + Number(a.cantidad), 0), 'actividad'), fmt(sum((r) => r.kgCO2), 'kgCO2e'), fmt(sum((r) => r.gCH4), 'gramos'), fmt(sum((r) => r.gN2O), 'gramos'), fmt(sum((r) => r.kgCO2e), 'kgCO2e'), ...(unico ? [] : ['']), ''],
+        ] },
+      ];
+    }),
+  ];
+  // Anexo E: por tipo de documento; sin repetir centro ni estado cuando son todos iguales
+  const NOMBRE_TIPO_DOC: Record<string, string> = { electricidad: 'Electricidad', gas_natural: 'Gas natural', glp: 'Gas envasado (butano / propano)', gasoleo: 'Gasóleo', combustible_vehiculo: 'Combustible de vehículos', refrigerante: 'Recarga de gas refrigerante', otro: 'Otros documentos' };
+  const centrosDocs = new Set(docsOrdenados.map((x) => x.centro)), estadosDocs = new Set(docsOrdenados.map((x) => x.estado));
+  const anexoE: Bloque[] = [
+    { k: 'p', texto: `Documentos que respaldan los datos de actividad, agrupados por tipo${centrosDocs.size === 1 ? `; centro: ${[...centrosDocs][0]}` : ''}${estadosDocs.size === 1 ? `. Todos constan como «${[...estadosDocs][0]}»` : ''}.` },
+    ...[...new Set(docsOrdenados.map((x) => x.tipo))].flatMap((tipo): Bloque[] => {
+      const ds = docsOrdenados.filter((x) => x.tipo === tipo);
+      return [
+        { k: 'h', texto: `${NOMBRE_TIPO_DOC[tipo] ?? tipo} (${ds.length})` },
+        { k: 'tabla', cab: ['Código', 'Documento', 'Periodo', ...(centrosDocs.size > 1 ? ['Centro'] : []), ...(estadosDocs.size > 1 ? ['Estado'] : [])], filas: ds.map((x) => [codigoNombre.get(x.nombre)!, x.nombre, periodoTxt(x.periodoDesde, x.periodoHasta), ...(centrosDocs.size > 1 ? [x.centro] : []), ...(estadosDocs.size > 1 ? [x.estado] : [])]) },
+      ];
+    }),
+  ];
   // Correspondencia con el 9.3.1: cada apartado se marca según los datos
   const verif = inv.verificacion;
   const corr = evaluarCorrespondencia({
@@ -388,13 +436,12 @@ export function construirInforme(d: DatosInforme): ModeloInformeHuella {
     declaracionCaso: declaracion.caso, verificado: inv.estado === 'verificado', verificacionCompleta: !!(verif?.entidad && verif?.nivel && verif?.fecha && verif?.referencia),
   });
   const s12: Seccion = { id: '12', titulo: 'Anexos', bloques: [
-    { k: 'h', texto: 'Anexo A · Datos de actividad' }, anexoA,
+    { k: 'h', texto: 'Anexo A · Datos de actividad' }, ...anexoA,
     { k: 'h', texto: 'Anexo B · Factores aplicados' }, { k: 'p', texto: 'Los factores y potenciales utilizados figuran en el apartado 7.3 y se conservan íntegros en el inventario (conjunto ' + f.id + ').' },
-    { k: 'h', texto: 'Anexo C · Trazabilidad del cálculo por línea' }, anexoC,
+    { k: 'h', texto: 'Anexo C · Trazabilidad del cálculo por línea' }, ...anexoC,
     { k: 'h', texto: 'Anexo D · Correspondencia con el contenido del apartado 9.3.1 de la ISO 14064-1' },
     { k: 'tabla', cab: ['Apartado', 'Contenido', 'Se recoge en', 'Estado', 'Motivo'], filas: corr.map((x) => [x.apartado, x.contenido, x.seccion, x.estado, x.motivo]), pie: 'Estado calculado a partir de los datos del inventario: Cumple, No cumple o No aplica.' },
-    { k: 'h', texto: 'Anexo E · Índice de evidencias' },
-    { k: 'tabla', cab: ['Código', 'Documento', 'Tipo', 'Centro', 'Periodo', 'Estado'], filas: docsOrdenados.map((x) => [codigoNombre.get(x.nombre)!, x.nombre, x.tipo, x.centro, periodoTxt(x.periodoDesde, x.periodoHasta), x.estado]) },
+    { k: 'h', texto: 'Anexo E · Índice de evidencias' }, ...anexoE,
     { k: 'h', texto: 'Anexo F · Registro de no conformidades' },
     d.noConformidades.length
       ? { k: 'tabla', cab: ['Fecha', 'Descripción', 'Medida', 'Responsable', 'Cerrada'], filas: d.noConformidades.map((n) => [fechaEs(n.fecha), n.descripcion, dash(n.medida), dash(n.responsable), fechaEs(n.cerradaEn)]) }

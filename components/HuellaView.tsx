@@ -1626,9 +1626,19 @@ const TablaLineas: React.FC<{
     return [...l].sort((x, y) => { const a = valorOrden(x, c), b = valorOrden(y, c); const d = typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), 'es'); return orden.desc ? -d : d; });
   }, [lineas, resultados, fCat, fFue, orden]); // eslint-disable-line
   const totalVisT = visibles.reduce((t, a) => t + (kg.get(a.id)?.kgCO2e ?? 0), 0) / 1000;
-  const th = (col: Col, texto: string, cls = 'pr-3') => (
-    <th className={`${cls} select-none`}><button className="inline-flex items-center gap-1 font-semibold hover:text-slate-900" onClick={() => setOrden((o) => (o.col === col ? { col, desc: !o.desc } : { col, desc: col === 'cantidad' || col === 'factor' || col === 'tco2e' || col === 'periodo' }))} aria-label={`Ordenar por ${texto}`}>{texto}<span className="text-[9px]">{orden.col === col ? (orden.desc ? '▼' : '▲') : ''}</span></button></th>
+  const th = (col: Col, texto: string, cls = 'pr-3', sub?: string) => (
+    <th className={`${cls} select-none align-bottom pb-2`}><button className={`inline-flex flex-col ${cls.includes('text-right') ? 'items-end' : 'items-start'} font-semibold hover:text-slate-900`} onClick={() => setOrden((o) => (o.col === col ? { col, desc: !o.desc } : { col, desc: col === 'cantidad' || col === 'factor' || col === 'tco2e' || col === 'periodo' }))} aria-label={`Ordenar por ${texto}`}>
+      <span>{texto}<span className="text-[9px] ml-1">{orden.col === col ? (orden.desc ? '▼' : '▲') : ''}</span></span>{sub && <span className="text-[10px] font-normal text-slate-500">{sub}</span>}</button></th>
   );
+  // Unidades en la cabecera cuando todas las filas visibles comparten unidad (p. ej. al filtrar por una fuente); si no, junto a cada cifra
+  const unidadDe = (a: Actividad): string => (a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : String(factores.unidades[a.fuente] ?? a.unidad ?? ''));
+  const unidades: string[] = Array.from(new Set<string>(visibles.map(unidadDe)));
+  const udUnica: string | null = unidades.length === 1 ? unidades[0] : null;
+  const totalesUd = unidades.map((u) => ({ u, t: visibles.filter((a) => unidadDe(a) === u).reduce((t, a) => t + Number(a.cantidad), 0) }));
+  const variosCentros = new Set(lineas.map((a) => a.centro_id)).size > 1;
+  const hayContador = visibles.some((a) => a.contador);
+  const nCols = 6 + (variosCentros ? 1 : 0) + (hayContador ? 1 : 0);
+  const fecha = (d: string | null | undefined) => (d ? d.split('-').reverse().join('/') : '—');
   return (
     <div>
     <div className="flex flex-wrap items-end gap-3 mb-3">
@@ -1645,7 +1655,7 @@ const TablaLineas: React.FC<{
       <p className="text-[11px] text-slate-600 ml-auto self-center">{visibles.length} de {lineas.length} líneas · <strong>{num(totalVisT, 3)}</strong> t CO₂e</p>
     </div>
     <div className="overflow-x-auto"><table className="w-full text-xs">
-      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{th('centro', 'Centro', 'py-2 pr-3')}{th('categoria', 'Categoría')}{th('fuente', 'Fuente')}{th('contador', 'Contador')}{th('cantidad', 'Cantidad', 'pr-3 text-right')}{th('factor', 'Factor de emisión', 'pr-3 text-right')}{th('tco2e', 't CO₂e', 'pr-3 text-right')}<th className="pr-3 text-right">Incert.</th>{th('periodo', 'Origen')}<th /></tr></thead>
+      <thead><tr className="text-left text-slate-600 border-b border-slate-200">{variosCentros && th('centro', 'Centro', 'py-2 pr-3')}{th('fuente', 'Fuente', 'py-2 pr-3')}{hayContador && th('contador', 'Contador')}{th('periodo', 'Fecha')}{th('cantidad', 'Cantidad', 'pr-3 text-right', udUnica ?? 'según fuente')}{th('factor', 'Factor', 'pr-3 text-right', udUnica ? `kg CO₂e / ${udUnica}` : 'kg CO₂e / unidad')}{th('tco2e', 'Emisiones', 'pr-3 text-right', 't CO₂e')}<th className="pr-3 text-right align-bottom pb-2 font-semibold">Incert.</th><th /></tr></thead>
       <tbody>{visibles.map((a) => {
         const r = kg.get(a.id);
         const ud = a.categoria === 'electricidad' ? 'kWh' : a.categoria === 'fugitiva' ? 'kg' : factores.unidades[a.fuente] ?? (a.unidad ?? '');
@@ -1654,15 +1664,15 @@ const TablaLineas: React.FC<{
         const doc = a.documento_id ? docs.find((d) => d.id === a.documento_id) : undefined;
         return (
           <React.Fragment key={a.id}>
-            <tr className="border-b border-slate-100">
-              <td className="py-1.5 pr-3">{nombreCentro(a.centro_id)}</td><td className="pr-3">{CATEGORIAS[a.categoria]}</td>
-              <td className="pr-3">{a.fuente || (a.origen_electricidad ? ORIGEN[a.origen_electricidad] : 'Electricidad')}</td>
-              <td className="pr-3 text-slate-600">{a.contador || '—'}</td>
-              <td className="pr-3 text-right tabular-nums">{num(a.cantidad, 2)} <span className="text-slate-500">{ud}</span></td>
-              <td className="pr-3 text-right tabular-nums">{factor === null ? '—' : <>{num(factor, 4)} <span className="text-slate-500">kg CO₂e/{ud || 'ud'}</span></>}</td>
-              <td className="pr-3 text-right tabular-nums font-semibold">{r ? num(r.kgCO2e / 1000, 3) : '—'}</td>
-              <td className="pr-3 text-right tabular-nums text-slate-600" title={r ? (() => { const u = incertidumbreLinea(r, factores, cfgInc); return `Dato ±${fmt(u.datoPct, 'porcentaje')} % (${ORIGENES_DATO[u.origen]}) · factor ±${fmt(u.factorPct, 'porcentaje')} %${u.ajustada ? ' · ajustada' : ''}`; })() : ''}>{r ? <>±{fmt(incertidumbreLinea(r, factores, cfgInc).pct, 'porcentaje')} %{a.incertidumbre ? <span className="text-amber-600"> ✎</span> : ''}</> : '—'}</td>
-              <td className="pr-3 text-slate-600">{a.documento_id ? 'Factura' : `Manual: ${a.notas ?? ''}`}{a.periodo_desde ? ` · ${a.periodo_desde}` : ''}</td>
+            <tr className={`border-b border-slate-100 ${Number(a.cantidad) === 0 ? 'text-slate-400' : ''}`}>
+              {variosCentros && <td className="py-2.5 pr-3">{nombreCentro(a.centro_id)}</td>}
+              <td className="py-2.5 pr-3"><span className="block text-[13px] font-semibold text-slate-900">{nombreFuente(a)}</span><span className="block text-[10px] text-slate-500">{CATEGORIAS[a.categoria]}{!a.documento_id ? ' · manual' : ''}</span></td>
+              {hayContador && <td className="pr-3 text-slate-600 tabular-nums">{a.contador || '—'}</td>}
+              <td className="pr-3 tabular-nums whitespace-nowrap">{fecha(a.periodo_desde)}</td>
+              <td className="pr-3 text-right tabular-nums text-[13px]">{num(a.cantidad, 2)}{!udUnica && <span className="text-slate-500 text-[10px] ml-1">{ud}</span>}</td>
+              <td className="pr-3 text-right tabular-nums text-slate-600">{factor === null ? '—' : num(factor, 4)}{!udUnica && factor !== null && <span className="text-slate-500 text-[10px] ml-1">/{ud || 'ud'}</span>}</td>
+              <td className="pr-3 text-right tabular-nums text-sm font-bold text-slate-900">{r ? num(r.kgCO2e / 1000, 3) : '—'}</td>
+              <td className="pr-3 text-right tabular-nums text-slate-500" title={r ? (() => { const u = incertidumbreLinea(r, factores, cfgInc); return `Dato ±${fmt(u.datoPct, 'porcentaje')} % (${ORIGENES_DATO[u.origen]}) · factor ±${fmt(u.factorPct, 'porcentaje')} %${u.ajustada ? ' · ajustada' : ''}`; })() : ''}>{r ? <>±{fmt(incertidumbreLinea(r, factores, cfgInc).pct, 'porcentaje')} %{a.incertidumbre ? <span className="text-amber-600"> ✎</span> : ''}</> : '—'}</td>
               <td className="text-right whitespace-nowrap">
                 {doc && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Ver factura" title="Ver factura" onClick={async () => { try { window.open(await huellaService.urlDocumento(doc.archivo_path), '_blank', 'noopener'); } catch (e) { falla(e); } }}><Eye size={15} /></button>}
                 {abierto && r && <button className="p-1.5 text-slate-500 hover:text-brand-700" aria-label="Incertidumbre" title="Incertidumbre del dato y del factor" onClick={() => abrirInc(a, r)}><Gauge size={15} /></button>}
@@ -1671,7 +1681,7 @@ const TablaLineas: React.FC<{
               </td>
             </tr>
             {abierto && r && incEdit === a.id && (
-              <tr className="border-b border-slate-100"><td colSpan={10} className="pb-3">
+              <tr className="border-b border-slate-100"><td colSpan={nCols + 2} className="pb-3">
                 <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-4">
                   <p className="text-xs text-slate-600 mb-3">La línea hereda del catálogo el origen del dato y el ±% del dato y del factor. Si los cambia, la justificación es obligatoria y consta en el informe.</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1689,7 +1699,7 @@ const TablaLineas: React.FC<{
               </td></tr>
             )}
             {abierto && editando === a.id && (
-              <tr className="border-b border-slate-100"><td colSpan={10} className="pb-3">
+              <tr className="border-b border-slate-100"><td colSpan={nCols + 2} className="pb-3">
                 {doc && doc.extraccion
                   ? <Revision key={doc.id} doc={doc} factores={factores} inv={inv} otras={docs} corregir onHecho={() => { setEditando(null); onCambio(); }} falla={falla} />
                   : (
@@ -1709,6 +1719,16 @@ const TablaLineas: React.FC<{
           </React.Fragment>
         );
       })}</tbody>
+      {visibles.length > 0 && (
+        <tfoot><tr className="border-t-2 border-slate-300 bg-slate-50 text-slate-900">
+          <td className="py-2.5 pr-3 font-bold" colSpan={nCols - 3}>Total · {visibles.length} línea{visibles.length === 1 ? '' : 's'}</td>
+          <td className="pr-3 text-right tabular-nums font-bold">{totalesUd.map((x) => <span key={x.u} className="block">{num(x.t, 2)}{!udUnica && <span className="text-slate-500 text-[10px] font-normal ml-1">{x.u}</span>}</span>)}</td>
+          <td />
+          <td className="pr-3 text-right tabular-nums text-sm font-bold">{num(totalVisT, 3)}<span className="block text-[10px] font-normal text-slate-500">t CO₂e</span></td>
+          <td colSpan={2} />
+        </tr></tfoot>
+      )}
+      
     </table></div>
     </div>
   );

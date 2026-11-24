@@ -661,9 +661,9 @@ const BuscadorHoteles: React.FC<{
 };
 
 // ───────────────────────────── Formularios de organización y centro ─────────────────────────────
-const Modal: React.FC<{ titulo: string; onCerrar: () => void; children: React.ReactNode }> = ({ titulo, onCerrar, children }) => (
+const Modal: React.FC<{ titulo: string; onCerrar: () => void; children: React.ReactNode; ancho?: string }> = ({ titulo, onCerrar, children, ancho = 'max-w-xl' }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60" role="dialog" aria-modal="true" aria-label={titulo}>
-    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-auto p-6">
+    <div className={`bg-white rounded-2xl shadow-2xl w-full ${ancho} max-h-[90vh] overflow-auto p-6`}>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-bold text-slate-900">{titulo}</h2>
         <button onClick={onCerrar} className="p-1.5 text-slate-500 hover:text-slate-900" aria-label="Cerrar"><XCircle size={18} /></button>
@@ -714,7 +714,29 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
   const f = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setV({ ...v, [k]: e.target.value });
   const guardar = async () => { setGuardando(true); try { await onGuardar({ nombre: v.nombre.trim(), cif: v.cif.trim() || null, direccion: v.direccion.trim() || null, cnae: v.cnae.trim() || null, iae: v.iae.trim() || null, razon_social: v.razon.trim() || null, criterio_consolidacion: v.criterio || null, consolidacion_justificacion: v.justificacion.trim() || null, responsable_nombre: v.rNombre.trim() || null, responsable_cargo: v.rCargo.trim() || null, responsable_entidad: v.rEntidad.trim() || null, responsable_email: v.rEmail.trim() || null, consultor_email: v.consultor.trim() || null, suite_cadena: cadenaSuite }, hoteles); onCerrar(); } finally { setGuardando(false); } };
   return (
-    <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar}>
+    <Modal titulo={org ? 'Editar organización' : 'Nueva organización'} onCerrar={onCerrar} ancho="max-w-3xl">
+      {(() => {
+        const avisos = avisosRazonSocial(v.razon, v.nombre, v.cif);
+        const criterio = CRITERIOS_CONSOLIDACION.find((c) => c.id === v.criterio);
+        const ok = {
+          id: !!v.razon.trim() && !!v.nombre.trim() && !!v.cif.trim(),
+          act: !!v.cnae.trim() && !!v.iae.trim(),
+          cons: !!v.criterio && !!v.justificacion.trim(),
+          resp: !!v.rNombre.trim() && !!v.rCargo.trim() && !!v.rEntidad.trim(),
+          acc: !!v.consultor.trim(),
+        };
+        const secciones: Array<{ id: keyof typeof ok; titulo: string; sub: string; icono: React.ReactNode }> = [
+          { id: 'id', titulo: 'Identificación', sub: v.cif.trim() || 'Razón social y CIF', icono: <Building2 size={16} /> },
+          { id: 'act', titulo: 'Actividad', sub: [v.cnae && `CNAE ${v.cnae}`, v.iae && `IAE ${v.iae}`].filter(Boolean).join(' · ') || 'Dirección, CNAE e IAE', icono: <FileText size={16} /> },
+          { id: 'cons', titulo: 'Consolidación', sub: criterio?.titulo ?? 'Criterio ISO 14064-1', icono: <Gauge size={16} /> },
+          { id: 'resp', titulo: 'Responsable', sub: v.rNombre.trim() || 'Quién firma el informe', icono: <FileCheck size={16} /> },
+          { id: 'acc', titulo: 'Acceso', sub: v.consultor.trim() || 'Consultor asignado', icono: <Lock size={16} /> },
+        ];
+        const hechas = secciones.filter((x) => ok[x.id]).length;
+        const primeraPendiente = secciones.find((x) => !ok[x.id])?.id ?? 'id';
+        return <Cuerpo secciones={secciones} ok={ok} hechas={hechas} inicial={primeraPendiente} nombre={v.razon.trim() || v.nombre.trim() || 'Nueva organización'} cif={v.cif.trim()} paneles={{
+          id: (
+            <div className="space-y-3">
       {!org && (
         <div className="mb-4 rounded-xl p-3" style={{ background: '#F4F7FA' }}>
           <p className="text-xs font-semibold text-slate-700 mb-1">Buscar en HS Suite (recomendado)</p>
@@ -780,60 +802,43 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
           )}
         </div>
       )}
-      {(() => {
-        const avisos = avisosRazonSocial(v.razon, v.nombre, v.cif);
-        const criterio = CRITERIOS_CONSOLIDACION.find((c) => c.id === v.criterio);
-        const faltaFinal = [!v.cnae.trim() && 'CNAE', !v.iae.trim() && 'IAE'].filter(Boolean) as string[];
-        const faltaCons = !v.criterio || !v.justificacion.trim();
-        const faltaResp = !v.rNombre.trim() || !v.rCargo.trim() || !v.rEntidad.trim();
-        const Estado: React.FC<{ ok: boolean; texto: string }> = ({ ok, texto }) => <span className={`ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full ${ok ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{texto}</span>;
-        const sum = 'flex items-center gap-2 cursor-pointer px-3 py-2.5 text-sm font-semibold text-slate-800 list-none';
-        return (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Campo etiqueta="Razón social (denominación legal) *" ancho><input className={input} value={v.razon} placeholder="Tal como figura en el CIF, con su forma jurídica (S.L., S.A.…)" onChange={f('razon')} autoFocus /></Campo>
-              {avisos.length > 0 && <ul className="col-span-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
-              <Campo etiqueta="Nombre comercial *"><input className={input} value={v.nombre} placeholder="Nombre con que se conoce" onChange={f('nombre')} /></Campo>
-              <Campo etiqueta="CIF *"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
+              <div className="grid grid-cols-2 gap-3">
+                <Campo etiqueta="Razón social (denominación legal) *" ancho><input className={input} value={v.razon} placeholder="Tal como figura en el CIF, con su forma jurídica (S.L., S.A.…)" onChange={f('razon')} autoFocus /></Campo>
+                {avisos.length > 0 && <ul className="col-span-2 text-[11px] text-amber-900 bg-amber-50 rounded-lg px-3 py-2 list-disc pl-5">{avisos.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+                <Campo etiqueta="Nombre comercial *"><input className={input} value={v.nombre} placeholder="Nombre con que se conoce" onChange={f('nombre')} /></Campo>
+                <Campo etiqueta="CIF *"><input className={input} value={v.cif} onChange={f('cif')} /></Campo>
+              </div>
             </div>
-
-            <details className="rounded-xl border border-slate-200" open={faltaFinal.length > 0}>
-              <summary className={sum}>Dirección y códigos de actividad <Estado ok={faltaFinal.length === 0} texto={faltaFinal.length ? `Falta ${faltaFinal.join(' y ')}` : 'Completo'} /></summary>
-              <div className="grid grid-cols-2 gap-3 px-3 pb-3">
-                <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
-                <Campo etiqueta="CNAE (obligatorio para la versión final)"><input className={input} value={v.cnae} placeholder="Ej.: 5510" onChange={f('cnae')} /></Campo>
-                <Campo etiqueta="IAE (obligatorio para la versión final)"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
-              </div>
-            </details>
-
-            <details className="rounded-xl border border-slate-200" open={faltaCons}>
-              <summary className={sum}>Criterio de consolidación (ISO 14064-1) <Estado ok={!faltaCons} texto={faltaCons ? 'Pendiente' : criterio?.titulo ?? 'Completo'} /></summary>
-              <div className="px-3 pb-3 space-y-2">
-                <select className={input} value={v.criterio} onChange={(e) => setV({ ...v, criterio: e.target.value as '' | CriterioConsolidacion })} aria-label="Criterio de consolidación">
-                  <option value="">Elegir criterio…</option>
-                  {CRITERIOS_CONSOLIDACION.map((c) => <option key={c.id} value={c.id}>{c.titulo}</option>)}
-                </select>
-                {criterio && <p className="text-[11px] text-slate-600">{criterio.descripcion}</p>}
-                <label className="block text-xs font-semibold text-slate-600">Justificación del criterio *<textarea className={`${input} mt-1`} rows={2} value={v.justificacion} placeholder="Por qué se elige este criterio para esta organización." onChange={(e) => setV({ ...v, justificacion: e.target.value })} /></label>
-              </div>
-            </details>
-
-            <details className="rounded-xl border border-slate-200" open={faltaResp}>
-              <summary className={sum}>Responsable del informe <Estado ok={!faltaResp} texto={faltaResp ? 'Pendiente' : v.rNombre.trim()} /></summary>
-              <div className="grid grid-cols-2 gap-3 px-3 pb-3">
-                <Campo etiqueta="Nombre *"><input className={input} value={v.rNombre} onChange={f('rNombre')} /></Campo>
-                <Campo etiqueta="Cargo *"><input className={input} value={v.rCargo} onChange={f('rCargo')} /></Campo>
-                <Campo etiqueta="Entidad *"><input className={input} value={v.rEntidad} onChange={f('rEntidad')} /></Campo>
-                <Campo etiqueta="Correo (opcional)"><input className={input} value={v.rEmail} onChange={f('rEmail')} /></Campo>
-              </div>
-            </details>
-
-            <details className="rounded-xl border border-slate-200">
-              <summary className={sum}>Acceso <span className="ml-auto text-[11px] font-normal text-slate-500">Consultor asignado</span></summary>
-              <div className="px-3 pb-3"><Campo etiqueta="Correo del consultor (controla quién puede editar)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo></div>
-            </details>
-          </div>
-        );
+          ),
+          act: (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo etiqueta="Dirección" ancho><input className={input} value={v.direccion} onChange={f('direccion')} /></Campo>
+              <Campo etiqueta="CNAE * (obligatorio para la versión final)"><input className={input} value={v.cnae} placeholder="Ej.: 5510" onChange={f('cnae')} /></Campo>
+              <Campo etiqueta="IAE * (obligatorio para la versión final)"><input className={input} value={v.iae} onChange={f('iae')} /></Campo>
+            </div>
+          ),
+          cons: (
+            <div className="space-y-3">
+              <div className="grid sm:grid-cols-3 gap-2">{CRITERIOS_CONSOLIDACION.map((c) => (
+                <button key={c.id} type="button" onClick={() => setV({ ...v, criterio: c.id })} aria-pressed={v.criterio === c.id}
+                  className={`text-left rounded-xl border-2 p-3 transition ${v.criterio === c.id ? 'border-brand-600 bg-brand-50' : 'border-slate-200 hover:border-slate-300'}`}>
+                  <span className="block text-xs font-bold text-slate-900">{c.titulo}</span>
+                  <span className="block text-[11px] text-slate-600 mt-1">{c.descripcion}</span>
+                </button>
+              ))}</div>
+              <label className="block text-xs font-semibold text-slate-700">Justificación del criterio *<textarea className={`${input} mt-1`} rows={3} value={v.justificacion} placeholder="Por qué se elige este criterio para esta organización." onChange={(e) => setV({ ...v, justificacion: e.target.value })} /></label>
+            </div>
+          ),
+          resp: (
+            <div className="grid grid-cols-2 gap-3">
+              <Campo etiqueta="Nombre *"><input className={input} value={v.rNombre} onChange={f('rNombre')} /></Campo>
+              <Campo etiqueta="Cargo *"><input className={input} value={v.rCargo} onChange={f('rCargo')} /></Campo>
+              <Campo etiqueta="Entidad *"><input className={input} value={v.rEntidad} onChange={f('rEntidad')} /></Campo>
+              <Campo etiqueta="Correo (opcional)"><input className={input} value={v.rEmail} onChange={f('rEmail')} /></Campo>
+            </div>
+          ),
+          acc: <Campo etiqueta="Correo del consultor (controla quién puede editar esta organización)"><input className={input} value={v.consultor} onChange={f('consultor')} /></Campo>,
+        }} />;
       })()}
       <div className="sticky bottom-0 -mx-6 -mb-6 mt-5 px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-end gap-2 rounded-b-2xl">
         {(!v.nombre.trim()) && <span className="mr-auto text-[11px] text-amber-800">El nombre comercial es obligatorio para guardar.</span>}
@@ -841,6 +846,43 @@ const FormOrganizacion: React.FC<{ org?: Organizacion; centrosOrg?: Centro[]; us
         <button className={btnP} onClick={guardar} disabled={!v.nombre.trim() || guardando}>{guardando ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Guardar</button>
       </div>
     </Modal>
+  );
+};
+
+/** Maqueta del formulario de organización: cabecera con avance, navegación lateral con estado por sección y un único panel visible. */
+const Cuerpo: React.FC<{ secciones: Array<{ id: string; titulo: string; sub: string; icono: React.ReactNode }>; ok: Record<string, boolean>; hechas: number; inicial: string; nombre: string; cif: string; paneles: Record<string, React.ReactNode> }> = ({ secciones, ok, hechas, inicial, nombre, cif, paneles }) => {
+  const [activa, setActiva] = useState(inicial);
+  const pct = Math.round((hechas / secciones.length) * 100);
+  const actual = secciones.find((x) => x.id === activa) ?? secciones[0];
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4 rounded-xl p-3" style={{ background: '#F4F7FA' }}>
+        <div className="w-11 h-11 rounded-xl bg-brand-600 text-white flex items-center justify-center text-lg font-bold shrink-0">{(nombre[0] ?? 'O').toUpperCase()}</div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-slate-900 truncate">{nombre}</p>
+          <p className="text-[11px] text-slate-600">{cif || 'Sin CIF'}</p>
+        </div>
+        <div className="w-40 shrink-0">
+          <p className="text-[11px] font-semibold text-slate-700 text-right">{hechas} de {secciones.length} completas</p>
+          <div className="h-1.5 rounded-full bg-slate-200 mt-1 overflow-hidden"><div className={`h-full ${pct === 100 ? 'bg-green-600' : 'bg-amber-500'}`} style={{ width: `${pct}%` }} /></div>
+        </div>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-4">
+        <nav className="sm:w-52 shrink-0 flex sm:flex-col gap-1.5 overflow-x-auto" aria-label="Secciones">
+          {secciones.map((x) => (
+            <button key={x.id} type="button" onClick={() => setActiva(x.id)} aria-current={activa === x.id}
+              className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left shrink-0 transition ${activa === x.id ? 'bg-brand-50 ring-2 ring-brand-600' : 'hover:bg-slate-50'}`}>
+              <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ok[x.id] ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{ok[x.id] ? <CheckCircle2 size={16} /> : x.icono}</span>
+              <span className="min-w-0"><span className="block text-xs font-bold text-slate-900">{x.titulo}</span><span className="block text-[11px] text-slate-500 truncate max-w-[130px]">{x.sub}</span></span>
+            </button>
+          ))}
+        </nav>
+        <section className="flex-1 min-w-0" aria-label={actual.titulo}>
+          <h3 className="text-sm font-bold text-slate-900 mb-3">{actual.titulo}</h3>
+          {paneles[actual.id]}
+        </section>
+      </div>
+    </div>
   );
 };
 

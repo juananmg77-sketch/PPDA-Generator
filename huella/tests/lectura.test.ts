@@ -78,3 +78,12 @@ test('tipo indicado de antemano: va en las instrucciones y una lectura distinta 
   const ok = await leerFactura(simulado({ [MODELO_BASE]: buena }).llamar, { texto: 'f', tipoEsperado: 'electricidad' }, ctx);
   assert.deepEqual(ok.incidencias, []);
 });
+
+test('esquema: pocos parámetros opcionales (la API rechaza esquemas demasiado complejos) y datos de suministro vacíos = no constan', async () => {
+  const props = Object.keys(ESQUEMA_EXTRACCION.properties);
+  const opcionales = props.filter((k) => !(ESQUEMA_EXTRACCION.required as readonly string[]).includes(k));
+  assert.ok(opcionales.length <= 10, `opcionales: ${opcionales.length}`);
+  const vacia = { tipo: 'gas_natural', confianza: 0.9, cantidad: 100, periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', unidad: 'kWh PCS', cups: '', numeroContador: ' ', contrato: '', usoSuministro: '', direccionSuministro: '', peaje: '' };
+  const r = await leerFactura(simulado({ [MODELO_BASE]: vacia as never }).llamar, { texto: 'f' }, ctx);
+  assert.equal(r.extraccion.cups, undefined); assert.equal('contrato' in r.extraccion, false);
+});

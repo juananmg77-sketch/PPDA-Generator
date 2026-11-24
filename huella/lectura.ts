@@ -20,12 +20,12 @@ export const ESQUEMA_EXTRACCION = {
     tipo: { type: 'string', enum: ['electricidad', 'gas_natural', 'gasoleo', 'glp', 'combustible_vehiculo', 'refrigerante', 'otro'], description: 'electricidad; gas_natural (contador de red); glp = butano, propano o GLP (bombonas, botellas, granel, depósito); gasoleo = gasóleo de calefacción o usos fijos; combustible_vehiculo = carburante de vehículos; refrigerante = recarga de gases fluorados; otro solo si no encaja' },
     proveedor: { type: 'string' },
     contador: { type: 'string', description: 'Punto de suministro: CUPS (luz o gas), nº de contador o de instalación, tal como figura. VARIOS si la factura agrupa varios.' },
-    cups: { type: 'string', description: 'CUPS del suministro (ES + 16 cifras + 2 letras), tal como figura' },
-    numeroContador: { type: 'string', description: 'Nº de contador o de equipo de medida, tal como figura' },
-    contrato: { type: 'string', description: 'Referencia o nº de contrato' },
-    usoSuministro: { type: 'string', description: 'Uso o instalación abastecida si consta (cocina, enfriadora, calefacción, piscina…)' },
-    direccionSuministro: { type: 'string', description: 'Dirección del punto de suministro' },
-    peaje: { type: 'string', description: 'Peaje o tarifa de acceso (RL.4, RLTB5, 2.0TD…)' },
+    cups: { type: 'string', description: 'CUPS del suministro (ES + 16 cifras + 2 letras), tal como figura; cadena vacía si no consta' },
+    numeroContador: { type: 'string', description: 'Nº de contador o de equipo de medida, tal como figura; cadena vacía si no consta' },
+    contrato: { type: 'string', description: 'Referencia o nº de contrato; cadena vacía si no consta' },
+    usoSuministro: { type: 'string', description: 'Uso o instalación abastecida si consta (cocina, enfriadora, calefacción, piscina…); cadena vacía si no consta' },
+    direccionSuministro: { type: 'string', description: 'Dirección del punto de suministro; cadena vacía si no consta' },
+    peaje: { type: 'string', description: 'Peaje o tarifa de acceso (RL.4, RLTB5, 2.0TD…); cadena vacía si no consta' },
     periodoDesde: { type: 'string', description: 'AAAA-MM-DD, inicio del periodo facturado' },
     periodoHasta: { type: 'string', description: 'AAAA-MM-DD, fin del periodo facturado' },
     cantidad: { type: 'number', description: 'Consumo total del periodo en la unidad indicada (no el importe)' },
@@ -36,7 +36,8 @@ export const ESQUEMA_EXTRACCION = {
     garantiaOrigen: { type: 'string', enum: ['no', 'renovable_balear', 'renovable_otra', 'desconocida'] },
     confianza: { type: 'number', description: 'De 0 a 1: seguridad global de la lectura' },
   },
-  required: ['tipo', 'confianza'],
+  // Los datos del suministro van como obligatorios (cadena vacía si no constan): la API limita los parámetros opcionales de un esquema («Schema is too complex»)
+  required: ['tipo', 'confianza', 'cups', 'numeroContador', 'contrato', 'usoSuministro', 'direccionSuministro', 'peaje'],
   additionalProperties: false,
 } as const;
 
@@ -110,10 +111,15 @@ const nErrores = (i: Incidencia[]) => i.filter((x) => x.gravedad === 'error').le
 const nLectura = (i: Incidencia[]) => i.filter((x) => CODIGOS_DE_LECTURA.has(x.codigo)).length;
 
 /** Deja el contador en forma normalizada (CUPS sin caracteres de control, mayúsculas) para poder compararlo. */
-const limpiar = (e: ExtraccionFactura): ExtraccionFactura => {
+const CLAVES_SUMINISTRO = ['cups', 'numeroContador', 'contrato', 'usoSuministro', 'direccionSuministro', 'peaje'] as const;
+const limpiar = (e0: ExtraccionFactura): ExtraccionFactura => {
+  const e: ExtraccionFactura = { ...e0 };
+  for (const k of CLAVES_SUMINISTRO) { const v = e[k]; if (typeof v !== 'string' || !v.trim()) delete e[k]; else e[k] = v.trim(); } // vacío = no consta
   const cups = normalizarContador(e.cups) || undefined;
   const contador = cups ?? (normalizarContador(e.contador) || undefined); // el CUPS identifica el suministro; si no consta, lo que figure como contador
-  return { ...e, ...(cups ? { cups } : {}), ...(contador ? { contador } : {}) };
+  if (cups) e.cups = cups;
+  if (contador) e.contador = contador; else delete e.contador;
+  return e;
 };
 
 export async function leerFactura(llamar: LlamarModelo, entrada: EntradaLectura, ctx: ContextoValidacion): Promise<ResultadoLectura> {

@@ -13,6 +13,7 @@ import type { ConfigPlantillaInforme } from '../huella/configInforme';
 import { INCERTIDUMBRE_POR_DEFECTO, ORIGENES_DATO, calcularIncertidumbre, configIncertidumbre, incertidumbreLinea, valoracion as valoracionInc } from '../huella/incertidumbre';
 import type { ConfigIncertidumbre } from '../huella/incertidumbre';
 import type { AjusteIncertidumbre, OrigenDato } from '../huella/tipos';
+import { agruparSuministros, resolutorSuministro, suministroDe } from '../huella/suministros';
 import { CRITERIOS_CONSOLIDACION, avisosRazonSocial, validarOrganizacion } from '../huella/organizacion';
 import type { CriterioConsolidacion } from '../huella/organizacion';
 import { compararAnios, configRecalculo, evaluarRecalculo, resumenDeInventario, validarAnioBase } from '../huella/anioBase';
@@ -554,7 +555,7 @@ const PanelResumen: React.FC<{
   const plantilla = invCentros.reduce((s, c) => s + Number(c.plantilla_media || 0), 0);
   const porRevisar = docs.filter((d) => d.estado === 'leido').length;
   const sinLeer = docs.filter((d) => d.estado === 'subido').length;
-  const huecos = huecosMensuales(docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta })), inv.anio);
+  const huecos = huecosMensuales(docs.map((d) => ({ estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: etqSum(docs)(idSum(d)), periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta })), inv.anio);
   const sinIndice = centros.filter((c) => !(Number(invCentros.find((x) => x.centro_id === c.id)?.indice_actividad) > 0));
   const confirmadas = actividad.filter((a) => a.estado === 'confirmada').length;
   const cerrado = inv.estado !== 'borrador';
@@ -1119,6 +1120,14 @@ const Meses: React.FC<{ cubiertos: Set<number> }> = ({ cubiertos }) => (
 
 const tipoDoc = (d: Documento) => (d.extraccion?.tipo ?? d.tipo) as string;
 const contadorDoc = (d: Documento) => d.extraccion?.contador;
+/** Etiqueta de suministro (p. ej. «Cocina · …7922NX») para cualquier identificador de las facturas de la lista; se calcula una vez por lista. */
+const cacheSuministros = new WeakMap<object, (id?: string | null) => string | undefined>();
+const etqSum = (docs: Documento[]) => {
+  let f = cacheSuministros.get(docs);
+  if (!f) { f = resolutorSuministro(docs.filter((d) => d.estado !== 'rechazado').map((d) => ({ ...d.extraccion, tipo: (d.extraccion?.tipo ?? d.tipo) as string }))); cacheSuministros.set(docs, f); }
+  return f;
+};
+const idSum = (d: Documento) => d.extraccion?.contador ?? d.extraccion?.cups;
 
 /** Cabecera de un grupo de facturas: tipo y CUPS (cuando procede), nº, consumo total y meses cubiertos del año. */
 const CabeceraGrupo: React.FC<{ g: { tipo: string; contador: string; items: Documento[] }; anio: number; soloTipo?: boolean }> = ({ g, anio, soloTipo }) => {
@@ -1205,7 +1214,8 @@ const PanelFacturas: React.FC<{
           const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined);
           const e = r.extraccion;
           await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
-          cambiar(id, { estado: 'listo' });
+          const rep = Number(e.cantidad) > 0 && e.periodoDesde && e.periodoHasta ? docs.find((d) => d.id !== doc!.id && d.estado !== 'rechazado' && d.centro_id === centroId && Number(d.extraccion?.cantidad) === Number(e.cantidad) && (d.periodo_desde ?? d.extraccion?.periodoDesde ?? '9999') <= e.periodoHasta! && (d.periodo_hasta ?? d.extraccion?.periodoHasta ?? '0000') >= e.periodoDesde!) : undefined;
+          cambiar(id, rep ? { estado: 'error', msg: `Leída, pero parece repetida: misma cantidad y periodo solapado con «${rep.nombre_archivo}». Elimine una de las dos.` } : { estado: 'listo' });
         } catch (x) {
           cambiar(id, { estado: 'error', msg: doc ? `Guardada, pero no se pudo leer: ${x instanceof Error ? x.message : x}` : x instanceof Error ? x.message : String(x) });
         }
@@ -1219,11 +1229,11 @@ const PanelFacturas: React.FC<{
   const nombreCentro = (id: string | null) => centros.find((c) => c.id === id)?.nombre ?? '—';
   const pendientes = docs.filter((d) => d.estado === 'leido' && d.extraccion);
   const evaluadas = useMemo(() => new Map(pendientes.map((d) => [d.id, evaluarDoc(d, factores, inv.anio, docs)])), [docs, factores, inv.anio]); // eslint-disable-line
-  const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, contadorDoc), [docs]); // eslint-disable-line
+  const gruposPend = useMemo(() => agruparPorTipoYContador(pendientes, tipoDoc, (d) => etqSum(docs)(idSum(d))), [docs]); // eslint-disable-line
   // Subidas pero sin lectura utilizable (fallo de lectura): cuentan como pendientes en el cierre y antes quedaban ocultas entre las confirmadas
   const sinLeerDocs = useMemo(() => docs.filter((d) => d.estado === 'subido' || (d.estado === 'leido' && !d.extraccion)), [docs]);
   const docsArchivo = useMemo(() => docs.filter((d) => d.estado !== 'leido' && d.estado !== 'subido'), [docs]);
-  const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, contadorDoc), [docsArchivo]);
+  const gruposTodas = useMemo(() => agruparPorTipoYContador(docsArchivo, tipoDoc, (d) => etqSum(docs)(idSum(d))), [docsArchivo]);
   // Paquetes por tipología (electricidad, gas natural…), cada uno con sus contadores dentro
   const paquetes = useMemo(() => {
     const m = new Map<string, { tipo: string; items: Documento[]; subgrupos: typeof gruposTodas }>();
@@ -1316,6 +1326,7 @@ const PanelFacturas: React.FC<{
               className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed rounded-xl px-4 py-8 text-center cursor-pointer transition-colors ${arrastrando ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-400'} ${!abierto || cargando ? 'opacity-50 pointer-events-none' : ''}`}>
               {cargando ? <Loader2 size={22} className="animate-spin text-brand-700" /> : <Upload size={22} className="text-brand-700" />}
               <span className="text-sm font-semibold text-slate-800">{cargando ? `Leyendo… ${hechas} de ${tareas.length}` : 'Arrastre aquí las facturas o pulse para elegirlas'}</span>
+              <span className="text-[11px] text-slate-500">Suba cada factura completa (con la 2.ª página, donde figuran CUPS, contador y contrato): se agrupan solas por suministro.</span>
               <span className="text-[11px] text-slate-500">{tipo ? `Se leerán como: ${TIPOS_SUBIDA.find(([k]) => k === tipo)?.[1]}` : 'Sin tipo indicado, la lectura lo detecta (más lento y menos seguro)'}</span>
               <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
@@ -1352,6 +1363,33 @@ const PanelFacturas: React.FC<{
           {listaFacturas(sinLeerDocs)}
         </div>
       )}
+      {(() => {
+        const utiles = docs.filter((d) => d.estado !== 'rechazado' && d.extraccion && ['electricidad', 'gas_natural'].includes((d.extraccion.tipo ?? d.tipo) as string));
+        const sums = agruparSuministros(utiles.map((d) => ({ ...d.extraccion, tipo: (d.extraccion?.tipo ?? d.tipo) as string })));
+        if (!sums.length) return null;
+        const filas = sums.map((sm) => {
+          const mios = utiles.filter((d) => suministroDe([sm], { ...d.extraccion })?.id === sm.id);
+          const meses = new Set<number>(); let kwh = 0; let ud = '';
+          for (const d of mios) { for (const m of mesesTocados(d.periodo_desde ?? d.extraccion?.periodoDesde, d.periodo_hasta ?? d.extraccion?.periodoHasta, inv.anio)) meses.add(m); kwh += Number(d.extraccion?.cantidad ?? 0); ud = ud || String(d.extraccion?.unidad ?? ''); }
+          return { sm, n: mios.length, meses, kwh, ud, centro: nombreCentro(mios[0]?.centro_id ?? null), tipo: (mios[0]?.extraccion?.tipo ?? mios[0]?.tipo) as string };
+        }).sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
+        return (
+          <details className={`${card} group`} open>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Las facturas se agrupan solas por suministro (CUPS, contador y contrato)</span></summary>
+            <ul className="mt-3 divide-y divide-slate-100">{filas.map(({ sm, n, meses, kwh, ud, centro, tipo: tp }) => (
+              <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div className="flex-1 min-w-[240px]">
+                  <p className="text-sm font-bold text-slate-900">{sm.uso ?? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural')} <span className="text-[11px] font-normal text-slate-500">· {tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} · {centro}</span></p>
+                  <p className="text-[11px] text-slate-600">{[sm.direccion, sm.peaje && `Peaje ${sm.peaje}`].filter(Boolean).join(' · ') || 'Sin dirección ni peaje leídos'}</p>
+                  <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`, sm.contrato && `Contrato ${sm.contrato}`].filter(Boolean).join(' · ') || sm.id}</p>
+                </div>
+                <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
+                <div className="flex gap-0.5" aria-label={`Meses con factura: ${meses.size} de 12`}>{NOMBRES_MES.map((m, i) => <span key={m} title={m} className={`w-4 h-5 rounded-sm text-[8px] leading-5 text-center ${meses.has(i) ? 'bg-green-500 text-white' : 'bg-red-100 text-red-700'}`}>{m[0].toUpperCase()}</span>)}</div>
+              </li>
+            ))}</ul>
+          </details>
+        );
+      })()}
       {pendientes.length > 0 && rol === 'cliente' && (
         <div className={`${card} text-sm text-slate-700`}><Eye size={15} className="inline mr-2 text-slate-500" />{pendientes.length} factura(s) pendientes de revisión por su consultor.</div>
       )}
@@ -1667,7 +1705,7 @@ const TablaLineas: React.FC<{
             <tr className={`border-b border-slate-100 ${Number(a.cantidad) === 0 ? 'text-slate-400' : ''}`}>
               {variosCentros && <td className="py-2.5 pr-3">{nombreCentro(a.centro_id)}</td>}
               <td className="py-2.5 pr-3"><span className="block text-[13px] font-semibold text-slate-900">{nombreFuente(a)}</span><span className="block text-[10px] text-slate-500">{CATEGORIAS[a.categoria]}{!a.documento_id ? ' · manual' : ''}</span></td>
-              {hayContador && <td className="pr-3 text-slate-600 tabular-nums">{a.contador || '—'}</td>}
+              {hayContador && <td className="pr-3 text-slate-600 tabular-nums">{etqSum(docs)(a.contador) || '—'}</td>}
               <td className="pr-3 tabular-nums whitespace-nowrap">{fecha(a.periodo_desde)}</td>
               <td className="pr-3 text-right tabular-nums text-[13px]">{num(a.cantidad, 2)}{!udUnica && <span className="text-slate-500 text-[10px] ml-1">{ud}</span>}</td>
               <td className="pr-3 text-right tabular-nums text-slate-600">{factor === null ? '—' : num(factor, 4)}{!udUnica && factor !== null && <span className="text-slate-500 text-[10px] ml-1">/{ud || 'ud'}</span>}</td>
@@ -2476,7 +2514,7 @@ const PanelCierre: React.FC<{
   const redactar = () => {
     const c = redactarCorreoPendientes({
       organizacion: org.nombre, anio: inv.anio, anioCompleto: inv.anio < new Date().getFullYear(), remitente: usuario,
-      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((x) => x.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
+      docs: docs.map((d) => ({ nombre: d.nombre_archivo, centro: centros.find((x) => x.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: etqSum(docs)(idSum(d)), periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen })),
     });
     setCorreo({ asunto: c.asunto, cuerpo: c.cuerpo }); setCopiado(false);
   };
@@ -2553,7 +2591,7 @@ const PanelCierre: React.FC<{
     if (!factores || !calculo || previo === undefined || !isoCierre) return null;
     return evaluarCierre({
       anio: inv.anio,
-      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: d.extraccion?.contador, periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual })),
+      docs: docs.map((d) => ({ id: d.id, nombre: d.nombre_archivo, centro: centros.find((c) => c.id === d.centro_id)?.nombre, estado: d.estado, tipo: (d.extraccion?.tipo ?? d.tipo) as string, contador: etqSum(docs)(idSum(d)), periodoDesde: d.periodo_desde ?? d.extraccion?.periodoDesde, periodoHasta: d.periodo_hasta ?? d.extraccion?.periodoHasta, origenElectricidad: d.extraccion?.garantiaOrigen, cantidad: d.extraccion?.cantidad, verificado: d.extraccion?.verificadoManual })),
       actividadConfirmada: actividad.filter((a) => a.estado === 'confirmada').length,
       actividadManual: actividad.filter((a) => !a.documento_id).length,
       fallosCalculo: calculo.fallos.length, fallosDetalle: calculo.fallos,

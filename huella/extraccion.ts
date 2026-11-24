@@ -14,6 +14,15 @@ export interface ExtraccionFactura {
   proveedor?: string;
   /** Punto de suministro: CUPS (luz y gas), nº de contador o de instalación, tal como figura. «VARIOS» si la factura agrupa varios. */
   contador?: string;
+  /** Datos del suministro (suelen estar en la 2.ª página): permiten reconocer que el CUPS y el nº de contador son el mismo punto. */
+  cups?: string;
+  numeroContador?: string;
+  contrato?: string;
+  /** Uso o instalación abastecida (p. ej. «Cocina», «Enfriadora», «Calefacción»). */
+  usoSuministro?: string;
+  direccionSuministro?: string;
+  /** Peaje o tarifa de acceso (p. ej. «RL.4», «RLTB5», «2.0TD»). */
+  peaje?: string;
   periodoDesde?: string; // AAAA-MM-DD
   periodoHasta?: string;
   cantidad?: number;

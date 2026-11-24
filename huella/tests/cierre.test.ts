@@ -214,3 +214,13 @@ test('las comprobaciones de la organización, el año base, el recálculo y la s
   assert.equal(rc.items.find((i) => i.codigo === 'recalculo_sin_decision')!.ir, 'recalculo');
   assert.equal(evaluarCierre({ ...base, significancia: null }).items.find((i) => i.codigo === 'significancia_no_realizada')!.ir, 'significancia');
 });
+test('duplicados: misma cantidad y suministro con periodos que se solapan, aunque uno esté sin contador o mal leído', () => {
+  const base = { estado: 'revisado' as const, tipo: 'gas_natural', centro: 'Astoria' };
+  const a = { ...base, id: 'a', contador: 'Enfriadora', periodoDesde: '2024-03-20', periodoHasta: '2024-04-02', cantidad: 25579 };
+  const b = { ...base, id: 'b', contador: undefined, periodoDesde: '2024-04-01', periodoHasta: '2024-04-30', cantidad: 25579 };
+  assert.equal(facturasDuplicadas([a, b]).length, 1);
+  // otro suministro con la misma cantidad: no es duplicado
+  assert.equal(facturasDuplicadas([a, { ...b, contador: 'Cocina' }]).length, 0);
+  // mismos kWh pero periodos que no se solapan (meses distintos): tampoco
+  assert.equal(facturasDuplicadas([a, { ...b, periodoDesde: '2024-06-01', periodoHasta: '2024-06-30' }]).length, 0);
+});

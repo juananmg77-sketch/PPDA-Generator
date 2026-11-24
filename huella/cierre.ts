@@ -98,12 +98,24 @@ export function huecosMensuales(docs: DocCierre[], anio: number): Array<{ tipo: 
 /** Facturas confirmadas que repiten periodo y cantidad de otra del mismo centro y tipo (aunque el contador esté escrito distinto): se contarían dos veces. */
 export function facturasDuplicadas(docs: DocCierre[]): DocCierre[][] {
   const m = new Map<string, DocCierre[]>();
-  for (const d of docs) {
-    if (d.estado !== 'revisado' || !d.periodoDesde || !d.periodoHasta || !(Number(d.cantidad) > 0)) continue;
+  const validas = docs.filter((d) => d.estado === 'revisado' && d.periodoDesde && d.periodoHasta && Number(d.cantidad) > 0);
+  for (const d of validas) {
     const k = `${d.centro ?? ''}|${d.tipo}|${d.periodoDesde}|${d.periodoHasta}|${d.cantidad}`;
     m.set(k, [...(m.get(k) ?? []), d]);
   }
-  return [...m.values()].filter((g) => g.length > 1);
+  const grupos = [...m.values()].filter((g) => g.length > 1);
+  // Misma cantidad exacta y mismo suministro con periodos que se solapan (aunque uno esté mal leído o sin contador): también se contaría dos veces
+  const enGrupo = new Set(grupos.flat());
+  const mismoSum = (a: DocCierre, b: DocCierre) => !a.contador || !b.contador || a.contador === b.contador;
+  for (let i = 0; i < validas.length; i++) for (let j = i + 1; j < validas.length; j++) {
+    const a = validas[i], b = validas[j];
+    if (enGrupo.has(a) && enGrupo.has(b)) continue;
+    if ((a.centro ?? '') !== (b.centro ?? '') || a.tipo !== b.tipo || a.cantidad !== b.cantidad || !mismoSum(a, b) || diasSolape(a, b) < 1) continue;
+    const g = grupos.find((x) => x.includes(a) || x.includes(b));
+    if (g) { for (const x of [a, b]) if (!g.includes(x)) g.push(x); } else grupos.push([a, b]);
+    enGrupo.add(a); enGrupo.add(b);
+  }
+  return grupos;
 }
 
 /** Evalúa el criterio de insignificancia sobre porcentajes estimados de fuentes excluidas. */

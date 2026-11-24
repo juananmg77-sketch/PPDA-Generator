@@ -213,9 +213,9 @@ export const huellaService = {
   async borrarActividad(id: string) { ok(await supabase.from('hc_actividad').delete().eq('id', id)); },
 
   /** Envía la factura a la función de servidor (Haiku 5.5, con refuerzo si hace falta). Devuelve solo una PROPUESTA. */
-  async leerFactura(file: File, anioInventario: number, version?: string, tipo?: string, path?: string): Promise<ResultadoLecturaApi> {
+  async leerFactura(file: File, anioInventario: number, version?: string, tipo?: string, path?: string, cupsConocidos?: string[]): Promise<ResultadoLecturaApi> {
     // Con la factura ya subida se lee en segundo plano (no hay límite de tiempo de 504); si no, por la función normal
-    if (path) return leerEnSegundoPlano<ResultadoLecturaApi>('leer-factura', path, { anioInventario, version, tipo });
+    if (path) return leerEnSegundoPlano<ResultadoLecturaApi>('leer-factura', path, { anioInventario, version, tipo, cupsConocidos });
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;
     if (!token) throw new Error('Sesión caducada: vuelva a entrar.');

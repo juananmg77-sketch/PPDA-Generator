@@ -12,7 +12,7 @@ const tipoMime = (b: Uint8Array): 'application/pdf' | 'image/png' | 'image/jpeg'
 
 const manejar = async (req: Request): Promise<Response> => {
   if (req.method !== 'POST') return json({ error: 'Método no permitido.' }, 405);
-  let c: { path?: string; anioInventario?: number; version?: string; tipo?: string };
+  let c: { path?: string; anioInventario?: number; version?: string; tipo?: string; cupsConocidos?: string[] };
   try { c = await req.json(); } catch { return json({ error: 'Petición no válida.' }, 400); }
   if (!c.path || c.path.includes('..') || c.path.length > 300) return json({ error: 'Ruta no válida.' }, 400);
   const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
@@ -26,7 +26,7 @@ const manejar = async (req: Request): Promise<Response> => {
   const peticion = new Request('http://interna/leer', {
     method: 'POST',
     headers: { authorization: req.headers.get('authorization')!, 'content-type': 'application/json' },
-    body: JSON.stringify({ anioInventario: c.anioInventario, version: c.version, tipo: c.tipo, base64: Buffer.from(bytes).toString('base64'), mediaType }),
+    body: JSON.stringify({ anioInventario: c.anioInventario, version: c.version, tipo: c.tipo, cupsConocidos: c.cupsConocidos, base64: Buffer.from(bytes).toString('base64'), mediaType }),
   });
   return manejarLectura(peticion);
 };

@@ -1211,7 +1211,7 @@ const PanelFacturas: React.FC<{
           cambiar(id, { estado: 'subiendo' });
           doc = await huellaService.subirDocumento(file, org.id, inv.id, centroId, tipo || undefined);
           cambiar(id, { estado: 'leyendo' });
-          const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined, doc.archivo_path);
+          const r = await huellaService.leerFactura(file, inv.anio, version, tipo || undefined, doc.archivo_path, Array.from(new Set(docs.filter((d) => d.centro_id === centroId && d.estado !== 'rechazado').map((d) => d.extraccion?.cups ?? d.extraccion?.contador).filter((x): x is string => !!x && /^ES\d{16}[A-Z]{2}/.test(x)))));
           const e = r.extraccion;
           await huellaService.actualizarDocumento(doc.id, { estado: 'leido', extraccion: e, tipo: e.tipo, proveedor: e.proveedor ?? null, periodo_desde: e.periodoDesde ?? null, periodo_hasta: e.periodoHasta ?? null });
           const rep = Number(e.cantidad) > 0 && e.periodoDesde && e.periodoHasta ? docs.find((d) => d.id !== doc!.id && d.estado !== 'rechazado' && d.centro_id === centroId && Number(d.extraccion?.cantidad) === Number(e.cantidad) && (d.periodo_desde ?? d.extraccion?.periodoDesde ?? '9999') <= e.periodoHasta! && (d.periodo_hasta ?? d.extraccion?.periodoHasta ?? '0000') >= e.periodoDesde!) : undefined;
@@ -1326,7 +1326,7 @@ const PanelFacturas: React.FC<{
               className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed rounded-xl px-4 py-8 text-center cursor-pointer transition-colors ${arrastrando ? 'border-brand-500 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:border-brand-400'} ${!abierto || cargando ? 'opacity-50 pointer-events-none' : ''}`}>
               {cargando ? <Loader2 size={22} className="animate-spin text-brand-700" /> : <Upload size={22} className="text-brand-700" />}
               <span className="text-sm font-semibold text-slate-800">{cargando ? `Leyendo… ${hechas} de ${tareas.length}` : 'Arrastre aquí las facturas o pulse para elegirlas'}</span>
-              <span className="text-[11px] text-slate-500">Suba cada factura completa (con la 2.ª página, donde figuran CUPS, contador y contrato): se agrupan solas por suministro.</span>
+              <span className="text-[11px] text-slate-500">Suba cada factura completa (con la 2.ª página, donde figuran el CUPS, el contador y la dirección de suministro): se agrupan solas por suministro.</span>
               <span className="text-[11px] text-slate-500">{tipo ? `Se leerán como: ${TIPOS_SUBIDA.find(([k]) => k === tipo)?.[1]}` : 'Sin tipo indicado, la lectura lo detecta (más lento y menos seguro)'}</span>
               <input type="file" className="hidden" multiple accept="application/pdf,image/jpeg,image/png" onChange={(e) => { subir(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
             </label>
@@ -1375,13 +1375,12 @@ const PanelFacturas: React.FC<{
         }).sort((x, y) => x.centro.localeCompare(y.centro) || x.tipo.localeCompare(y.tipo) || (y.kwh - x.kwh));
         return (
           <details className={`${card} group`} open>
-            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Las facturas se agrupan solas por suministro (CUPS, contador y contrato)</span></summary>
+            <summary className="cursor-pointer text-sm font-bold text-slate-800 flex items-center gap-2"><ChevronRight size={15} className="transition-transform group-open:rotate-90" /> Suministros detectados ({sums.length})<span className="ml-auto text-[11px] font-normal text-slate-500">Las facturas se agrupan solas por suministro (CUPS, contador y dirección de suministro)</span></summary>
             <ul className="mt-3 divide-y divide-slate-100">{filas.map(({ sm, n, meses, kwh, ud, centro, tipo: tp }) => (
               <li key={sm.id} className="py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex-1 min-w-[240px]">
-                  <p className="text-sm font-bold text-slate-900">{sm.uso ?? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural')} <span className="text-[11px] font-normal text-slate-500">· {tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} · {centro}</span></p>
-                  <p className="text-[11px] text-slate-600">{[sm.direccion, sm.peaje && `Peaje ${sm.peaje}`].filter(Boolean).join(' · ') || 'Sin dirección ni peaje leídos'}</p>
-                  <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`, sm.contrato && `Contrato ${sm.contrato}`].filter(Boolean).join(' · ') || sm.id}</p>
+                  <p className="text-sm font-bold text-slate-900">{sm.direccion ?? (tp === 'electricidad' ? 'Electricidad' : 'Gas natural')} <span className="text-[11px] font-normal text-slate-500">· {tp === 'electricidad' ? 'Electricidad' : 'Gas natural'} · {centro}</span></p>
+                  <p className="text-[11px] text-slate-500 tabular-nums">{[sm.cups && `CUPS ${sm.cups}`, sm.numeroContador && `Contador ${sm.numeroContador}`].filter(Boolean).join(' · ') || sm.id}</p>
                 </div>
                 <div className="text-right tabular-nums"><p className="text-sm font-bold text-slate-900">{num(kwh, 0)} <span className="text-[10px] font-normal text-slate-500">{ud}</span></p><p className="text-[11px] text-slate-500">{n} factura{n === 1 ? '' : 's'}</p></div>
                 <div className="flex gap-0.5" aria-label={`Meses con factura: ${meses.size} de 12`}>{NOMBRES_MES.map((m, i) => <span key={m} title={m} className={`w-4 h-5 rounded-sm text-[8px] leading-5 text-center ${meses.has(i) ? 'bg-green-500 text-white' : 'bg-red-100 text-red-700'}`}>{m[0].toUpperCase()}</span>)}</div>

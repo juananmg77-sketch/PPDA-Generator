@@ -44,7 +44,7 @@ export const manejarLectura = async (req: Request): Promise<Response> => {
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'Lectura de facturas no configurada (falta la clave en el servidor).' }, 503);
   if (!(await usuarioAutorizado(req))) return json({ error: 'No autorizado.' }, 401);
 
-  let cuerpo: { anioInventario?: number; version?: string; tipo?: TipoFactura; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; existentes?: never };
+  let cuerpo: { anioInventario?: number; version?: string; tipo?: TipoFactura; texto?: string; base64?: string; mediaType?: EntradaLectura['mediaType']; cupsConocidos?: string[]; existentes?: never };
   try {
     cuerpo = await req.json();
   } catch {
@@ -53,7 +53,7 @@ export const manejarLectura = async (req: Request): Promise<Response> => {
   const anio = Number(cuerpo.anioInventario);
   if (!Number.isInteger(anio) || anio < 2020 || anio > 2100) return json({ error: 'Año de inventario no válido.' }, 400);
 
-  const entrada: EntradaLectura = { texto: cuerpo.texto, base64: cuerpo.base64, mediaType: cuerpo.mediaType, tipoEsperado: cuerpo.tipo };
+  const entrada: EntradaLectura = { texto: cuerpo.texto, base64: cuerpo.base64, mediaType: cuerpo.mediaType, tipoEsperado: cuerpo.tipo, cupsConocidos: Array.isArray(cuerpo.cupsConocidos) ? cuerpo.cupsConocidos.filter((x) => typeof x === 'string' && x.length <= 30).slice(0, 50) : undefined };
   const problema = validarEntrada(entrada);
   if (problema) return json({ error: problema }, 400);
 

@@ -83,12 +83,25 @@ test('esquema: tamaño contenido (la API rechaza esquemas complejos) y la cadena
   const props = Object.keys(ESQUEMA_EXTRACCION.properties);
   assert.ok(props.length <= 13, `propiedades: ${props.length}`);
   assert.deepEqual(Object.keys(ESQUEMA_BASE.properties).length, props.length - 1);
-  const e = { tipo: 'gas_natural', confianza: 0.9, cantidad: 100, periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', unidad: 'kWh PCS', suministro: 'CUPS=ES0238330000167922NX; contador=816000231; contrato=086163150041; uso=Cocina; direccion=Av. Mèxic 1; peaje=RL.4' };
+  const e = { tipo: 'gas_natural', confianza: 0.9, cantidad: 100, periodoDesde: '2024-01-01', periodoHasta: '2024-01-31', unidad: 'kWh PCS', suministro: 'CUPS=ES0238330000167922NX; contador=816000231; direccion=Av. Mèxic 1 – GAS COCINA' };
   const r = await leerFactura(simulado({ [MODELO_BASE]: e as never }).llamar, { texto: 'f' }, ctx);
   assert.equal(r.extraccion.cups, 'ES0238330000167922NX'); assert.equal(r.extraccion.contador, 'ES0238330000167922NX');
-  assert.equal(r.extraccion.numeroContador, '816000231'); assert.equal(r.extraccion.usoSuministro, 'Cocina'); assert.equal(r.extraccion.peaje, 'RL.4');
+  assert.equal(r.extraccion.numeroContador, '816000231'); assert.equal(r.extraccion.direccionSuministro, 'Av. Mèxic 1 – GAS COCINA');
   assert.equal('suministro' in r.extraccion, false);
   // sin suministro en la lectura: el CUPS único del texto de la factura
   const t = await leerFactura(simulado({ [MODELO_BASE]: { ...e, suministro: '' } as never }).llamar, { texto: 'Punto de suministro ES0238 3300 0016 7922 NX contrato' }, ctx);
   assert.equal(t.extraccion.cups, 'ES0238330000167922NX');
+});
+
+test('CUPS mal leído en un escaneo: se corrige por su dígito de control o se avisa', async () => {
+  const e = (cups: string) => ({ tipo: 'electricidad', confianza: 0.9, cantidad: 7531, periodoDesde: '2023-12-31', periodoHasta: '2024-01-31', unidad: 'kWh', suministro: `CUPS=${cups}; contador=063015258` });
+  const r = await leerFactura(simulado({ [MODELO_BASE]: e('ES0031500189603001ES0F') as never }).llamar, { texto: 'f' }, ctx);
+  assert.equal(r.extraccion.cups, 'ES0031500199603001ES');
+  assert.ok(r.incidencias.some((i) => i.codigo === 'cups_corregido'));
+  assert.equal(r.extraccion.numeroContador, '063015258');
+  // ambiguo sin contexto: se avisa y se pide segunda lectura; con el CUPS conocido del centro se corrige
+  const a = await leerFactura(simulado({ [MODELO_BASE]: e('ES0031500109603001ES') as never, [MODELO_REFUERZO]: e('ES0031500109603001ES') as never }).llamar, { texto: 'f' }, ctx);
+  assert.ok(a.incidencias.some((i) => i.codigo === 'cups_invalido') && a.usoRefuerzo);
+  const k = await leerFactura(simulado({ [MODELO_BASE]: e('ES0031500109603001ES') as never }).llamar, { texto: 'f', cupsConocidos: ['ES0031500199603001ES'] }, ctx);
+  assert.equal(k.extraccion.cups, 'ES0031500199603001ES');
 });

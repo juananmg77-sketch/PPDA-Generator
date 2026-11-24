@@ -72,3 +72,25 @@ test('sin emisión no hay división por cero ni NaN', () => {
   const r = calcularIncertidumbre(calc([{ ...elec, origenElectricidad: 'gdo_renovable_balear' }]), f);
   assert.equal(r.total.pct, null); assert.equal(r.total.valoracion, null); assert.ok(r.lineas.every((x) => Number.isFinite(x.pct) && Number.isFinite(x.absoluta)));
 });
+
+test('descripción por fuente: solo orígenes y factores aplicados en el inventario (sin catálogo por defecto)', async () => {
+  const { descripcionPorFuente, calcularIncertidumbre } = await import('../incertidumbre.ts');
+  const { calcularInventario } = await import('../motor.ts');
+  const { readFileSync } = await import('node:fs');
+  const { construirConjunto } = await import('../factores.ts');
+  const { conMezclas } = await import('../mezclas.ts');
+  const f = conMezclas(construirConjunto(JSON.parse(readFileSync(new URL('../datos/factores-calculadora-2024.1.json', import.meta.url), 'utf-8')), { anioInventario: 2024 }));
+  const L = [
+    { id: 'g', centro: 'A', categoria: 'combustion_fija', fuente: 'Gas natural (kWhPCS)*', cantidad: 1000, evidencia: 'f' },
+    { id: 'e', centro: 'A', categoria: 'electricidad', fuente: '', cantidad: 1000, origenElectricidad: 'red', evidencia: 'f' },
+    { id: 'r', centro: 'A', categoria: 'fugitiva', fuente: 'R-448A', cantidad: 3, evidencia: 'f' },
+  ] as never[];
+  const { resultados } = calcularInventario(L, f);
+  const filas = descripcionPorFuente(resultados, calcularIncertidumbre(resultados, f));
+  const por = Object.fromEntries(filas.map((x) => [x.fuente, x]));
+  assert.match(por['Electricidad'].consumo, /±2,0 % · factura/); assert.match(por['Electricidad'].factor, /±5,0 % · mix eléctrico/);
+  assert.match(por['Gas natural (kWhPCS)*'].factor, /CO₂ del combustible/);
+  assert.match(por['R-448A'].consumo, /±10,0 % · parte de mantenimiento/); assert.match(por['R-448A'].factor, /±15,0 % · PCA de la mezcla/);
+  const texto = filas.map((x) => `${x.consumo} ${x.factor}`).join(' ');
+  assert.ok(!/albar|estimaci|lectura interna|N₂O|CH₄/i.test(texto)); // nada que no se use
+});

@@ -4,6 +4,7 @@
 import type { AjusteIncertidumbre, ConjuntoFactores, OrigenDato, ResultadoLinea } from './tipos.ts';
 import { CATEGORIA_ISO_FUENTE } from './iso.ts';
 import { MEZCLAS, normalizarGas } from './mezclas.ts';
+import { fmt } from './formato.ts';
 
 export const ORIGENES_DATO: Record<OrigenDato, string> = {
   factura: 'Factura', albaran: 'Albarán', lectura_interna: 'Lectura interna', estimacion: 'Estimación', parte_mantenimiento: 'Parte de mantenimiento',
@@ -101,4 +102,22 @@ export function calcularIncertidumbre(resultados: ResultadoLinea[], f: ConjuntoF
   const cats = [...new Set(lineas.map((x) => x.categoria))].sort();
   const porCategoria = cats.map((n) => ({ n, ...agrupar(`Categoría ${n}`, lineas.filter((x) => x.categoria === n), cfg) }));
   return { lineas, porFuente, porCategoria, total: agrupar('Total', lineas, cfg), incidencias };
+}
+
+export interface FilaIncertidumbreFuente { fuente: string; emision: number; consumo: string; factor: string; pct: number | null }
+/**
+ * Describe, para cada fuente, SOLO lo que se ha aplicado en este inventario: el origen del consumo (factura, parte de mantenimiento…) con su margen
+ * y el factor que pesa (mix eléctrico, CO₂ del combustible, PCA de la mezcla…) con el suyo. No incluye valores del catálogo que no se usen.
+ */
+export function descripcionPorFuente(resultados: ResultadoLinea[], inc: ResultadoIncertidumbre): FilaIncertidumbreFuente[] {
+  const catPorId = new Map(resultados.map((r) => [r.linea.id, r.linea]));
+  const pct = (v: number) => `±${fmt(v, 'porcentaje')} %`;
+  const rango = (v: number[]) => { const mn = Math.min(...v), mx = Math.max(...v); return mn === mx ? pct(mn) : `${pct(mn)} a ${pct(mx)}`; };
+  return inc.porFuente.map((g) => {
+    const ls = inc.lineas.filter((l) => l.fuente === g.nombre);
+    const origenes = [...new Set(ls.map((l) => ORIGENES_DATO[l.origen].toLowerCase()))].join(' y ');
+    const l0 = catPorId.get(ls[0]?.id ?? '');
+    const factor = !l0 ? 'factor de emisión' : l0.categoria === 'electricidad' ? 'mix eléctrico' : l0.categoria === 'fugitiva' ? (esMezclaRefrigerante(l0.fuente) ? 'PCA de la mezcla' : 'PCA del gas') : 'CO₂ del combustible';
+    return { fuente: g.nombre, emision: g.emision / 1000, consumo: ls.length ? `${rango(ls.map((l) => l.datoPct))} · ${origenes}` : '—', factor: ls.length ? `${rango(ls.map((l) => l.factorPct))} · ${factor}` : '—', pct: g.pct };
+  });
 }

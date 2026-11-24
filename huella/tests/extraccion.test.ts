@@ -168,3 +168,13 @@ test('solape: facturas consecutivas que comparten el día de corte no se solapan
   assert.ok(!cod('2024-02-22', '2024-03-20').includes('solape'));
   assert.ok(cod('2024-02-10', '2024-03-10').includes('solape')); // 11 días en común
 });
+
+test('misma cantidad y periodo que otra factura: solo aviso (no bloquea) y desaparece con «No es duplicada»', () => {
+  const previa = { id: 'dbe2c66c', centro: undefined, proveedor: 'Repsol Butano, S.A.', contador: '100794783', periodoDesde: '2024-04-05', periodoHasta: '2024-04-05', cantidad: 66, tipo: 'glp' as const };
+  const e: ExtraccionFactura = { tipo: 'glp', proveedor: 'Repsol Butano, S.A.', contador: '100794783', periodoDesde: '2024-04-05', periodoHasta: '2024-04-05', cantidad: 66, unidad: 'kg', producto: 'Propano', confianza: 0.95 };
+  const inc = validarExtraccion(e, { ...ctx, existentes: [previa] });
+  const dup = inc.find((i) => i.codigo === 'duplicada');
+  assert.equal(dup?.gravedad, 'aviso');
+  assert.ok(!inc.some((i) => i.gravedad === 'error'));
+  assert.ok(!validarExtraccion({ ...e, noDuplicada: true }, { ...ctx, existentes: [previa] }).some((i) => i.codigo === 'duplicada'));
+});

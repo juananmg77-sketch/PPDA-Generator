@@ -206,8 +206,10 @@ export function validarExtraccion(e: ExtraccionFactura, c: ContextoValidacion): 
     const contadorConocido = !!cx && !!ce;
     const sufijo = contadorConocido ? '' : ' Si son de contadores distintos, indique el contador (CUPS) en cada una.';
     if (x.periodoDesde === e.periodoDesde && x.periodoHasta === e.periodoHasta) {
-      add(x.cantidad === e.cantidad ? 'error' : 'aviso', x.cantidad === e.cantidad ? 'duplicada' : 'mismo_periodo',
-        x.cantidad === e.cantidad ? `Parece duplicada de la factura ${x.id}.${sufijo}` : `Hay otra factura del mismo proveedor y periodo (${x.id}) con distinta cantidad.${sufijo}`);
+      if (e.noDuplicada) continue; // la persona que revisa ya ha confirmado que son facturas distintas
+      // Solo un AVISO: el bloqueo (con comprobación del nombre del archivo y el botón «No es duplicada») lo hace la lista de pendientes
+      add('aviso', x.cantidad === e.cantidad ? 'duplicada' : 'mismo_periodo',
+        x.cantidad === e.cantidad ? `Podría ser duplicada de la factura ${x.id} (misma cantidad y periodo): compruebe que no lo es.${sufijo}` : `Hay otra factura del mismo proveedor y periodo (${x.id}) con distinta cantidad.${sufijo}`);
     } else {
       const xd = fecha(x.periodoDesde), xh = fecha(x.periodoHasta);
       if (xd && xh && d && h && solapan(d, h, xd, xh)) add('aviso', 'solape', `El periodo se solapa ${Math.round(diasComunes(d, h, xd, xh))} días con el de la factura ${x.id} del mismo proveedor.${sufijo}`);
